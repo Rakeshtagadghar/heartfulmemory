@@ -1,0 +1,22 @@
+{
+  "name": "heartfulmemory",
+  "private": true,
+  "packageManager": "pnpm@10.30.2",
+  "scripts": {
+    "preinstall": "node ./scripts/enforce-package-manager.cjs",
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:unit": "turbo test:unit",
+    "test:integration": "turbo test:integration",
+    "test:e2e": "turbo test:e2e",
+    "commitlint": "commitlint --from=HEAD~1 --to=HEAD"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.4.2",
+    "@commitlint/config-conventional": "^20.4.2",
+    "turbo": "^2.8.10"
+  }
+}

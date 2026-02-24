@@ -1,0 +1,21 @@
+Sprint titles (in order)
+
+Brand + Landing Page v1 (Conversion Ready)
+
+Design System + Marketing Components (Reusable Blocks)
+
+Auth + Onboarding (Supabase)
+
+Storybook Core Data Model (Supabase Postgres + RLS)
+
+Create Storybook Flow (Templates → Chapters → Editor v0)
+
+Media Upload Pipeline v1 (Cloudflare R2 + Signed URLs)
+
+PDF Export v1 (Storybook → Printable PDF)
+
+Private Sharing + Invites v1 (Family Contributors)
+
+Analytics + Observability (PostHog/GA4 + Error Tracking)
+
+Hardening + Launch Checklist (Perf/SEO/Security/Docs)

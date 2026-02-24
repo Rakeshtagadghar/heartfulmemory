@@ -1,0 +1,526 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "specType": "LANDING_PAGE_PRD_JSON",
+    "version": "LP_001",
+    "goal": "Convert visitors into: (1) Waitlist/Signup (2) Start a Storybook (3) Gift a Storybook",
+    "inspirationSources": [
+      {
+        "brand": "StoryKeeper",
+        "patternsUsed": [
+          "record-or-write",
+          "AI interviewer",
+          "QR codes in chapters",
+          "premium book messaging"
+        ],
+        "citations": ["turn0search0", "turn0search6", "turn0search22"]
+      },
+      {
+        "brand": "StoryWorth",
+        "patternsUsed": [
+          "3-step how it works",
+          "weekly prompts concept",
+          "multiple capture modes (email/phone/website)"
+        ],
+        "citations": ["turn0search8", "turn0search1", "turn0search7"]
+      },
+      {
+        "brand": "Remento",
+        "patternsUsed": [
+          "QR scan to hear voice",
+          "speech-to-story narrative",
+          "how-it-works storytelling"
+        ],
+        "citations": ["turn0search2", "turn0search16", "turn0search20"]
+      }
+    ],
+    "primaryCTA": "Start your Storybook",
+    "secondaryCTA": "Gift a Storybook",
+    "conversionEvents": [
+      "lp_view",
+      "cta_start_click",
+      "cta_gift_click",
+      "cta_pricing_click",
+      "cta_demo_click",
+      "email_capture_submit",
+      "faq_expand",
+      "testimonial_slide",
+      "how_it_works_step_view",
+      "pricing_plan_select"
+    ]
+  },
+
+  "brand": {
+    "tone": ["royal", "heirloom", "warm", "modern", "trustworthy"],
+    "visualLanguage": {
+      "style": "modern-luxury",
+      "motifs": [
+        "gold foil accents",
+        "deep navy/emerald backgrounds",
+        "subtle parchment texture",
+        "crest-like iconography"
+      ],
+      "motion": [
+        "soft parallax",
+        "silky scroll reveals",
+        "micro-interactions on hover",
+        "smooth section snapping optional"
+      ]
+    },
+    "copyPrinciples": [
+      "Emphasize legacy: 'for generations'",
+      "Reduce friction: 'no writing required' (optional mode)",
+      "Show tangible output: 'beautiful keepsake PDF (Phase 1)'",
+      "Be explicit: 'record or type', 'guided prompts', 'edit chapters', 'export PDF'"
+    ]
+  },
+
+  "pageStructure": {
+    "route": "/",
+    "sections": [
+      {
+        "id": "hero",
+        "type": "hero_split",
+        "priority": 1,
+        "content": {
+          "headline": "Turn family memories into a royal heirloom storybook.",
+          "subheadline": "Record or write stories. Get guided prompts. Edit chapters. Export a beautiful PDF in minutes.",
+          "bullets": [
+            "Record voice/video or type stories",
+            "AI-guided interview prompts",
+            "Chapters + photos, beautifully arranged",
+            "Export a premium PDF storybook (Phase 1)"
+          ],
+          "ctas": [
+            {
+              "label": "Start your Storybook",
+              "event": "cta_start_click",
+              "href": "/app/start"
+            },
+            {
+              "label": "Gift a Storybook",
+              "event": "cta_gift_click",
+              "href": "/gift"
+            }
+          ],
+          "socialProofInline": {
+            "text": "Inspired by modern memoir services that preserve stories with prompts, recordings, and keepsake books.",
+            "note": "Do not mention competitors by name on the page."
+          }
+        },
+        "ui": {
+          "heroVisual": {
+            "type": "3d_book_mock",
+            "variants": [
+              "storybook_cover_mock",
+              "family_tree_poster_mock",
+              "chapter_page_mock_with_qr_placeholder"
+            ],
+            "motion": "tilt-on-hover"
+          }
+        }
+      },
+
+      {
+        "id": "how_it_works",
+        "type": "stepper_3_or_4",
+        "priority": 2,
+        "content": {
+          "title": "How it works",
+          "steps": [
+            {
+              "title": "Choose your storyteller",
+              "desc": "Start for yourself or invite a parent/grandparent to contribute."
+            },
+            {
+              "title": "Write or record stories",
+              "desc": "Type, upload audio/video, or answer guided prompts."
+            },
+            {
+              "title": "Shape chapters beautifully",
+              "desc": "Edit, reorder chapters, add photos and captions."
+            },
+            {
+              "title": "Export your keepsake",
+              "desc": "Download a premium PDF storybook and share privately."
+            }
+          ]
+        },
+        "inspirationNote": {
+          "derivedFrom": [
+            "StoryWorth 3-step flow",
+            "StoryKeeper record + transcribe",
+            "Remento 'just talk' framing"
+          ],
+          "citations": ["turn0search8", "turn0search0", "turn0search16"]
+        }
+      },
+
+      {
+        "id": "feature_grid",
+        "type": "feature_grid_6",
+        "priority": 3,
+        "content": {
+          "title": "Everything you need to start (Phase 1)",
+          "features": [
+            {
+              "icon": "mic",
+              "title": "Record or type",
+              "desc": "Capture stories in the way that feels natural."
+            },
+            {
+              "icon": "sparkles",
+              "title": "AI Interview Prompts",
+              "desc": "Smart follow-ups help uncover deeper details."
+            },
+            {
+              "icon": "file-text",
+              "title": "Transcription-ready pipeline",
+              "desc": "Turn recordings into editable text (STT provider pluggable)."
+            },
+            {
+              "icon": "image",
+              "title": "Unlimited photos (Phase 1 target)",
+              "desc": "Add photos with captions to enrich every chapter."
+            },
+            {
+              "icon": "lock",
+              "title": "Private sharing",
+              "desc": "Invite family to contribute with controlled access."
+            },
+            {
+              "icon": "download",
+              "title": "Export PDF",
+              "desc": "A keepsake storybook you can download and print."
+            }
+          ]
+        },
+        "inspirationNote": {
+          "derivedFrom": [
+            "StoryKeeper record/transcribe/QR chapters",
+            "StoryWorth capture modes and publishing",
+            "Remento QR-to-voice"
+          ],
+          "citations": ["turn0search0", "turn0search8", "turn0search2"]
+        }
+      },
+
+      {
+        "id": "qr_teaser",
+        "type": "highlight_banner",
+        "priority": 4,
+        "content": {
+          "title": "Scan-to-relive (coming next)",
+          "desc": "Future chapters can include QR codes so readers can hear the original voice behind each story.",
+          "badge": "Roadmap",
+          "cta": {
+            "label": "Join the waitlist",
+            "href": "#email_capture",
+            "event": "email_capture_focus"
+          }
+        },
+        "inspirationNote": {
+          "derivedFrom": [
+            "StoryKeeper QR codes per chapter",
+            "Remento scan-to-play"
+          ],
+          "citations": ["turn0search0", "turn0search2"]
+        }
+      },
+
+      {
+        "id": "templates",
+        "type": "carousel",
+        "priority": 5,
+        "content": {
+          "title": "Start faster with story templates",
+          "desc": "Choose a guided path—then personalize it.",
+          "items": [
+            {
+              "name": "Childhood & Roots",
+              "chapters": 10,
+              "minutesToStart": 3
+            },
+            { "name": "Love & Family", "chapters": 8, "minutesToStart": 3 },
+            { "name": "Career & Lessons", "chapters": 8, "minutesToStart": 3 },
+            { "name": "Life Milestones", "chapters": 12, "minutesToStart": 3 }
+          ],
+          "cta": {
+            "label": "Browse templates",
+            "href": "/templates",
+            "event": "cta_templates_click"
+          }
+        }
+      },
+
+      {
+        "id": "testimonials",
+        "type": "testimonial_slider",
+        "priority": 6,
+        "content": {
+          "title": "Made for families—easy for elders",
+          "testimonials": [
+            {
+              "quote": "We finally captured stories we’d never heard before—beautifully put together.",
+              "name": "Customer",
+              "role": "Gift buyer",
+              "rating": 5
+            },
+            {
+              "quote": "The prompts made it easy to start. Editing the chapters felt surprisingly fun.",
+              "name": "Customer",
+              "role": "Storyteller",
+              "rating": 5
+            }
+          ],
+          "compliance": {
+            "note": "Phase 1: use placeholder testimonials until real reviews exist."
+          }
+        }
+      },
+
+      {
+        "id": "pricing",
+        "type": "pricing_cards",
+        "priority": 7,
+        "content": {
+          "title": "Simple pricing",
+          "subtitle": "Start digital. Upgrade to print later.",
+          "plans": [
+            {
+              "id": "digital",
+              "name": "Digital Storybook",
+              "price": "£19",
+              "period": "one-time",
+              "features": [
+                "Unlimited chapters",
+                "Record or type stories",
+                "Template library",
+                "Photo uploads",
+                "PDF export"
+              ],
+              "cta": {
+                "label": "Get Digital",
+                "href": "/checkout?plan=digital",
+                "event": "pricing_plan_select"
+              }
+            },
+            {
+              "id": "gift",
+              "name": "Gift a Storybook",
+              "price": "£29",
+              "period": "one-time",
+              "features": [
+                "Everything in Digital",
+                "Gift email + printable card",
+                "Invite storyteller flow",
+                "Private family contributions"
+              ],
+              "cta": {
+                "label": "Gift it",
+                "href": "/checkout?plan=gift",
+                "event": "pricing_plan_select"
+              }
+            },
+            {
+              "id": "print_future",
+              "name": "Print Upgrade",
+              "price": "Coming soon",
+              "period": "",
+              "features": [
+                "Hardcover print-ready layout",
+                "QR codes to recordings",
+                "Multiple copies"
+              ],
+              "cta": {
+                "label": "Notify me",
+                "href": "#email_capture",
+                "event": "email_capture_focus"
+              }
+            }
+          ],
+          "pricingNotes": [
+            "Keep pricing configurable server-side.",
+            "Localize currency by region later."
+          ]
+        },
+        "inspirationNote": {
+          "derivedFrom": [
+            "StoryKeeper one-time fee framing",
+            "StoryWorth annual guided memoir framing"
+          ],
+          "citations": ["turn0search6", "turn0search8"]
+        }
+      },
+
+      {
+        "id": "faq",
+        "type": "faq_accordion",
+        "priority": 8,
+        "content": {
+          "title": "Frequently asked questions",
+          "items": [
+            {
+              "q": "Do I have to write?",
+              "a": "No. You can record voice/video and turn it into an editable story (Phase 1 supports recording + transcription-ready pipeline)."
+            },
+            {
+              "q": "Can my parents contribute without being tech-savvy?",
+              "a": "Yes. The flow is designed to be simple: tap record or type, answer prompts, and save."
+            },
+            {
+              "q": "Can I print the book?",
+              "a": "Phase 1 exports a premium PDF you can print. Hardcover printing is planned as an upgrade."
+            },
+            {
+              "q": "Will chapters include QR codes to recordings?",
+              "a": "This is on the roadmap. QR codes can link to audio/video playback per chapter."
+            },
+            {
+              "q": "How private is it?",
+              "a": "Your content is private by default. You control invites and sharing."
+            }
+          ],
+          "events": [{ "onExpand": "faq_expand" }]
+        },
+        "inspirationNote": {
+          "derivedFrom": [
+            "StoryWorth printing FAQ topics",
+            "QR code messaging from StoryKeeper/Remento"
+          ],
+          "citations": ["turn0search1", "turn0search0", "turn0search2"]
+        }
+      },
+
+      {
+        "id": "email_capture",
+        "type": "email_capture",
+        "priority": 9,
+        "content": {
+          "title": "Get notified when QR & print upgrades launch",
+          "placeholder": "Enter your email",
+          "cta": "Join the waitlist",
+          "consentText": "By signing up, you agree to receive product updates. Unsubscribe anytime."
+        }
+      },
+
+      {
+        "id": "footer",
+        "type": "footer",
+        "priority": 10,
+        "content": {
+          "links": [
+            { "label": "Privacy", "href": "/privacy" },
+            { "label": "Terms", "href": "/terms" },
+            { "label": "Contact", "href": "/contact" }
+          ],
+          "copyright": "© Bloodline Storybook"
+        }
+      }
+    ]
+  },
+
+  "nonFunctional": {
+    "performanceBudgets": {
+      "lcp_ms": 2500,
+      "cls": 0.1,
+      "bundle_initial_kb_gzip_target": 180
+    },
+    "seo": {
+      "title": "Create a Family Storybook | Bloodline Storybook",
+      "description": "Record or write stories, get guided prompts, add photos, and export a beautiful PDF storybook.",
+      "structuredData": ["Product", "FAQPage"],
+      "openGraph": {
+        "ogTitle": "A family storybook you’ll pass down",
+        "ogDescription": "Capture memories in voice or text. Export a premium PDF keepsake."
+      }
+    },
+    "accessibility": {
+      "wcagTarget": "AA",
+      "requirements": [
+        "Keyboard nav for all CTAs",
+        "Reduced motion toggle support",
+        "Readable type scale for elders"
+      ]
+    }
+  },
+
+  "analytics": {
+    "provider": "PostHog_or_GA4",
+    "events": [
+      { "name": "lp_view", "props": ["ref", "utm_source", "utm_campaign"] },
+      { "name": "cta_start_click", "props": ["section"] },
+      { "name": "cta_gift_click", "props": ["section"] },
+      { "name": "cta_pricing_click", "props": ["plan_id"] },
+      { "name": "pricing_plan_select", "props": ["plan_id"] },
+      { "name": "email_capture_submit", "props": ["section"] },
+      { "name": "faq_expand", "props": ["question"] }
+    ]
+  },
+
+  "implementationNotes": {
+    "recommendedStack": {
+      "framework": "Next.js + TypeScript",
+      "ui": "Tailwind + shadcn/ui OR MUI",
+      "animation": "Framer Motion",
+      "images": "next/image + blur placeholders",
+      "cms_optional": "Sanity (later for blog/FAQ/pricing copy)"
+    },
+    "designSystemTokens": {
+      "radius": ["xl", "2xl"],
+      "shadows": ["soft", "medium"],
+      "typography": ["display", "headline", "body", "caption"]
+    },
+    "copyVariants": {
+      "heroAltHeadlines": [
+        "A royal heirloom—made from your family’s real stories.",
+        "Your family history, beautifully told.",
+        "Record memories today. Share them for generations."
+      ]
+    }
+  },
+
+  "acceptanceTests": [
+    {
+      "id": "LP_AT_001",
+      "title": "Hero section renders with primary CTA above the fold",
+      "given": "User visits /",
+      "when": "Page loads on mobile and desktop",
+      "then": [
+        "Hero headline, subheadline, and both CTAs are visible without layout shift",
+        "Clicking Start routes to /app/start",
+        "Events lp_view and cta_start_click fire correctly"
+      ]
+    },
+    {
+      "id": "LP_AT_002",
+      "title": "How-it-works stepper is readable and trackable",
+      "given": "User scrolls to How it works",
+      "when": "Each step enters viewport",
+      "then": [
+        "Step animations respect prefers-reduced-motion",
+        "how_it_works_step_view event fires with step index"
+      ]
+    },
+    {
+      "id": "LP_AT_003",
+      "title": "Pricing plan selection works",
+      "given": "User scrolls to Pricing",
+      "when": "User clicks a plan CTA",
+      "then": [
+        "Routes to /checkout with correct plan query param",
+        "pricing_plan_select fires with plan_id"
+      ]
+    },
+    {
+      "id": "LP_AT_004",
+      "title": "FAQ accordion is accessible",
+      "given": "User navigates via keyboard",
+      "when": "User expands/collapses FAQ items",
+      "then": [
+        "ARIA attributes are correct",
+        "faq_expand event fires with question text"
+      ]
+    }
+  ]
+}
