@@ -1,0 +1,358 @@
+{
+  "meta": {
+    "project": "Memorioso (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 1,
+      "title": "Brand + Landing Page v1 (Conversion Ready)",
+      "duration": "1 week",
+      "goal": "Ship a stunning, fast, SEO-ready landing page that captures leads and routes users into the app start flow.",
+      "definitionOfDone": [
+        "Landing page deployed on Vercel with custom domain",
+        "All primary CTAs tracked",
+        "Core sections implemented per LP JSON spec",
+        "Lighthouse targets met (mobile + desktop)",
+        "Copy + metadata finalized",
+        "Basic legal pages stubbed"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Tailwind + shadcn/ui (or MUI if already standard)",
+      "animation": "Framer Motion",
+      "analytics": "PostHog or GA4 (choose one in-task)",
+      "hosting": "Vercel"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S1-T01",
+      "title": "Finalize brand direction: name, tagline, and tone",
+      "skill": ["Product/Brand", "Copywriting"],
+      "priority": "P0",
+      "requirements": {
+        "inputs": [
+          "Shortlist 3 brand names + 1 chosen winner",
+          "Primary tagline: 1 final + 3 alternates",
+          "Tone guide: 8-12 words describing voice"
+        ],
+        "outputs": [
+          "brand.json (name, tagline, voice, do/don't)",
+          "Top-level nav labels (e.g., How it works, Templates, Pricing, FAQ)"
+        ],
+        "constraints": [
+          "Warm + family-first, modern, premium feel",
+          "Avoid mentioning competitor brands on-page"
+        ]
+      },
+      "acceptanceTests": [
+        "brand.json exists and is referenced by landing config",
+        "Hero headline and subheadline align with brand tone",
+        "Navigation labels finalized and consistent across sections"
+      ],
+      "deliverables": ["docs/brand.json", "docs/copy_hero.md"]
+    },
+    {
+      "id": "S1-T02",
+      "title": "Set up landing page architecture and section composition",
+      "skill": ["Frontend (Next.js)", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Route: / (landing)",
+          "Component structure: sections as independent components",
+          "Config-driven content: landingContent.ts/json"
+        ],
+        "sectionList": [
+          "Hero",
+          "How it works",
+          "Feature grid",
+          "QR teaser (coming next)",
+          "Templates carousel",
+          "Testimonials (placeholder)",
+          "Pricing",
+          "FAQ",
+          "Email capture",
+          "Footer"
+        ],
+        "constraints": [
+          "No backend dependency required for initial render",
+          "All sections must be responsive (mobile-first)",
+          "No layout shift from images (use next/image with sizes)"
+        ]
+      },
+      "acceptanceTests": [
+        "All sections render on / with clean scroll and no broken links",
+        "Content can be edited via a single config file without code changes in components",
+        "No CLS regressions due to image loading"
+      ],
+      "deliverables": [
+        "app/page.tsx",
+        "components/landing/*",
+        "content/landingContent.ts"
+      ]
+    },
+    {
+      "id": "S1-T03",
+      "title": "Implement stunning 'modern-luxury' visual system (tokens + theming)",
+      "skill": ["UI Design", "Frontend (CSS/Tailwind)"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Design tokens: spacing, radius, typography scale",
+          "Color system: neutral + 1 accent (gold-like) + 1 deep base (navy/emerald-like)",
+          "Reusable primitives: Button, Card, Badge, SectionHeader"
+        ],
+        "constraints": [
+          "Respect accessibility contrast",
+          "Support prefers-reduced-motion"
+        ]
+      },
+      "acceptanceTests": [
+        "Landing uses consistent radius/shadow/typography across all cards and CTAs",
+        "Buttons have hover/focus/disabled states",
+        "Reduced-motion users see minimal/no animations"
+      ],
+      "deliverables": [
+        "styles/tokens.ts (or tailwind.config tokens)",
+        "components/ui/* overrides",
+        "styles/globals.css"
+      ]
+    },
+    {
+      "id": "S1-T04",
+      "title": "Add motion polish (hero, scroll reveals, micro-interactions)",
+      "skill": ["Frontend Animation (Framer Motion)", "UX"],
+      "priority": "P1",
+      "requirements": {
+        "animations": [
+          "Hero visual subtle float/tilt on hover (desktop)",
+          "Section reveal on scroll (staggered)",
+          "Pricing card hover lift + CTA emphasis",
+          "FAQ expand/collapse smooth transitions"
+        ],
+        "constraints": [
+          "No heavy parallax that harms performance",
+          "Disable or simplify motion when prefers-reduced-motion=true"
+        ]
+      },
+      "acceptanceTests": [
+        "Animations feel smooth at 60fps on a mid-range laptop",
+        "No scroll-jank on mobile",
+        "Reduced-motion mode shows static alternatives"
+      ],
+      "deliverables": [
+        "components/landing/motion.ts",
+        "components/landing/* updated"
+      ]
+    },
+    {
+      "id": "S1-T05",
+      "title": "Implement SEO + metadata + structured data (Product + FAQ)",
+      "skill": ["SEO", "Frontend (Next.js)"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Metadata (title, description, OG/Twitter cards)",
+          "Robots + sitemap (basic)",
+          "JSON-LD for Product and FAQPage"
+        ],
+        "constraints": [
+          "No misleading claims (e.g., QR codes available now if not shipped)",
+          "Accurate pricing and plan text"
+        ]
+      },
+      "acceptanceTests": [
+        "View-source contains OG tags and Twitter tags",
+        "JSON-LD validates for FAQPage",
+        "Sitemap and robots are reachable"
+      ],
+      "deliverables": [
+        "app/layout.tsx metadata",
+        "app/sitemap.ts",
+        "app/robots.ts",
+        "components/seo/StructuredData.tsx"
+      ]
+    },
+    {
+      "id": "S1-T06",
+      "title": "Email capture v1 (waitlist) with storage + spam protection",
+      "skill": ["Frontend", "Backend-lite (Next.js Route Handler)"],
+      "priority": "P0",
+      "requirements": {
+        "approach": "Use a lightweight Next.js route handler to store emails (temporary storage). Upgrade to Supabase table in Sprint 3/4.",
+        "inputs": ["email", "referrer", "utm params (optional)", "timestamp"],
+        "spamProtection": [
+          "Honeypot field",
+          "Basic rate limit per IP",
+          "Server-side validation"
+        ],
+        "outputs": [
+          "Waitlist submission success state",
+          "Failure state with retry messaging"
+        ]
+      },
+      "acceptanceTests": [
+        "Submitting a valid email returns success and logs/stores the entry",
+        "Bot submissions via honeypot are rejected",
+        "Repeated submissions are rate-limited"
+      ],
+      "deliverables": [
+        "app/api/waitlist/route.ts",
+        "components/landing/EmailCapture.tsx",
+        "lib/validation/email.ts"
+      ]
+    },
+    {
+      "id": "S1-T07",
+      "title": "Analytics instrumentation for landing funnel (PostHog or GA4)",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "chooseOne": ["PostHog", "GA4"],
+        "events": [
+          "lp_view",
+          "cta_start_click",
+          "cta_gift_click",
+          "pricing_plan_select",
+          "email_capture_submit",
+          "faq_expand",
+          "testimonial_slide",
+          "how_it_works_step_view"
+        ],
+        "properties": [
+          "section",
+          "plan_id",
+          "utm_source",
+          "utm_campaign",
+          "referrer"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per interaction (no duplicates on rerender)",
+        "UTM/referrer props included when available",
+        "Privacy-friendly defaults (no PII beyond email on waitlist endpoint)"
+      ],
+      "deliverables": [
+        "lib/analytics/client.ts",
+        "components/landing/* instrumented"
+      ]
+    },
+    {
+      "id": "S1-T08",
+      "title": "Create legal + support stubs (Privacy, Terms, Contact)",
+      "skill": ["Copywriting", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "pages": ["/privacy", "/terms", "/contact"],
+        "contact": [
+          "email address placeholder",
+          "simple contact form optional (can be mailto for Sprint 1)"
+        ],
+        "constraints": [
+          "Keep content minimal and honest (Phase 1: PDF export, media upload later)",
+          "Add note about user content ownership and deletion request path"
+        ]
+      },
+      "acceptanceTests": [
+        "Footer links work and pages render",
+        "No broken routes",
+        "Contact path is clear"
+      ],
+      "deliverables": [
+        "app/privacy/page.tsx",
+        "app/terms/page.tsx",
+        "app/contact/page.tsx"
+      ]
+    },
+    {
+      "id": "S1-T09",
+      "title": "Performance pass + Lighthouse gate",
+      "skill": ["Performance Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "targets": {
+          "lighthouse_mobile": {
+            "performance": 85,
+            "accessibility": 90,
+            "bestPractices": 90,
+            "seo": 90
+          },
+          "lighthouse_desktop": {
+            "performance": 90,
+            "accessibility": 90,
+            "bestPractices": 90,
+            "seo": 90
+          }
+        },
+        "tactics": [
+          "Optimize images (next/image, proper sizes)",
+          "Defer non-critical JS (analytics)",
+          "Minimize motion/large effects on mobile",
+          "Font strategy (system font or optimized webfont)"
+        ]
+      },
+      "acceptanceTests": [
+        "Lighthouse scores meet or exceed targets",
+        "No console errors in production build",
+        "No large layout shift on load"
+      ],
+      "deliverables": [
+        "docs/lighthouse_report.md",
+        "performance fixes in codebase"
+      ]
+    },
+    {
+      "id": "S1-T10",
+      "title": "Vercel deployment + environment setup + release checklist",
+      "skill": ["DevOps-lite", "Next.js", "Release"],
+      "priority": "P0",
+      "requirements": {
+        "setup": [
+          "Vercel project configured",
+          "Env vars for analytics + waitlist route",
+          "Preview deployments enabled"
+        ],
+        "releaseChecklist": [
+          "QA on mobile/desktop",
+          "Broken link scan",
+          "Form submission test",
+          "Analytics smoke test",
+          "Meta tags verified"
+        ]
+      },
+      "acceptanceTests": [
+        "Production deployment is live and stable",
+        "Preview URLs work for PRs",
+        "Release checklist completed and recorded"
+      ],
+      "deliverables": [
+        "docs/release_checklist_s1.md",
+        "vercel env var list in docs"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S1-T01",
+      "S1-T02",
+      "S1-T03",
+      "S1-T04",
+      "S1-T05",
+      "S1-T06",
+      "S1-T07",
+      "S1-T08",
+      "S1-T09",
+      "S1-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4,
+      "P1_total_days": 1.5,
+      "buffer_days": 1.5
+    },
+    "notes": [
+      "Sprint 1 intentionally avoids Supabase/R2 integration (those start Sprint 3+).",
+      "Waitlist storage can be file/kv/email-service initially; migrate to Supabase later without changing UI."
+    ]
+  }
+}

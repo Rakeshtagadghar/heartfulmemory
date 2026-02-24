@@ -11,19 +11,22 @@ type Props = {
 
 export function ViewportEvent({ eventName, eventProps, once = true }: Props) {
   const ref = useRef<HTMLSpanElement | null>(null);
+  const seenRef = useRef(false);
+  const eventPropsKey = eventProps ? JSON.stringify(eventProps) : "";
 
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-
-    let seen = false;
+    const trackedProps = eventPropsKey
+      ? (JSON.parse(eventPropsKey) as Props["eventProps"])
+      : undefined;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          if (once && seen) continue;
-          seen = true;
-          track(eventName, eventProps);
+          if (once && seenRef.current) continue;
+          seenRef.current = true;
+          track(eventName, trackedProps);
           if (once) observer.disconnect();
         }
       },
@@ -32,7 +35,7 @@ export function ViewportEvent({ eventName, eventProps, once = true }: Props) {
 
     observer.observe(node);
     return () => observer.disconnect();
-  }, [eventName, eventProps, once]);
+  }, [eventName, once, eventPropsKey]);
 
   return <span ref={ref} aria-hidden="true" className="block h-0 w-0" />;
 }

@@ -7,6 +7,14 @@ describe("landing interactions", () => {
   it("submits email capture and fires analytics event", async () => {
     const user = userEvent.setup();
     const handler = vi.fn();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      );
     window.addEventListener("analytics:event", handler as EventListener);
 
     render(<EmailCaptureForm />);
@@ -24,6 +32,7 @@ describe("landing interactions", () => {
     expect(submitEvent).toBeDefined();
 
     window.removeEventListener("analytics:event", handler as EventListener);
+    fetchMock.mockRestore();
   });
 
   it("expands faq item with accessible aria attrs and tracks expand", async () => {

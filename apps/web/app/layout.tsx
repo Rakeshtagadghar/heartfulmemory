@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
+import Script from "next/script";
+import { landingSeo } from "../content/landingContent";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -14,21 +16,46 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Create a Family Storybook | Memorioso",
-  description:
-    "Record or write stories, get guided prompts, add photos, and export a beautiful PDF storybook.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
+  title: landingSeo.title,
+  description: landingSeo.description,
   openGraph: {
-    title: "Memorioso | A family storybook you will pass down",
-    description:
-      "Capture memories in voice or text. Export a premium PDF keepsake.",
+    title: landingSeo.ogTitle,
+    description: landingSeo.ogDescription,
     type: "website"
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: landingSeo.twitterTitle,
+    description: landingSeo.twitterDescription
   }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
+
   return (
     <html lang="en" className={`${cormorant.variable} ${manrope.variable}`}>
-      <body>{children}</body>
+      <body>
+        {gaMeasurementId ? (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = gtag;
+                gtag('js', new Date());
+                gtag('config', '${gaMeasurementId}', { send_page_view: false });
+              `}
+            </Script>
+          </>
+        ) : null}
+        {children}
+      </body>
     </html>
   );
 }

@@ -1,20 +1,24 @@
+import { brand } from "../content/landingContent";
+
 type MemoriosoLogoProps = {
   className?: string;
   compact?: boolean;
   subtitle?: string;
+  name?: string;
 };
 
 export function MemoriosoLogo({
   className = "",
   compact = false,
-  subtitle = "Heirloom Storybooks"
+  subtitle = "Heirloom Storybooks",
+  name = brand.name
 }: MemoriosoLogoProps) {
   return (
     <div className={`flex items-center gap-3 ${className}`.trim()}>
       <MemoriosoMark className={compact ? "h-10 w-10" : "h-11 w-11"} />
       <div>
         <p className="font-display text-xl leading-none text-parchment">
-          Memorioso
+          {name}
         </p>
         {!compact ? (
           <p className="text-[10px] uppercase tracking-[0.22em] text-white/45">
@@ -51,4 +55,3 @@ export function MemoriosoMark({ className = "h-10 w-10" }: { className?: string 
     </span>
   );
 }
-

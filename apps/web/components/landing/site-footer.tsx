@@ -1,3 +1,4 @@
+import { brand } from "../../content/landingContent";
 import { MemoriosoLogo } from "../memorioso-logo";
 import { TrackedLink } from "../tracked-link";
 
@@ -7,7 +8,7 @@ export function SiteFooter() {
       <div className="flex flex-col gap-4 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
           <MemoriosoLogo compact />
-          <p className="text-sm text-white/45">© Memorioso</p>
+          <p className="text-sm text-white/45">{`© ${brand.name}`}</p>
         </div>
         <nav className="flex flex-wrap gap-2 text-sm text-white/65">
           {[

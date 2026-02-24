@@ -1,11 +1,11 @@
 import { HeroVisual } from "../hero-visual";
 import { MemoriosoMark } from "../memorioso-logo";
 import { TrackedLink } from "../tracked-link";
-import { heroBullets } from "../../lib/landing-content";
+import { heroBullets, heroCopy } from "../../content/landingContent";
 
 export function HeroSection() {
   return (
-    <section id="hero" className="relative mx-auto w-full max-w-7xl px-6 pb-8 pt-6 sm:px-8">
+    <section id="hero" className="relative mx-auto w-full max-w-7xl px-6 pb-8 pt-4 sm:px-8 sm:pt-5">
       <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_15%_10%,rgba(213,179,106,0.15),transparent_45%),radial-gradient(circle_at_90%_15%,rgba(17,59,52,0.28),transparent_45%),radial-gradient(circle_at_50%_100%,rgba(198,109,99,0.14),transparent_45%),linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] shadow-panel">
         <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:28px_28px]" />
         <div className="pointer-events-none absolute left-6 top-0 h-px w-40 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
@@ -14,13 +14,13 @@ export function HeroSection() {
         <div className="animate-rise">
           <span className="inline-flex items-center gap-2 rounded-full border border-gold/35 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-gold/90">
             <MemoriosoMark className="h-6 w-6 rounded-md" />
-            Memorioso
+            {heroCopy.badge}
           </span>
           <h1 className="mt-6 max-w-xl font-display text-5xl leading-[0.95] text-parchment sm:text-6xl lg:text-7xl">
-            Turn family memories into a royal heirloom storybook.
+            {heroCopy.headline}
           </h1>
           <p className="mt-5 max-w-xl text-base leading-8 text-white/80 sm:text-lg">
-            Record or write stories. Get guided prompts. Edit chapters. Export a beautiful PDF in minutes.
+            {heroCopy.subheadline}
           </p>
 
           <ul className="mt-7 grid gap-3 sm:grid-cols-2">
@@ -56,7 +56,7 @@ export function HeroSection() {
           </div>
 
           <p className="mt-6 max-w-xl text-sm leading-6 text-white/55">
-            Inspired by modern memoir services that preserve stories with prompts, recordings, and keepsake books.
+            {heroCopy.socialProof}
           </p>
         </div>
 

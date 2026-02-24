@@ -1,0 +1,41 @@
+{
+  "name": "Memorioso",
+  "tagline": "A family storybook you'll pass down.",
+  "taglineAlternates": [
+    "Record memories today. Share them for generations.",
+    "Your family's real stories, beautifully preserved.",
+    "Turn voice and memories into a keepsake storybook."
+  ],
+  "voice": [
+    "warm",
+    "family-first",
+    "modern",
+    "premium",
+    "trustworthy",
+    "gentle",
+    "clear",
+    "inviting",
+    "heirloom-minded"
+  ],
+  "toneGuide": {
+    "do": [
+      "Lead with legacy, memory, and family connection",
+      "Use plain language for non-technical users",
+      "Be explicit about Phase 1 capabilities",
+      "Sound premium without sounding exclusive"
+    ],
+    "dont": [
+      "Mention competitor brands on-page",
+      "Overclaim printing or QR features as already shipped",
+      "Use jargon-heavy AI language",
+      "Make the flow sound complicated"
+    ]
+  },
+  "navLabels": [
+    { "id": "how_it_works", "label": "How it works" },
+    { "id": "templates", "label": "Templates" },
+    { "id": "pricing", "label": "Pricing" },
+    { "id": "faq", "label": "FAQ" }
+  ]
+}
+

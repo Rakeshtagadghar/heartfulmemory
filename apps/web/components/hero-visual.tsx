@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useReducedMotionPreference } from "./landing/motion";
 
 export function HeroVisual() {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const prefersReducedMotion = useReducedMotionPreference();
 
   return (
     <div
       className="relative mx-auto w-full max-w-[540px] animate-rise [animation-delay:120ms]"
       onMouseMove={(event) => {
+        if (prefersReducedMotion) return;
         const rect = event.currentTarget.getBoundingClientRect();
         const px = (event.clientX - rect.left) / rect.width - 0.5;
         const py = (event.clientY - rect.top) / rect.height - 0.5;
@@ -19,7 +22,11 @@ export function HeroVisual() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(213,179,106,0.18),transparent_60%)]" />
       <div
         className="relative aspect-[1.05/0.92] rounded-[2rem] border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.02] p-4 shadow-glow backdrop-blur-xl transition-transform duration-300 motion-reduce:transform-none"
-        style={{ transform: `perspective(1200px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)` }}
+        style={{
+          transform: prefersReducedMotion
+            ? "none"
+            : `perspective(1200px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`
+        }}
       >
         <BookMock />
         <ChapterCard />
