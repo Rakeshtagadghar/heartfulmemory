@@ -11,8 +11,8 @@ export const assetSourceSchema = z.enum([
 ]);
 
 export const assetDtoSchema = z.object({
-  id: z.string().uuid(),
-  owner_id: z.string().uuid(),
+  id: z.string().min(1),
+  owner_id: z.string().min(1),
   source: assetSourceSchema,
   source_asset_id: z.string().nullable().optional(),
   source_url: z.string().nullable().optional(),

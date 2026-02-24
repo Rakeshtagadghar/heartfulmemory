@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import type { FormEvent } from "react";
+import type { SubmitEvent } from "react";
 import { useEffect, useState } from "react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -31,12 +31,15 @@ const goals: Array<{ id: OnboardingGoal; label: string; desc: string }> = [
   }
 ];
 
+function getInitialGoal(initialGoal?: string | null): OnboardingGoal {
+  const matchedGoal = goals.find((item) => item.id === initialGoal);
+  return matchedGoal ? matchedGoal.id : "create_storybook";
+}
+
 export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
   const router = useRouter();
   const [displayName, setDisplayName] = useState(initialDisplayName ?? "");
-  const [goal, setGoal] = useState<OnboardingGoal>(
-    (goals.find((item) => item.id === initialGoal)?.id ?? "create_storybook") as OnboardingGoal
-  );
+  const [goal, setGoal] = useState<OnboardingGoal>(getInitialGoal(initialGoal));
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +48,7 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
     trackOnboardingView();
   }, []);
 
-  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("saving");
     setError(null);
@@ -54,9 +57,12 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
       const response = await fetch("/api/onboarding", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ displayName, goal, marketingConsent })
+        body: JSON.stringify({ displayName, goal, marketingConsent }),
       });
-      const result = (await response.json()) as { ok?: boolean; error?: string };
+      const result = (await response.json()) as {
+        ok?: boolean;
+        error?: string;
+      };
       if (!response.ok || !result.ok) {
         throw new Error(result.error || "Could not save onboarding details.");
       }
@@ -65,7 +71,11 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
       router.refresh();
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Could not save onboarding details.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not save onboarding details.",
+      );
     }
   }
 
@@ -97,7 +107,11 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
           <legend className="mb-2 text-sm font-medium text-white/90">What are you here to do first?</legend>
           <div className="space-y-2">
             {goals.map((item) => (
-              <label key={item.id} className="flex cursor-pointer gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <label
+                key={item.id}
+                aria-label={item.label}
+                className="flex cursor-pointer gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3"
+              >
                 <input
                   type="radio"
                   name="goal"
@@ -115,7 +129,10 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
           </div>
         </fieldset>
 
-        <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm text-white/75">
+        <label
+          aria-label="Marketing consent"
+          className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-sm text-white/75"
+        >
           <input
             type="checkbox"
             checked={marketingConsent}

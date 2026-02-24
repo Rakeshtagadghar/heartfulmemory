@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -18,8 +17,34 @@ type Props = {
   initialMessage?: string | null;
 };
 
+function toSafeRedirectTarget(target: string | null | undefined, fallback: string) {
+  if (!target) return fallback;
+
+  try {
+    const url = new URL(target, globalThis.location.origin);
+    if (url.origin !== globalThis.location.origin) return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return target.startsWith("/") ? target : fallback;
+  }
+}
+
+async function hasActiveSession() {
+  try {
+    const response = await fetch("/api/auth/session", {
+      method: "GET",
+      cache: "no-store",
+      headers: { accept: "application/json" }
+    });
+    if (!response.ok) return false;
+    const session = (await response.json()) as { user?: { id?: string } | null } | null;
+    return Boolean(session?.user?.id);
+  } catch {
+    return false;
+  }
+}
+
 export function MagicLinkForm({ returnTo, configMissing = false, initialMessage }: Props) {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -87,8 +112,14 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
 
             trackAuthLoginSuccess({ source: "login_form" });
             setStatus("sent");
-            router.push(result.url || returnTo);
-            router.refresh();
+            const target = toSafeRedirectTarget(returnTo, "/app");
+            const sessionReady = await hasActiveSession();
+            if (!sessionReady) {
+              // Rare first-login race: cookie write succeeds but session fetch lags briefly.
+              await new Promise((resolve) => setTimeout(resolve, 150));
+              await hasActiveSession();
+            }
+            globalThis.location.assign(target);
           }}
         >
           <label htmlFor="login-email" className="sr-only">

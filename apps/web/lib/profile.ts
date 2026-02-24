@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { Session } from "next-auth";
 import { convexMutation, convexQuery, anyApi, getConvexUrl } from "./convex/ops";
+import { logWarn } from "./server-log";
 
 export const ONBOARDING_GOALS = [
   "create_storybook",
@@ -64,15 +65,15 @@ function fallbackProfile(user: AuthUserLike): ProfileRecord {
 
 async function getOrCreateLocalProfile(user: AuthUserLike) {
   const records = await readProfilesFile();
-  if (!records[user.id]) {
+  if (records[user.id]) {
+    records[user.id].email = user.email ?? records[user.id].email;
+    records[user.id].display_name = records[user.id].display_name || user.name || null;
+    await writeProfilesFile(records);
+  } else {
     records[user.id] = {
       ...fallbackProfile(user),
       created_at: new Date().toISOString()
     };
-    await writeProfilesFile(records);
-  } else {
-    records[user.id].email = user.email ?? records[user.id].email;
-    records[user.id].display_name = records[user.id].display_name || user.name || null;
     await writeProfilesFile(records);
   }
 
@@ -93,7 +94,7 @@ export async function getOrCreateProfileForUser(user: AuthUserLike): Promise<Pro
   });
 
   if (!result.ok) {
-    console.warn("convex_profile_upsert_error", result.error);
+    logWarn("convex_profile_upsert_error", result.error);
     return getOrCreateLocalProfile(user);
   }
 

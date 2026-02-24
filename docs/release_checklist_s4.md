@@ -1,19 +1,8 @@
-# Sprint 4 Release Checklist (Memorioso)
+# Sprint 4 Release Checklist (Legacy Placeholder)
 
-Status: Started locally (schema/RLS/data-layer foundation).
+Sprint 4 moved from the earlier Supabase/RLS plan to Convex + server-side authz.
 
-## DB Schema / RLS
-- [ ] Apply migrations `003`-`008`
-- [ ] Apply `supabase/policies/rls_storybook_core.sql`
-- [ ] Verify RLS enabled on all core tables
-- [ ] Run owner/anon RLS checks
-
-## App Flow
-- [ ] Wire `/app/start` to create storybook rows via data layer
-- [ ] Add `/app/storybooks/:id` DB-backed stub load
-- [ ] Persist chapter ordering / block stubs
-
-## QA
-- [ ] No public read access to story content
-- [ ] Friendly error states on CRUD failures
-- [ ] Basic integration tests pass against configured Supabase project
+Use these docs instead:
+- `docs/release_checklist_s4_convex.md`
+- `docs/security_checklist_convex_s4.md`
+- `docs/authz_smoke_steps.md`

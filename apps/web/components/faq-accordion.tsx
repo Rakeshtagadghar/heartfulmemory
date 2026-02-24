@@ -26,7 +26,7 @@ export function FaqAccordion({ items }: { items: Item[] }) {
                 type="button"
                 aria-expanded={isOpen}
                 aria-controls={panelId}
-                className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-white sm:text-base"
+                className="flex w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left text-sm font-semibold text-white sm:text-base"
                 onClick={() => {
                   const next = isOpen ? null : index;
                   setOpenIndex(next);

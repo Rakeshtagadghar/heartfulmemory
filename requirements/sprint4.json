@@ -4,33 +4,33 @@
     "planType": "SPRINT_TASKS_JSON",
     "sprint": {
       "number": 4,
-      "title": "Storybook Core Data Model (Supabase Postgres + RLS)",
+      "title": "Storybook Core Data Model (Convex DB + AuthZ)",
       "duration": "1 week",
-      "goal": "Create the core database schema for storybooks, chapters, blocks, and collaborators with strict RLS so every row is private by default and ready for editor + exports.",
+      "goal": "Implement the core Convex database schema and secure access rules for storybooks, chapters, blocks, assets, and collaborators—private by default—ready for the editor in Sprint 5.",
       "definitionOfDone": [
-        "Core tables created with migrations",
-        "RLS enabled and policies verified for all tables",
-        "Draft-friendly data model supports templates and chapter ordering",
-        "Server endpoints for CRUD (minimal) using anon key + RLS",
-        "Seed templates (optional) stored in DB or static config",
-        "Basic integration tests for RLS + CRUD"
+        "Convex schema created for storybooks/chapters/blocks/assets/collaborators (+ templates optional)",
+        "Authorization enforced in every query/mutation (owner-first, share-ready)",
+        "Core CRUD queries/mutations implemented and typed",
+        "Indexes added for common queries (by ownerId, storybookId, orderIndex)",
+        "Seed templates available (code-based or in Convex table)",
+        "Integration tests / manual scripts validate no cross-user access",
+        "UI wiring: create storybook from onboarding/start page works end-to-end"
       ]
     },
     "stackAssumptions": {
-      "db": "Supabase Postgres",
-      "auth": "Supabase Auth",
-      "app": "Next.js App Router",
-      "clientAccess": "Supabase anon key + RLS for user-owned data",
-      "serverAccess": "Service role only for admin-only ops (rare)"
+      "db": "Convex",
+      "auth": "Auth.js (NextAuth) + Convex OR Convex Auth (as implemented in Migration Sprint 3.5)",
+      "app": "Next.js App Router + TypeScript",
+      "securityModel": "Server-side authorization checks in Convex functions (no SQL RLS)"
     }
   },
   "dataModel": {
     "enums": {
-      "book_mode": ["DIGITAL", "PRINT"],
-      "book_status": ["DRAFT", "ACTIVE", "ARCHIVED", "DELETED"],
-      "chapter_status": ["DRAFT", "FINAL"],
-      "collab_role": ["OWNER", "EDITOR", "VIEWER"],
-      "asset_source": [
+      "bookMode": ["DIGITAL", "PRINT"],
+      "bookStatus": ["DRAFT", "ACTIVE", "ARCHIVED", "DELETED"],
+      "chapterStatus": ["DRAFT", "FINAL"],
+      "collabRole": ["OWNER", "EDITOR", "VIEWER"],
+      "assetSource": [
         "UPLOAD",
         "UNSPLASH",
         "PEXELS",
@@ -39,253 +39,286 @@
         "RAWPIXEL_PD",
         "VECTEEZY"
       ],
-      "block_type": ["TEXT", "IMAGE", "VIDEO", "GIF", "EMBED"]
+      "blockType": ["TEXT", "IMAGE", "VIDEO", "GIF", "EMBED"]
     },
-    "tables": [
+    "collections": [
+      "users",
       "storybooks",
       "chapters",
-      "chapter_blocks",
+      "chapterBlocks",
       "assets",
       "collaborators",
       "templates (optional)",
-      "activity_log (optional minimal)"
+      "activityLog (optional)"
     ],
     "designPrinciples": [
-      "Private by default: all user content protected by RLS",
-      "Draft-first: allow incomplete chapters/blocks without failing writes",
-      "Order preserved: chapter ordering and block ordering stored explicitly",
-      "Provider-ready: assets store license metadata and source references",
-      "Print-safe foundation: book_mode exists now; stricter validations come later"
+      "Private by default: all reads/writes must check identity + ownership/permission",
+      "Draft-first: content stored flexibly (block content as JSON-ish object)",
+      "Order preserved: orderIndex on chapters and blocks",
+      "Share-ready: collaborator table exists even if sharing UX comes later",
+      "Provider-ready: assets include license metadata (future stock integration)"
     ]
   },
   "backlog": [
     {
-      "id": "S4-T01",
-      "title": "Finalize core schema (ERD-level) and generate SQL migrations",
-      "skill": ["Backend Schema", "Supabase", "Architecture"],
+      "id": "S4C-T01",
+      "title": "Define Convex schema for core collections (storybooks/chapters/blocks/assets/collaborators)",
+      "skill": ["Convex Schema", "Data Modeling", "TypeScript"],
       "priority": "P0",
       "requirements": {
-        "tables": {
+        "schema": {
           "storybooks": {
             "fields": [
-              "id uuid pk default gen_random_uuid()",
-              "owner_id uuid not null references auth.users(id)",
-              "title text not null default 'Untitled Storybook'",
-              "subtitle text null",
-              "book_mode book_mode not null default 'DIGITAL'",
-              "status book_status not null default 'DRAFT'",
-              "cover_asset_id uuid null references assets(id)",
-              "settings jsonb not null default '{}'",
-              "created_at timestamptz not null default now()",
-              "updated_at timestamptz not null default now()"
+              "ownerId (string auth subject or users._id reference)",
+              "title (string)",
+              "subtitle (optional string)",
+              "bookMode ('DIGITAL'|'PRINT')",
+              "status ('DRAFT'|'ACTIVE'|'ARCHIVED'|'DELETED')",
+              "coverAssetId (optional assets._id)",
+              "settings (object)",
+              "createdAt (number ms)",
+              "updatedAt (number ms)"
             ],
-            "indexes": ["owner_id", "status", "updated_at"]
+            "indexes": ["by_ownerId", "by_ownerId_updatedAt"]
           },
           "chapters": {
             "fields": [
-              "id uuid pk default gen_random_uuid()",
-              "storybook_id uuid not null references storybooks(id) on delete cascade",
-              "owner_id uuid not null references auth.users(id)",
-              "title text not null default 'Untitled Chapter'",
-              "status chapter_status not null default 'DRAFT'",
-              "order_index int not null default 0",
-              "summary text null",
-              "created_at timestamptz not null default now()",
-              "updated_at timestamptz not null default now()"
+              "storybookId (storybooks._id)",
+              "ownerId",
+              "title",
+              "status ('DRAFT'|'FINAL')",
+              "orderIndex (number)",
+              "summary (optional string)",
+              "createdAt",
+              "updatedAt"
             ],
-            "indexes": ["storybook_id", "owner_id", "order_index"]
+            "indexes": ["by_storybookId_orderIndex", "by_ownerId"]
           },
-          "chapter_blocks": {
+          "chapterBlocks": {
             "fields": [
-              "id uuid pk default gen_random_uuid()",
-              "chapter_id uuid not null references chapters(id) on delete cascade",
-              "storybook_id uuid not null references storybooks(id) on delete cascade",
-              "owner_id uuid not null references auth.users(id)",
-              "type block_type not null",
-              "order_index int not null default 0",
-              "content jsonb not null default '{}'",
-              "created_at timestamptz not null default now()",
-              "updated_at timestamptz not null default now()"
+              "storybookId",
+              "chapterId",
+              "ownerId",
+              "type ('TEXT'|'IMAGE'|'VIDEO'|'GIF'|'EMBED')",
+              "orderIndex (number)",
+              "content (object - flexible)",
+              "createdAt",
+              "updatedAt"
             ],
             "indexes": [
-              "chapter_id",
-              "storybook_id",
-              "owner_id",
-              "type",
-              "order_index"
+              "by_chapterId_orderIndex",
+              "by_storybookId",
+              "by_ownerId"
             ]
           },
           "assets": {
             "fields": [
-              "id uuid pk default gen_random_uuid()",
-              "owner_id uuid not null references auth.users(id)",
-              "source asset_source not null",
-              "source_asset_id text null",
-              "source_url text null",
-              "storage_provider text null",
-              "storage_bucket text null",
-              "storage_key text null",
-              "mime_type text null",
-              "width int null",
-              "height int null",
-              "duration_seconds int null",
-              "size_bytes bigint null",
-              "checksum text null",
-              "license jsonb null",
-              "created_at timestamptz not null default now()",
-              "updated_at timestamptz not null default now()"
+              "ownerId",
+              "source ('UPLOAD'|...)",
+              "sourceAssetId (optional string)",
+              "sourceUrl (optional string)",
+              "storageProvider (optional string e.g., 'R2')",
+              "storageBucket (optional string)",
+              "storageKey (optional string)",
+              "mimeType (optional string)",
+              "width (optional number)",
+              "height (optional number)",
+              "durationSeconds (optional number)",
+              "sizeBytes (optional number)",
+              "checksum (optional string)",
+              "license (optional object)",
+              "createdAt",
+              "updatedAt"
             ],
-            "indexes": ["owner_id", "source", "storage_key"]
+            "indexes": ["by_ownerId", "by_storageKey"]
           },
           "collaborators": {
             "fields": [
-              "id uuid pk default gen_random_uuid()",
-              "storybook_id uuid not null references storybooks(id) on delete cascade",
-              "invited_email text null",
-              "user_id uuid null references auth.users(id)",
-              "role collab_role not null default 'VIEWER'",
-              "status text not null default 'PENDING'",
-              "created_at timestamptz not null default now()",
-              "updated_at timestamptz not null default now()"
+              "storybookId",
+              "invitedEmail (optional string)",
+              "userId (optional users._id or auth subject)",
+              "role ('OWNER'|'EDITOR'|'VIEWER')",
+              "status ('PENDING'|'ACCEPTED'|'REVOKED')",
+              "createdAt",
+              "updatedAt"
             ],
-            "indexes": ["storybook_id", "user_id", "invited_email", "status"]
+            "indexes": ["by_storybookId", "by_userId", "by_invitedEmail"]
           }
         },
         "constraints": [
-          "owner_id denormalized on chapters/blocks for RLS speed",
-          "storybook_id denormalized on blocks for query simplicity",
-          "content jsonb is editor-flexible; strict validation occurs in app rules engine later"
+          "Choose and standardize identity field: prefer `ownerId` as auth subject string for simplicity",
+          "Use Convex validators (v.string(), v.optional(), v.literal(), v.union(), v.object())",
+          "Keep `content` as v.any() or structured object (v.object + partial) for flexibility in Sprint 5"
         ],
         "outputs": [
-          "SQL migrations (supabase/migrations)",
-          "Optional ERD diagram (markdown)"
+          "convex/schema.ts updated",
+          "docs/convex_schema_storybooks.md"
         ]
       },
       "acceptanceTests": [
-        "Migrations apply cleanly on a fresh Supabase DB",
-        "Foreign keys enforce cascade deletes for storybooks → chapters → blocks",
-        "Indexes exist for common queries"
+        "Convex schema deploys without errors",
+        "All required indexes exist for primary queries (by_ownerId, by_storybookId_orderIndex, by_chapterId_orderIndex)",
+        "TypeScript types generated/usable by Convex client"
       ],
-      "deliverables": [
-        "supabase/migrations/003_storybooks.sql",
-        "supabase/migrations/004_chapters.sql",
-        "supabase/migrations/005_blocks.sql",
-        "supabase/migrations/006_assets.sql",
-        "supabase/migrations/007_collaborators.sql",
-        "docs/erd_storybook_core.md"
-      ]
+      "deliverables": ["convex/schema.ts", "docs/convex_schema_storybooks.md"]
     },
     {
-      "id": "S4-T02",
-      "title": "Enable RLS + write policies for storybooks/chapters/blocks/assets",
-      "skill": ["Security", "Supabase (RLS)"],
+      "id": "S4C-T02",
+      "title": "Implement AuthZ helpers and permission model (owner-first, collaborator-ready)",
+      "skill": ["Security", "Convex", "Architecture"],
       "priority": "P0",
       "requirements": {
-        "policies": {
-          "storybooks": [
-            "SELECT: owner_id = auth.uid() OR user is collaborator with VIEW/EDIT",
-            "INSERT: owner_id = auth.uid()",
-            "UPDATE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)",
-            "DELETE: owner_id = auth.uid()"
-          ],
-          "chapters": [
-            "SELECT: owner_id = auth.uid() OR collaborator can view",
-            "INSERT/UPDATE/DELETE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)"
-          ],
-          "chapter_blocks": [
-            "SELECT: owner_id = auth.uid() OR collaborator can view",
-            "INSERT/UPDATE/DELETE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)"
-          ],
-          "assets": [
-            "SELECT: owner_id = auth.uid()",
-            "INSERT/UPDATE/DELETE: owner_id = auth.uid()",
-            "Note: assets are private; sharing uses storybook association later"
-          ]
+        "helpers": [
+          "requireUser(ctx) -> { subject, userDoc? }",
+          "requireOwner(ctx, ownerId) throws if mismatch",
+          "canAccessStorybook(ctx, storybookId, minRole) -> boolean",
+          "assertCanAccessStorybook(ctx, storybookId, minRole) throws"
+        ],
+        "roles": {
+          "hierarchy": ["OWNER > EDITOR > VIEWER"],
+          "defaultBehavior": "Only OWNER can write in Sprint 4; collaborator writes can be added later without schema changes."
         },
         "constraints": [
-          "RLS must be ENABLED on every table with user data",
-          "No public read access to any story content",
-          "Collaborator logic can be simplified in Sprint 4 (owner-only), then extended in Sprint 10"
-        ],
-        "outputs": ["RLS SQL policies", "RLS verification script"]
-      },
-      "acceptanceTests": [
-        "Anon cannot read any storybooks/chapters/blocks/assets",
-        "Authenticated user can read/write only their own rows",
-        "If collaborator policy enabled: collaborator can read permitted storybook"
-      ],
-      "deliverables": [
-        "supabase/policies/rls_storybook_core.sql",
-        "docs/rls_verification_steps.md"
-      ]
-    },
-    {
-      "id": "S4-T03",
-      "title": "Trigger functions: updated_at maintenance + optional soft-delete strategy",
-      "skill": ["Postgres", "Supabase"],
-      "priority": "P1",
-      "requirements": {
-        "triggers": [
-          "updated_at auto-update on storybooks/chapters/blocks/assets/collaborators"
-        ],
-        "softDeleteOption": {
-          "approach": "status=DELETED + deleted_at (optional)",
-          "note": "Hard delete still allowed for owner; soft delete useful for recovery later"
-        }
-      },
-      "acceptanceTests": [
-        "updated_at changes on row update automatically",
-        "Soft delete (if implemented) prevents accidental permanent loss"
-      ],
-      "deliverables": ["supabase/migrations/008_triggers.sql"]
-    },
-    {
-      "id": "S4-T04",
-      "title": "Data access layer (TypeScript) for core CRUD operations",
-      "skill": ["TypeScript", "Frontend/Backend Integration"],
-      "priority": "P0",
-      "requirements": {
-        "apis": [
-          "createStorybook(title, mode)",
-          "listStorybooks()",
-          "getStorybook(id)",
-          "updateStorybook(id, patch)",
-          "createChapter(storybookId, title)",
-          "reorderChapters(storybookId, chapterOrder[])",
-          "upsertBlock(chapterId, block)",
-          "listChapterBlocks(chapterId)"
-        ],
-        "constraints": [
-          "Use anon key + RLS for user-owned data",
-          "Server actions or route handlers allowed, but keep it minimal",
-          "Return typed results + structured errors"
+          "Every query/mutation must call AuthZ helpers (no direct db access without checks)",
+          "Fail closed: deny by default"
         ]
       },
       "acceptanceTests": [
-        "CRUD functions work under RLS with authenticated user",
-        "Unauthorized access fails with predictable error messages",
-        "Ordering updates are atomic (transaction-like) or consistent"
+        "Unauthenticated calls are rejected consistently",
+        "Non-owner cannot read another user's storybook",
+        "Owner can read/write their own data"
       ],
       "deliverables": [
-        "lib/data/storybooks.ts",
-        "lib/data/chapters.ts",
-        "lib/data/blocks.ts",
-        "lib/data/assets.ts"
+        "convex/authz.ts",
+        "docs/convex_access_control_storybooks.md"
       ]
     },
     {
-      "id": "S4-T05",
-      "title": "Template model (minimal) + seed initial template set",
-      "skill": ["Product", "Backend Schema", "Frontend"],
+      "id": "S4C-T03",
+      "title": "Core storybook CRUD (queries + mutations) with typed inputs",
+      "skill": ["Convex Functions", "TypeScript"],
+      "priority": "P0",
+      "requirements": {
+        "functions": [
+          "mutation storybooks.create({ title?, bookMode?, templateId? }) -> storybookId",
+          "query storybooks.listMine() -> storybooks[]",
+          "query storybooks.get({ storybookId }) -> storybook",
+          "mutation storybooks.update({ storybookId, patch })",
+          "mutation storybooks.archive({ storybookId })",
+          "mutation storybooks.remove({ storybookId }) (hard delete optional)"
+        ],
+        "constraints": [
+          "All functions enforce AuthZ",
+          "Update must also touch updatedAt",
+          "Remove must cascade delete chapters/blocks (Convex-side cascade in mutation)"
+        ]
+      },
+      "acceptanceTests": [
+        "Create produces a storybook owned by current user",
+        "List returns only current user's storybooks",
+        "Get denies access if not owner",
+        "Delete removes dependent chapters/blocks (if hard delete enabled)"
+      ],
+      "deliverables": ["convex/storybooks.ts"]
+    },
+    {
+      "id": "S4C-T04",
+      "title": "Chapter CRUD + ordering (drag reorder ready)",
+      "skill": ["Convex Functions", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "functions": [
+          "mutation chapters.create({ storybookId, title? }) -> chapterId",
+          "query chapters.listByStorybook({ storybookId }) -> chapters[] ordered by orderIndex",
+          "mutation chapters.rename({ chapterId, title })",
+          "mutation chapters.remove({ chapterId })",
+          "mutation chapters.reorder({ storybookId, orderedChapterIds[] })"
+        ],
+        "ordering": [
+          "orderIndex recalculated in reorder mutation (0..n-1)",
+          "Stable ordering after insert/delete"
+        ],
+        "constraints": [
+          "AuthZ enforced via storybook access",
+          "Reorder should be reasonably efficient (batch patches)"
+        ]
+      },
+      "acceptanceTests": [
+        "Creating chapter appends to end (max orderIndex + 1)",
+        "Reorder persists and returns correct ordering",
+        "Non-owner cannot list or mutate chapters"
+      ],
+      "deliverables": ["convex/chapters.ts"]
+    },
+    {
+      "id": "S4C-T05",
+      "title": "Chapter blocks CRUD (v0) compatible with Editor sprint",
+      "skill": ["Convex Functions", "TypeScript"],
+      "priority": "P0",
+      "requirements": {
+        "functions": [
+          "query blocks.listByChapter({ chapterId }) -> blocks[] ordered by orderIndex",
+          "mutation blocks.insert({ chapterId, type, content?, orderIndex? }) -> blockId",
+          "mutation blocks.update({ blockId, patch })",
+          "mutation blocks.remove({ blockId })",
+          "mutation blocks.reorder({ chapterId, orderedBlockIds[] })"
+        ],
+        "content": [
+          "Store TEXT as TipTap/Slate JSON in content",
+          "IMAGE can store placeholder content (caption, intended placement) until uploads arrive"
+        ],
+        "constraints": [
+          "AuthZ enforced using chapter->storybook->owner check",
+          "updatedAt maintained"
+        ]
+      },
+      "acceptanceTests": [
+        "Blocks persist and list in correct order",
+        "Update works for large JSON payloads (editor docs) within reasonable limits",
+        "Unauthorized access denied"
+      ],
+      "deliverables": ["convex/blocks.ts"]
+    },
+    {
+      "id": "S4C-T06",
+      "title": "Assets collection v0 + linkage strategy (upload later via R2)",
+      "skill": ["Data Modeling", "Convex", "Architecture"],
       "priority": "P1",
       "requirements": {
-        "approachOptions": [
-          "Option A: templates in DB (templates table + JSON chapters/blocks)",
-          "Option B: templates in code (content/templates/*.ts) for simplicity"
+        "functions": [
+          "mutation assets.createMetadata({ source, mimeType?, width?, height?, license?, storageKey? }) -> assetId",
+          "query assets.listMine({ limit? })",
+          "query assets.get({ assetId })"
+        ],
+        "linkage": [
+          "Blocks refer to assets via assetId in content.assetId",
+          "Storybook cover references coverAssetId"
+        ],
+        "constraints": [
+          "No direct file storage in Convex for now (R2 in Sprint 7/8)",
+          "License metadata fields included (for future stock providers)"
+        ]
+      },
+      "acceptanceTests": [
+        "Asset metadata can be created and retrieved by owner",
+        "Non-owner cannot read asset metadata",
+        "Block can reference an assetId without breaking reads"
+      ],
+      "deliverables": ["convex/assets.ts", "docs/assets_linking_v0.md"]
+    },
+    {
+      "id": "S4C-T07",
+      "title": "Templates v1 storage decision + seed two templates",
+      "skill": ["Product", "Convex", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "chooseOne": [
+          "Store templates in code (content/templates/*.ts) and apply via Convex mutation that writes chapters/blocks",
+          "Store templates in Convex `templates` collection for dynamic editing later"
         ],
         "minimumTemplates": [
           {
-            "id": "childhood_roots",
+            "templateId": "childhood_roots",
             "name": "Childhood & Roots",
             "chapters": [
               "Origins",
@@ -295,7 +328,7 @@
             ]
           },
           {
-            "id": "love_family",
+            "templateId": "love_family",
             "name": "Love & Family",
             "chapters": [
               "How We Met",
@@ -305,139 +338,124 @@
             ]
           }
         ],
+        "applyFlow": [
+          "mutation templates.apply({ templateId }) -> storybookId",
+          "creates storybook + chapters + one starter TEXT block per chapter"
+        ],
         "constraints": [
-          "Templates must be versioned (template_version)",
-          "Applying template creates user-owned chapters/blocks copies"
+          "Templates must be versioned (templateVersion)",
+          "Applying templates copies into user-owned docs"
         ]
       },
       "acceptanceTests": [
-        "User can apply a template to create a storybook with chapters in correct order",
-        "Template changes do not retroactively modify existing user books"
+        "Applying template creates correct chapters and blocks in order",
+        "Template content never changes existing created books"
       ],
       "deliverables": [
-        "content/templates/* (or supabase/migrations/009_templates.sql)",
-        "lib/templates/applyTemplate.ts",
-        "docs/templates_v1.md"
+        "convex/templates.ts (optional)",
+        "content/templates/*",
+        "docs/templates_v1_convex.md"
       ]
     },
     {
-      "id": "S4-T06",
-      "title": "Minimal API contract for future editor (DTOs + validation stubs)",
-      "skill": ["Architecture", "TypeScript"],
-      "priority": "P1",
+      "id": "S4C-T08",
+      "title": "Next.js wiring: replace old data layer with Convex hooks for storybook start flow",
+      "skill": ["Frontend (Next.js)", "Convex Client"],
+      "priority": "P0",
       "requirements": {
-        "dtos": ["StorybookDTO", "ChapterDTO", "BlockDTO", "AssetDTO"],
-        "validation": [
-          "Client-side schema validation using Zod (or equivalent) for DTO shape",
-          "Do NOT implement full media rules yet (that sprint comes later)"
+        "uiFlow": [
+          "/app/start: choose blank or template",
+          "Create storybook (Convex mutation) then route to /app/storybooks/:id",
+          "/app/storybooks/:id: show chapters list (read via Convex query)"
+        ],
+        "constraints": [
+          "No editor yet—just verify persistence and navigation",
+          "Handle loading + error states"
         ]
       },
       "acceptanceTests": [
-        "DTO types match DB fields and are used across data layer",
-        "Invalid shapes are rejected early (developer-facing)"
+        "User can create a storybook and see it on dashboard after refresh",
+        "Chapters list loads from Convex and is ordered",
+        "Unauthorized users cannot access /app/*"
       ],
       "deliverables": [
-        "lib/dto/storybook.ts",
-        "lib/dto/chapter.ts",
-        "lib/dto/block.ts",
-        "lib/dto/asset.ts"
+        "app/app/start/page.tsx updated",
+        "app/app/storybooks/[id]/page.tsx updated",
+        "components/storybooks/* updated to use Convex"
       ]
     },
     {
-      "id": "S4-T07",
-      "title": "RLS integration tests (owner-only) + collaborator future hook",
+      "id": "S4C-T09",
+      "title": "Security tests: cross-user access denial + basic smoke scripts",
       "skill": ["Testing", "Security"],
       "priority": "P0",
       "requirements": {
         "tests": [
-          "User A can create/read/update/delete their storybook",
-          "User B cannot read User A storybook",
-          "Anon cannot read anything",
-          "If collaborator policy enabled: collaborator can read but not write (viewer role)"
+          "User A creates storybook",
+          "User B cannot read/list/get A's storybook",
+          "Anon cannot call protected queries/mutations",
+          "Owner can create/list/update/delete"
         ],
-        "constraints": [
-          "Tests can be node scripts or minimal integration harness",
-          "Focus on preventing accidental public access"
-        ]
+        "approach": [
+          "Convex function tests or manual scripted checks documented",
+          "At minimum: a repeatable manual checklist"
+        ],
+        "constraints": ["Fail closed: if unsure, deny access"]
       },
       "acceptanceTests": [
-        "Tests pass consistently",
-        "A failing RLS policy would be caught by tests"
+        "Security checklist passes",
+        "No accidental public queries exist",
+        "All functions use authz helpers"
       ],
       "deliverables": [
-        "tests/integration/rls_storybooks.test.ts",
-        "docs/testing_rls.md"
+        "docs/security_checklist_convex_s4.md",
+        "docs/authz_smoke_steps.md"
       ]
     },
     {
-      "id": "S4-T08",
-      "title": "App wiring: Create-first storybook entrypoint from onboarding",
-      "skill": ["Frontend (Next.js)", "Product Flow"],
-      "priority": "P0",
-      "requirements": {
-        "flow": [
-          "After onboarding complete, route to /app/start",
-          "Start page: choose template or blank",
-          "Create storybook row + initial chapters",
-          "Route to /app/storybooks/:id"
-        ],
-        "constraints": [
-          "No editor yet—just show created chapters list and placeholders"
-        ]
-      },
-      "acceptanceTests": [
-        "New user can create a storybook and see it listed",
-        "Chapters created in correct order",
-        "Reload persists state from DB"
-      ],
-      "deliverables": [
-        "app/app/start/page.tsx",
-        "app/app/storybooks/[id]/page.tsx (stub)",
-        "components/storybooks/* (stub list)"
-      ]
-    },
-    {
-      "id": "S4-T09",
-      "title": "Release Sprint 4: deploy migrations + validate RLS in production",
-      "skill": ["Release", "Supabase", "DevOps-lite"],
+      "id": "S4C-T10",
+      "title": "Release Sprint 4: deploy Convex schema + functions, verify in production",
+      "skill": ["Release", "DevOps-lite", "Convex"],
       "priority": "P0",
       "requirements": {
         "releaseChecklist": [
-          "Apply migrations to prod Supabase",
-          "Confirm RLS enabled on all new tables",
-          "Manual test: create storybook, reload, verify persistence",
-          "Manual test: attempt unauthorized read with anon client (should fail)",
-          "Verify error states are friendly in UI"
+          "Deploy Convex schema & functions",
+          "Verify auth identity works in Convex functions",
+          "Create storybook (blank + template) in production",
+          "Verify chapters created and ordered",
+          "Verify unauthorized access denied (manual test from another account)"
         ]
       },
       "acceptanceTests": [
-        "Prod DB schema matches expected version",
-        "No user data is publicly readable",
-        "Core create/list/get flows work end-to-end"
+        "Production app supports create/list/open storybooks",
+        "No cross-user data leakage",
+        "Checklist recorded"
       ],
-      "deliverables": ["docs/release_checklist_s4.md"]
+      "deliverables": ["docs/release_checklist_s4_convex.md"]
     }
   ],
   "sprintPlanning": {
     "suggestedOrder": [
-      "S4-T01",
-      "S4-T02",
-      "S4-T03",
-      "S4-T04",
-      "S4-T07",
-      "S4-T05",
-      "S4-T08",
-      "S4-T06",
-      "S4-T09"
+      "S4C-T01",
+      "S4C-T02",
+      "S4C-T03",
+      "S4C-T04",
+      "S4C-T05",
+      "S4C-T08",
+      "S4C-T06",
+      "S4C-T07",
+      "S4C-T09",
+      "S4C-T10"
     ],
     "timeboxGuidance": {
-      "P0_total_days": 4.5,
+      "P0_total_days": 5,
       "P1_total_days": 1.5,
-      "buffer_days": 1
+      "buffer_days": 0.5
     },
     "notes": [
-      "Start with owner-only policies if collaborator rules feel heavy; you can extend collaborator logic in the Sharing sprint.",
-      "Keep block content in JSONB for flexibility; strict rules/validation will be introduced in the Media Rules & Book Modes sprint."
+      "This sprint replaces 'Supabase Postgres + RLS' with 'Convex DB + server-side AuthZ'.",
+      "Keep collaborators enforced as read-only (viewer) or owner-only in Sprint 4; you can expand roles in the Sharing sprint without breaking schema.",
+      "Block content remains flexible to support Editor v0 in Sprint 5; strict media rules arrive later."
     ]
   }
 }

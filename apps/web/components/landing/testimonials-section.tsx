@@ -16,21 +16,15 @@ export function TestimonialsSection() {
             key={item.quote}
             className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 shadow-panel"
           >
-            <ViewportEvent
-              eventName="testimonial_slide"
-              eventProps={{ index }}
-              once={false}
-            />
+            <ViewportEvent eventName="testimonial_slide" eventProps={{ index }} once={false} />
             <div className="mb-4 flex gap-1 text-gold" aria-label="5 star rating">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <span key={i}>★</span>
+              {Array.from({ length: 5 }).map((_, starIndex) => (
+                <span key={`${item.name}-${item.role}-star-${starIndex}`}>*</span>
               ))}
             </div>
-            <p className="text-lg leading-8 text-white/90">
-              &ldquo;{item.quote}&rdquo;
-            </p>
+            <p className="text-lg leading-8 text-white/90">&ldquo;{item.quote}&rdquo;</p>
             <footer className="mt-5 text-sm text-white/60">
-              {item.name} · {item.role}
+              {item.name} {" · "} {item.role}
             </footer>
           </blockquote>
         ))}
@@ -38,3 +32,4 @@ export function TestimonialsSection() {
     </SectionShell>
   );
 }
+

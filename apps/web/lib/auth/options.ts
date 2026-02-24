@@ -1,14 +1,31 @@
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { NextAuthOptions } from "next-auth";
 import { isValidEmail, normalizeEmail } from "../validation/email";
+import { logError } from "../server-log";
 
 function getDisplayNameFromEmail(email: string) {
   const [localPart] = email.split("@");
   return localPart
     ? localPart
-        .replace(/[._-]+/g, " ")
-        .replace(/\b\w/g, (char) => char.toUpperCase())
+        .replaceAll(/[._-]+/g, " ")
+        .replaceAll(/\b\w/g, (char) => char.toUpperCase())
     : "Memorioso Member";
+}
+
+function metadataHasDecryptFailure(metadata: unknown) {
+  if (!metadata) return false;
+  if (typeof metadata === "string") {
+    return metadata.toLowerCase().includes("decryption operation failed");
+  }
+  if (metadata instanceof Error) {
+    return metadata.message.toLowerCase().includes("decryption operation failed");
+  }
+
+  try {
+    return JSON.stringify(metadata).toLowerCase().includes("decryption operation failed");
+  } catch {
+    return false;
+  }
 }
 
 export const authOptions: NextAuthOptions = {
@@ -52,6 +69,16 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name || session.user.name;
       }
       return session;
+    }
+  },
+  logger: {
+    error(code, metadata) {
+      // Expected when NEXTAUTH_SECRET changes and a stale cookie remains in the browser.
+      if (code === "JWT_SESSION_ERROR" && metadataHasDecryptFailure(metadata)) {
+        return;
+      }
+
+      logError(`next-auth:${code}`, metadata ?? "");
     }
   }
 };

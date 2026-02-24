@@ -28,7 +28,7 @@ export function NavBar({
 }) {
   const [open, setOpen] = useState(false);
   const [activeHashHref, setActiveHashHref] = useState<string>("");
-  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const drawerRef = useRef<HTMLDialogElement | null>(null);
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null);
   const pathname = usePathname();
   const hashLinks = useMemo(
@@ -41,8 +41,8 @@ export function NavBar({
       if (event.key === "Escape") setOpen(false);
     }
 
-    window.addEventListener("keydown", onGlobalKeyDown);
-    return () => window.removeEventListener("keydown", onGlobalKeyDown);
+    globalThis.addEventListener("keydown", onGlobalKeyDown);
+    return () => globalThis.removeEventListener("keydown", onGlobalKeyDown);
   }, []);
 
   useEffect(() => {
@@ -67,8 +67,9 @@ export function NavBar({
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Tab" || !focusable.length) return;
       const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const last = focusable.at(-1);
       const current = document.activeElement as HTMLElement | null;
+      if (!first || !last) return;
 
       if (event.shiftKey && current === first) {
         event.preventDefault();
@@ -90,7 +91,7 @@ export function NavBar({
   }, [open]);
 
   useEffect(() => {
-    if (!hashLinks.length || typeof window === "undefined") return;
+    if (!hashLinks.length) return;
     if (pathname !== "/") return;
 
     const sections = hashLinks
@@ -179,7 +180,7 @@ export function NavBar({
               <button
                 ref={toggleButtonRef}
                 type="button"
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/[0.03] text-white md:hidden"
+                className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-white/15 bg-white/[0.03] text-white md:hidden"
                 aria-expanded={open}
                 aria-controls="mobile-nav"
                 aria-label={open ? "Close menu" : "Open menu"}
@@ -222,16 +223,15 @@ export function NavBar({
               type="button"
               aria-hidden="true"
               tabIndex={-1}
-              className="absolute inset-0 top-[56px] bg-black/15 md:hidden"
+              className="absolute inset-0 top-[56px] cursor-pointer bg-black/15 md:hidden"
               onClick={() => setOpen(false)}
             />
           ) : null}
 
-          <div
+          <dialog
             id="mobile-nav"
             ref={drawerRef}
-            role="dialog"
-            aria-modal="true"
+            open={open}
             aria-label="Mobile navigation"
             className={cn(
               "relative z-[1] grid transition-[grid-template-rows] duration-300 md:hidden",
@@ -266,7 +266,7 @@ export function NavBar({
                 </nav>
               </div>
             </div>
-          </div>
+          </dialog>
         </div>
       </div>
     </header>

@@ -4,13 +4,13 @@ export const bookModeSchema = z.enum(["DIGITAL", "PRINT"]);
 export const bookStatusSchema = z.enum(["DRAFT", "ACTIVE", "ARCHIVED", "DELETED"]);
 
 export const storybookDtoSchema = z.object({
-  id: z.string().uuid(),
-  owner_id: z.string().uuid(),
+  id: z.string().min(1),
+  owner_id: z.string().min(1),
   title: z.string(),
   subtitle: z.string().nullable().optional(),
   book_mode: bookModeSchema,
   status: bookStatusSchema,
-  cover_asset_id: z.string().uuid().nullable().optional(),
+  cover_asset_id: z.string().min(1).nullable().optional(),
   settings: z.record(z.string(), z.unknown()).default({}),
   created_at: z.string(),
   updated_at: z.string()

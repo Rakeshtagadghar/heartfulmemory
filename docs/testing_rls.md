@@ -1,16 +1,8 @@
-# RLS Testing (Sprint 4)
+# Legacy RLS Testing (Superseded)
 
-## Goal
-Catch accidental public access regressions early.
+Sprint 4 authz moved to Convex server functions.
 
-## Recommended Harness
-- Use two authenticated test users and one anon client.
-- Run simple CRUD checks against `storybooks`, `chapters`, and `chapter_blocks`.
-- Keep tests idempotent and clean up created rows.
-
-## Included in Repo
-- `apps/web/tests/integration/rls_storybooks.test.ts` (env-gated placeholder harness)
-
-## Before Running
-- Set Supabase env vars in `.env`
-- Apply Sprint 3 + Sprint 4 migrations and policies
+Current artifacts:
+- `apps/web/tests/integration/rls_storybooks.test.ts` (Convex authz helper usage guard)
+- `docs/security_checklist_convex_s4.md`
+- `docs/authz_smoke_steps.md`

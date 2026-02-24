@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { convexMutation, anyApi, getConvexUrl } from "../../../lib/convex/ops";
 import { isValidEmail, normalizeEmail } from "../../../lib/validation/email";
+import { logError } from "../../../lib/server-log";
 
 export const runtime = "nodejs";
 
@@ -147,7 +148,7 @@ export async function POST(request: Request) {
   try {
     await storeWaitlistEntry(entry);
   } catch (error) {
-    console.error("waitlist_store_error", error);
+    logError("waitlist_store_error", error);
     return NextResponse.json(
       { ok: false, error: "We could not save your request. Please try again." },
       { status: 500 }
