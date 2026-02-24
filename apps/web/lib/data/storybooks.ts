@@ -70,6 +70,26 @@ export async function archiveStorybookForUser(
   return { ok: true, data: null };
 }
 
+export async function updateStorybookSettingsForUser(
+  viewerSubject: string,
+  storybookId: string,
+  settingsPatch: {
+    pageSize?: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
+    margins?: Record<string, unknown>;
+    grid?: Record<string, unknown>;
+    exportTargets?: { digitalPdf: boolean; printPdf: boolean };
+  }
+): Promise<DataResult<StorybookDTO>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<unknown>(anyApi.storybooks.updateSettings, {
+    viewerSubject,
+    storybookId,
+    settingsPatch
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: storybookDtoSchema.parse(result.data) };
+}
+
 export async function removeStorybookForUser(
   viewerSubject: string,
   storybookId: string
@@ -100,4 +120,3 @@ export async function getStorybook(storybookId: string, viewerSubject = "dev:ano
 export async function updateStorybook(storybookId: string, patch: unknown, viewerSubject = "dev:anonymous") {
   return updateStorybookForUser(viewerSubject, storybookId, patch);
 }
-

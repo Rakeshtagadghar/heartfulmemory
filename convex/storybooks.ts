@@ -146,6 +146,51 @@ export const update = mutationGeneric({
   }
 });
 
+export const updateSettings = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    settingsPatch: v.object({
+      pageSize: v.optional(v.union(v.literal("A4"), v.literal("US_LETTER"), v.literal("BOOK_6X9"), v.literal("BOOK_8_5X11"))),
+      margins: v.optional(v.any()),
+      grid: v.optional(v.any()),
+      exportTargets: v.optional(
+        v.object({
+          digitalPdf: v.boolean(),
+          printPdf: v.boolean()
+        })
+      )
+    })
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    const currentSettings =
+      access.storybook.settings && typeof access.storybook.settings === "object" && !Array.isArray(access.storybook.settings)
+        ? (access.storybook.settings as Record<string, unknown>)
+        : {};
+    const nextSettings: Record<string, unknown> = { ...currentSettings };
+    if ("pageSize" in args.settingsPatch && args.settingsPatch.pageSize) {
+      nextSettings.pageSize = args.settingsPatch.pageSize;
+    }
+    if ("margins" in args.settingsPatch && args.settingsPatch.margins) {
+      nextSettings.margins = args.settingsPatch.margins;
+    }
+    if ("grid" in args.settingsPatch && args.settingsPatch.grid) {
+      nextSettings.grid = args.settingsPatch.grid;
+    }
+    if ("exportTargets" in args.settingsPatch && args.settingsPatch.exportTargets) {
+      nextSettings.exportTargets = args.settingsPatch.exportTargets;
+    }
+    await ctx.db.patch(access.storybook._id as never, {
+      settings: nextSettings,
+      updatedAt: Date.now()
+    });
+    const updated = await ctx.db.get(access.storybook._id as never);
+    if (!updated) throw new Error("Not found");
+    return toStorybookDto(updated as never);
+  }
+});
+
 export const archive = mutationGeneric({
   args: {
     viewerSubject: v.optional(v.string()),
@@ -202,4 +247,4 @@ export const createStorybook = create;
 export const listStorybooks = listMine;
 export const getStorybook = get;
 export const updateStorybook = update;
-
+export const updateStorybookSettings = updateSettings;

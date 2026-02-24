@@ -8,16 +8,18 @@ Storybook Core Data Model (Supabase Postgres + RLS)
 
 Create Storybook Flow (Templates → Chapters → Editor v0)
 
-Media Rules & Book Modes Foundation (Digital vs Print Constraints) ← insert here
+WYSIWYG Page Layout System v1 (Canva-like Editor Shell + Page Templates)
 
-Stock Media Search + Placement v1 (Unsplash/Pexels/Pixabay/Openverse/Rawpixel/Vecteezy) ← (this can be part of 6 or 7; I’d keep separate)
+Layout→PDF Renderer v1 (Pixel-perfect export matching editor)
 
-Media Upload Pipeline v1 (Cloudflare R2 + Signed URLs)
+Media Pipeline v1 (Images only): Upload + Stock Search + Crop/Placement (R2 + Providers)
 
-PDF Export v1 (Storybook → Printable PDF)
+Digital + Hardcopy Export Modes v1 (same book, two outputs)
 
-Private Sharing + Invites v1 (Family Contributors)
+Attribution & Credits v1 (license capture + auto credits pages)
 
-Analytics + Observability (PostHog/GA4 + Error Tracking)
+Sharing & Invites v1 (contributors + permissions)
 
-Hardening + Launch Checklist (Perf/SEO/Security/Docs)
+Analytics + Observability (editor + export funnel)
+
+Hardening + Launch (perf, security, print QA, docs)

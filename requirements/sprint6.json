@@ -1,443 +1,308 @@
 {
   "meta": {
-    "project": "Bloodline Storybook (Phase 1)",
-    "planType": "SPRINT_TASKS_JSON",
-    "sprint": {
-      "number": 6,
-      "title": "Media Rules & Book Modes Foundation (Digital vs Print Constraints) — Convex",
-      "duration": "1 week",
-      "goal": "Introduce a shared rules engine that enforces what content is allowed for DIGITAL vs PRINT books, validates licensing metadata for stock assets, and produces print-safe conversion guidance—integrated into the Convex-backed editor flow.",
-      "definitionOfDone": [
-        "Book modes (DIGITAL/PRINT) formally supported in data + UI",
-        "Shared rules engine (TS) implemented with structured error codes",
-        "Validation runs on save (client-side) and in Convex mutations (server-side)",
-        "License metadata schema established and required for stock assets",
-        "Print-safe conversion plan generator implemented (spec + output), to be used by PDF export later",
-        "Config-driven limits introduced (tier-ready)",
-        "Docs: provider license policy + capability matrix"
-      ]
+    "sprint": 6,
+    "title": "WYSIWYG Page Layout System v1 (Canva-like Editor Shell + Page Templates)",
+    "duration": "1 week",
+    "goal": "Make the editor match the output: full-page canvas with page thumbnails, frame-based layout, and template-driven pages so users can immediately visualize the final PDF.",
+    "coreDecision": {
+      "exports": ["DIGITAL_PDF", "HARDCOPY_PRINT_PDF"],
+      "mediaEnabledNow": ["TEXT", "IMAGE"],
+      "mediaDisabledNow": ["VIDEO", "GIF"]
     },
-    "stackAssumptions": {
-      "db": "Convex",
-      "frontend": "Next.js + TypeScript",
-      "editor": "TipTap/Slate from Sprint 5",
-      "sharing": "Owner-only or collaborator-read only for now",
-      "validation": "Shared TS rules package imported by both app and Convex functions"
-    }
-  },
-  "scope": {
-    "inScope": [
-      "DIGITAL vs PRINT constraints for blocks (TEXT/IMAGE/VIDEO/GIF/EMBED)",
-      "Validation + error messaging in editor",
-      "Server-side enforcement in Convex mutations",
-      "License metadata schema + validation requirement for stock assets",
-      "Limits configuration (max photos, max videos, block counts, size warnings)",
-      "Print fallback plan generator (no PDF yet)"
-    ],
-    "outOfScope": [
-      "Real stock provider API integration (next sprint)",
-      "R2 upload implementation (later sprint)",
-      "PDF export implementation (later sprint)"
+    "definitionOfDone": [
+      "Full-width Canva-like editor shell shipped (canvas center, controls at corners)",
+      "Page model introduced (pages + frames) stored in Convex",
+      "Template-driven page layouts available (guided mode) + basic freeform frame editing",
+      "On-canvas WYSIWYG preview accurately reflects final PDF constraints (margins/grid)",
+      "Basic image frame placement + crop UI stub (no uploads yet if you want)",
+      "Ready for Sprint 7: layout-to-PDF renderer consumes the same page model"
     ]
   },
-  "backlog": [
+  "tasks": [
     {
       "id": "S6-T01",
-      "title": "Book Modes: finalize model + UI control for DIGITAL/PRINT",
-      "skill": ["Product", "Frontend", "Convex"],
+      "title": "Introduce canonical document model: Pages + Frames (single source of truth)",
+      "skill": ["Architecture", "TypeScript", "Convex Schema"],
       "priority": "P0",
       "requirements": {
-        "data": [
-          "Ensure storybooks.bookMode exists and is editable (DIGITAL/PRINT)",
-          "Default: DIGITAL"
-        ],
-        "ui": [
-          "Book Settings panel (v0) to switch mode",
-          "Mode badge visible in storybook header",
-          "When switching to PRINT, show summary of unsupported blocks and required actions"
-        ],
+        "dataModel": {
+          "page": [
+            "id",
+            "storybookId",
+            "orderIndex",
+            "sizePreset",
+            "margins",
+            "grid",
+            "background"
+          ],
+          "frame": [
+            "id",
+            "pageId",
+            "type: TEXT|IMAGE",
+            "x,y,w,h (in px at a fixed canvas DPI or in points/mm)",
+            "zIndex",
+            "style (font, size, lineHeight, align)",
+            "contentRef (textDoc OR assetRef)",
+            "crop/focalPoint (for IMAGE)"
+          ]
+        },
         "constraints": [
-          "Mode switching should not silently delete content",
-          "If unsupported blocks exist, switching to PRINT is blocked or requires confirmation + conversion plan"
+          "Everything must be representable as frames; blocks become implementation detail",
+          "Must support both guided templates and freeform editing",
+          "No VIDEO/GIF fields yet (leave extensibility hooks)"
         ]
       },
       "acceptanceTests": [
-        "User can set mode DIGITAL or PRINT and it persists",
-        "PRINT mode clearly communicates limitations",
-        "Switching to PRINT with existing VIDEO/GIF/EMBED triggers clear guidance"
+        "A storybook can have multiple pages with ordered frames",
+        "Frames persist and reload correctly",
+        "Schema supports print-safe margins and grid metadata"
       ],
       "deliverables": [
-        "components/storybooks/BookModeToggle.tsx",
-        "components/storybooks/BookSettingsPanel.tsx",
-        "convex/storybooks.ts (update supports bookMode)"
+        "convex/schema.ts (pages, frames)",
+        "convex/pages.ts, convex/frames.ts (CRUD)",
+        "packages/shared-schema/pageFrame.types.ts"
       ]
     },
     {
       "id": "S6-T02",
-      "title": "Define canonical Block Content contract (v0) + placement fields aligned with future selector",
-      "skill": ["Architecture", "TypeScript", "Frontend Editor"],
+      "title": "Build Canva-like Editor Shell (full screen canvas + corner controls)",
+      "skill": ["Frontend", "UX", "Layout"],
       "priority": "P0",
       "requirements": {
-        "blockContracts": {
-          "TEXT": {
-            "required": ["doc"],
-            "optional": ["style"]
-          },
-          "IMAGE": {
-            "required": ["assetIdOrExternalUrl"],
-            "optional": [
-              "caption",
-              "altText",
-              "placement.layout",
-              "placement.widthPct",
-              "placement.alignment",
-              "crop.x",
-              "crop.y",
-              "crop.w",
-              "crop.h",
-              "focalPoint.x",
-              "focalPoint.y"
-            ]
-          },
-          "VIDEO": {
-            "required": ["assetIdOrExternalUrl"],
-            "optional": ["posterAssetId", "caption", "muted", "loop"]
-          },
-          "GIF": {
-            "required": ["assetIdOrExternalUrl"],
-            "optional": ["posterAssetId", "caption"]
-          },
-          "EMBED": {
-            "required": ["provider", "url"],
-            "optional": ["title", "oembed"]
-          }
-        },
-        "outputs": [
-          "TypeScript types",
-          "JSON Schema for validation and future AI tooling"
+        "layout": [
+          "Left: Pages panel (thumbnails + add page)",
+          "Center: Canvas (zoom/pan)",
+          "Top bar: file/export placeholders + undo/redo",
+          "Right: Properties panel (selected frame styles)",
+          "Floating corner controls: zoom %, snap/grid toggle, page size selector"
+        ],
+        "behavior": [
+          "Canvas always gets maximum space",
+          "Selection + keyboard shortcuts (delete, copy/paste frame, arrow nudge)"
         ],
         "constraints": [
-          "Must be backward compatible with Sprint 5 placeholder blocks",
-          "Must be serializable for export later"
+          "Must feel clean like Canva: controls in corners, minimal clutter"
         ]
       },
       "acceptanceTests": [
-        "Existing v0 editor blocks can be migrated/normalized into this contract",
-        "Type-safe helpers exist to read/write block content",
-        "Schema supports placement and crop info"
+        "User can switch pages via thumbnails",
+        "Canvas zoom and pan are smooth",
+        "Selected frame shows properties panel"
       ],
       "deliverables": [
-        "packages/shared-schema/blockContracts.types.ts",
-        "packages/shared-schema/blockContracts.schema.json",
-        "lib/editor/normalizeBlocks.ts"
+        "components/editor2/EditorShell.tsx",
+        "components/editor2/PagesPanel.tsx",
+        "components/editor2/CanvasStage.tsx",
+        "components/editor2/PropertiesPanel.tsx"
       ]
     },
     {
       "id": "S6-T03",
-      "title": "Implement Rules Engine package (shared TS) with structured errors",
-      "skill": ["TypeScript", "Architecture", "Validation"],
+      "title": "Guided Templates v1: page layout library (elders-first) + apply flow",
+      "skill": ["Product", "Frontend", "Convex"],
       "priority": "P0",
       "requirements": {
-        "package": "packages/rules-engine",
-        "api": [
-          "validateStorybook({ bookMode, storybook, chapters, blocks, assets, limits }) -> ValidationResult",
-          "validateChapter({ bookMode, chapter, blocks, assets, limits }) -> ValidationResult",
-          "getPrintConversionPlan({ chapters, blocks, assets }) -> ConversionPlan"
+        "templateLibrary": [
+          "Cover: Title + subtitle + hero image",
+          "TOC page: list + side image strip",
+          "Chapter opener: big title + hero image",
+          "Story page A: 70/30 text + image",
+          "Story page B: 2-column text + 2 images",
+          "Gallery page: 2x3 grid"
         ],
-        "ruleCategories": [
-          "Allowed block types per mode",
-          "Required fields per block type",
-          "Counts/limits (config-driven)",
-          "License metadata requirements for stock assets",
-          "Warnings vs errors (e.g., low-res image warning for print)"
+        "applyFlow": [
+          "Pick template -> generates pages + frames with locked positions",
+          "Allow simple safe tweaks: swap image, edit text, crop"
         ],
-        "errorModel": {
-          "shape": ["code", "severity", "path", "message", "meta"],
-          "severity": ["ERROR", "WARNING", "INFO"],
-          "exampleCodes": [
-            "MODE_BLOCK_NOT_ALLOWED",
-            "MISSING_REQUIRED_FIELD",
-            "ASSET_LICENSE_REQUIRED",
-            "ASSET_ATTRIBUTION_REQUIRED",
-            "LIMIT_EXCEEDED",
-            "PRINT_LOW_RES_WARNING"
-          ]
-        },
         "constraints": [
-          "Deterministic and unit-testable",
-          "No direct Convex imports inside the rules engine (pure functions)",
-          "Config-driven limits passed in"
+          "Frames can be locked in guided mode (position locked, content editable)",
+          "Template metadata includes min/max text length per text frame"
         ]
       },
       "acceptanceTests": [
-        "PRINT rejects VIDEO/GIF/EMBED blocks with MODE_BLOCK_NOT_ALLOWED",
-        "DIGITAL accepts mixed blocks (assuming required fields exist)",
-        "Structured errors include exact block/chapter path for UI highlighting"
+        "Applying a template generates pages that look “book-like” immediately",
+        "Locked frames cannot be dragged in guided mode",
+        "Users can still edit text/images inside frames"
       ],
       "deliverables": [
-        "packages/rules-engine/src/index.ts",
-        "packages/rules-engine/src/errors.ts",
-        "packages/rules-engine/tests/*"
+        "content/pageTemplates/*.ts",
+        "convex/templates.applyPageTemplate.ts",
+        "components/editor2/TemplatePicker.tsx"
       ]
     },
     {
       "id": "S6-T04",
-      "title": "License Metadata schema + provider policy doc (commercial-only defaults)",
-      "skill": ["Compliance", "Data Modeling", "Product"],
+      "title": "Freeform Frames v1: add/move/resize text & image frames (Canva-lite)",
+      "skill": ["Frontend", "Canvas Interaction"],
       "priority": "P0",
       "requirements": {
-        "licenseMetadata": {
-          "fields": [
-            "sourceProvider",
-            "sourceAssetId",
-            "sourceUrl",
-            "authorName",
-            "authorUrl",
-            "licenseName",
-            "licenseUrl",
-            "requiresAttribution",
-            "attributionText",
-            "retrievedAtISO",
-            "usageRestrictions"
-          ]
-        },
-        "policy": [
-          "Default filters: commercial-use-only ON; exclude editorial-only ON",
-          "Store license snapshot at selection time",
-          "If requiresAttribution=true, ensure export can include credit block/page later"
+        "actions": [
+          "Add Text Frame",
+          "Add Image Frame (placeholder)",
+          "Drag to move",
+          "Resize handles",
+          "Snap to grid/margins",
+          "Layer order: bring forward/back"
         ],
-        "providers": [
-          "Unsplash",
-          "Pexels",
-          "Pixabay",
-          "Openverse (mixed CC)",
-          "Rawpixel Public Domain (CC0 collection)",
-          "Vecteezy Free (attribution required)"
-        ],
-        "constraints": [
-          "Do not claim 'free for commercial use' universally; encode per-provider requirements (esp attribution/editorial flags).",
-          "Rules engine must be able to enforce: license present when assetSource != UPLOAD."
+        "implementationHint": [
+          "Use Konva/Fabric.js or pure DOM with absolute positioned divs (choose one and stick)",
+          "Keep frame geometry stored in canonical model"
         ]
       },
       "acceptanceTests": [
-        "Any asset with source != UPLOAD must have license metadata OR fails ASSET_LICENSE_REQUIRED",
-        "Assets marked requiresAttribution=true trigger INFO/WARNING to include credits in exports",
-        "Policy doc exists and is linked from code comments"
+        "Frame moves/resizes persist to Convex",
+        "Snap-to-grid works and can be toggled",
+        "Z-index changes reflected visually"
       ],
       "deliverables": [
-        "packages/shared-schema/licenseMetadata.types.ts",
-        "packages/shared-schema/licenseMetadata.schema.json",
-        "docs/licensing_policy.md"
+        "components/editor2/FrameRenderer.tsx",
+        "components/editor2/FrameHandles.tsx",
+        "lib/editor2/snap.ts"
       ]
     },
     {
       "id": "S6-T05",
-      "title": "Add limits config (tier-ready) + enforce via rules engine",
-      "skill": ["Architecture", "TypeScript"],
-      "priority": "P1",
+      "title": "WYSIWYG print guides: margins, safe area, grid overlay, page sizes",
+      "skill": ["UX", "Print Layout", "Frontend"],
+      "priority": "P0",
       "requirements": {
-        "config": {
-          "defaultLimits": [
-            "maxChaptersPerBook",
-            "maxBlocksPerChapter",
-            "maxImagesPerBook",
-            "maxVideosPerBook",
-            "maxGifsPerBook",
-            "maxEmbedPerBook",
-            "maxAssetSizeMB (warning if unknown)",
-            "minPrintImageWidthPx (warning threshold)"
-          ],
-          "namespacing": ["default", "free", "pro (future)"]
-        },
-        "integration": [
-          "Rules engine consumes limits object",
-          "UI shows limit errors with upgrade hint (copy only; billing later)"
+        "pageSizes": ["A4", "US Letter", "6x9 (book)", "8.5x11 (book)"],
+        "overlays": [
+          "Margins/safe area",
+          "Optional columns grid",
+          "Bleed placeholder (future hardcopy)"
+        ],
+        "constraints": [
+          "Overlays must not affect exported content (render-only)",
+          "Store chosen page size in storybook settings"
         ]
       },
       "acceptanceTests": [
-        "Exceeding maxImagesPerBook returns LIMIT_EXCEEDED with path hints",
-        "Limits can be changed by editing a JSON config without code changes",
-        "PRINT min image size triggers PRINT_LOW_RES_WARNING"
+        "Changing page size updates canvas scaling and overlays",
+        "Margins are always visible and consistent",
+        "Frames outside safe area show warning outline"
       ],
       "deliverables": [
-        "config/limits.default.json",
-        "packages/rules-engine/src/limits.ts",
-        "docs/limits_config.md"
+        "components/editor2/GuidesOverlay.tsx",
+        "convex/storybooks.updateSettings (pageSize, margins, grid)"
       ]
     },
     {
       "id": "S6-T06",
-      "title": "Integrate validation into Editor v0 (client-side) with inline error highlighting",
-      "skill": ["Frontend", "UX", "Editor Integration"],
-      "priority": "P0",
+      "title": "Text rendering spec for PDF parity (fonts, line-height, wrapping rules)",
+      "skill": ["Typography", "Architecture"],
+      "priority": "P1",
       "requirements": {
-        "whenToValidate": [
-          "On save/autosave (blocking errors block the write)",
-          "On mode switch (show conversion plan)",
-          "On export intent (just prepares for later PDF export)"
-        ],
-        "ui": [
-          "Inline block-level error badges",
-          "Right panel 'Issues' list grouped by chapter/block",
-          "Toast summaries for severe errors"
+        "rules": [
+          "Limit to 1–2 font families (embed later for PDF parity)",
+          "Define font scale (H1/H2/body/caption)",
+          "Define line-height and max line length per template frame",
+          "Overflow behavior: show 'Text overflow' warning for a frame"
         ],
         "constraints": [
-          "Warnings should not block save",
-          "Errors should block save for PRINT if incompatible"
+          "Must match what the PDF renderer will use in Sprint 7",
+          "Avoid rich text features you can’t render predictably in PDF yet"
         ]
       },
       "acceptanceTests": [
-        "PRINT mode blocks saving a chapter containing VIDEO block",
-        "User sees exact issue location and message",
-        "Warnings display but allow save"
+        "Text frame shows overflow warning when content exceeds frame",
+        "Template frames have sensible defaults and readability"
       ],
       "deliverables": [
-        "components/editor/IssuesPanel.tsx",
-        "components/editor/BlockErrorBadge.tsx",
-        "lib/validation/validateInEditor.ts"
+        "docs/typography_spec.md",
+        "lib/editor2/textMetrics.ts (stub/plan)"
       ]
     },
     {
       "id": "S6-T07",
-      "title": "Server-side enforcement in Convex mutations (defense in depth)",
-      "skill": ["Convex", "Security", "TypeScript"],
+      "title": "Autosave + collaboration safety adapted to pages/frames model",
+      "skill": ["Frontend", "Convex", "Resilience"],
       "priority": "P0",
       "requirements": {
-        "mutationsToGuard": [
-          "blocks.insert",
-          "blocks.update",
-          "blocks.reorder (optional checks)",
-          "chapters.create/update (light checks)",
-          "storybooks.update (mode switch checks)"
-        ],
-        "approach": [
-          "Fetch necessary context (storybook mode + existing blocks counts + asset metadata)",
-          "Run shared rules engine server-side",
-          "Reject with structured error payload (same codes) when invalid"
+        "autosave": [
+          "Debounce updates for frame geometry and text edits",
+          "Save status indicator (Saving/Saved/Error)",
+          "Versioning per frame (or updatedAt checks) to avoid cross-tab overwrites"
         ],
         "constraints": [
-          "Keep server validation efficient (avoid scanning whole book on each keystroke—validate at block/chapter scope)",
-          "If full-book validation needed, run on explicit actions (mode switch/export)"
+          "Do not spam Convex mutations during drag/resize (throttle)",
+          "Conflict UI: reload/overwrite"
         ]
       },
       "acceptanceTests": [
-        "Client cannot bypass PRINT restrictions by calling mutations directly",
-        "Errors thrown by server contain codes usable by UI",
-        "Performance acceptable for autosave updates"
+        "Dragging a frame doesn’t produce excessive writes",
+        "Cross-tab edits trigger a safe conflict notification",
+        "No data loss on refresh"
       ],
       "deliverables": [
-        "convex/blocks.ts updated (validation hooks)",
-        "convex/storybooks.ts updated (mode-switch validation)",
-        "docs/server_validation_strategy.md"
+        "convex/frames.update (supports expectedVersion)",
+        "lib/editor2/autosaveFrames.ts",
+        "components/editor2/SaveStatus.tsx"
       ]
     },
     {
       "id": "S6-T08",
-      "title": "Print Conversion Plan generator (spec + output) for future export",
-      "skill": ["Product", "Architecture", "TypeScript"],
+      "title": "Mode selection: user can enable BOTH Digital + Hardcopy outputs (no video/gif)",
+      "skill": ["Product", "Frontend", "Convex"],
       "priority": "P1",
       "requirements": {
-        "conversionPlan": {
-          "outputs": [
-            "requiredConversions[]: { fromType, toType, path, recommendation, dataNeeded }",
-            "notes[]: { severity, message }"
-          ],
-          "fallbacks": [
-            "VIDEO -> IMAGE (poster) + note 'Video available in digital version'",
-            "GIF -> IMAGE (first frame/poster) + note 'Animated in digital version'",
-            "EMBED -> TEXT (link + title)"
-          ]
-        },
-        "constraints": [
-          "No actual conversion executed in this sprint; plan only",
-          "Plan must be deterministic and exportable (JSON)"
+        "settings": [
+          "exportTargets: { digitalPdf: true/false, printPdf: true/false }",
+          "printConstraints: static-only enforced (already true since only TEXT/IMAGE enabled)"
+        ],
+        "ui": [
+          "Export targets selector in book settings",
+          "Explain difference: digital can include links later; print is static"
         ]
       },
       "acceptanceTests": [
-        "A DIGITAL book with VIDEO produces a plan to convert when switching to PRINT",
-        "Plan includes block paths and required missing data (e.g., posterAssetId)",
-        "UI can render the plan in a readable checklist"
+        "User can toggle both targets and settings persist",
+        "UI reflects selected targets consistently"
       ],
       "deliverables": [
-        "packages/rules-engine/src/printConversionPlan.ts",
-        "components/storybooks/PrintConversionDialog.tsx"
+        "components/storybooks/ExportTargetsToggle.tsx",
+        "convex/storybooks.updateSettings"
       ]
     },
     {
       "id": "S6-T09",
-      "title": "Unit tests + fixtures for rules engine (DIGITAL vs PRINT + licensing + limits)",
-      "skill": ["Testing", "TypeScript"],
+      "title": "QA checklist + visual parity checks (editor looks like a book)",
+      "skill": ["QA", "UX"],
       "priority": "P0",
       "requirements": {
-        "fixtures": [
-          "digital_mixed_blocks.json",
-          "print_static_only.json",
-          "stock_asset_missing_license.json",
-          "vecteezy_requires_attribution.json",
-          "limits_exceeded_images.json"
-        ],
-        "testCases": [
-          "PRINT rejects VIDEO/GIF/EMBED",
-          "DIGITAL accepts mixed blocks",
-          "Stock asset requires license metadata",
-          "Attribution-required assets flagged",
-          "Limits enforced with correct error codes"
+        "checks": [
+          "Template apply yields immediately readable pages",
+          "Frames align to grid/margins",
+          "Thumbnails match canvas content",
+          "Text overflow warnings trigger correctly",
+          "Autosave stable during drag/resize"
         ]
       },
       "acceptanceTests": [
-        "CI passes rules engine test suite",
-        "Coverage includes both ERROR and WARNING pathways",
-        "Regression-safe: fixtures cover core edge cases"
+        "No major UX confusion: user can ‘see the final book’ while editing",
+        "No regressions to Sprint 5 create/edit flows"
       ],
-      "deliverables": [
-        "packages/rules-engine/tests/mediaRules.test.ts",
-        "packages/rules-engine/tests/fixtures/*"
-      ]
+      "deliverables": ["docs/qa_checklist_s6.md"]
     },
     {
       "id": "S6-T10",
-      "title": "Release Sprint 6: deploy validation changes and verify end-to-end",
-      "skill": ["Release", "QA", "Convex"],
+      "title": "Release Sprint 6: deploy editor shell + page model",
+      "skill": ["Release", "DevOps-lite", "Convex"],
       "priority": "P0",
       "requirements": {
-        "qaChecklist": [
-          "Create DIGITAL book and add TEXT + IMAGE placeholder (save OK)",
-          "Switch to PRINT (ok with static-only)",
-          "Attempt to insert VIDEO/GIF/EMBED in PRINT (blocked client + server)",
-          "Mock stock asset record without license -> should fail validation",
-          "Limits config change reflects validation behavior"
+        "releaseChecklist": [
+          "Create storybook → apply page template",
+          "Edit text in frames → refresh persists",
+          "Move/resize frame → persists",
+          "Switch page sizes → overlays correct",
+          "Confirm only TEXT/IMAGE available"
         ]
       },
       "acceptanceTests": [
-        "Validation works in production and cannot be bypassed",
-        "Editor UX shows issues clearly",
-        "No breaking regression in autosave performance"
+        "WYSIWYG editor is live and usable",
+        "Data model supports Sprint 7 PDF rendering without rework"
       ],
       "deliverables": ["docs/release_checklist_s6.md"]
     }
-  ],
-  "sprintPlanning": {
-    "suggestedOrder": [
-      "S6-T01",
-      "S6-T02",
-      "S6-T03",
-      "S6-T04",
-      "S6-T05",
-      "S6-T06",
-      "S6-T07",
-      "S6-T08",
-      "S6-T09",
-      "S6-T10"
-    ],
-    "timeboxGuidance": {
-      "P0_total_days": 5,
-      "P1_total_days": 1.5,
-      "buffer_days": 0.5
-    },
-    "notes": [
-      "This sprint is the foundation for stock media + R2 uploads + PDF export; it prevents rework later.",
-      "Client-side validation improves UX; Convex server-side checks prevent bypass and ensure data correctness.",
-      "Provider API integration (search + download + attribution capture) should be a separate sprint so licensing compliance stays clean."
-    ]
-  }
+  ]
 }

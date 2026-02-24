@@ -1,4 +1,5 @@
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -9,10 +10,7 @@ type IdentityLike = {
   tokenIdentifier?: string | null;
 };
 
-type StorybookDocLike = {
-  _id: unknown;
-  ownerId: string;
-};
+type StorybookDocLike = Doc<"storybooks">;
 
 const roleRank: Record<StorybookRole, number> = {
   OWNER: 3,

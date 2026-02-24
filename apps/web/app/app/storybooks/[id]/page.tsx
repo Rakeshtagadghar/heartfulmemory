@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
+import Link from "next/link";
 import { EditorShell } from "../../../../components/editor/EditorShell";
 import { getOrCreateProfileForUser } from "../../../../lib/profile";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
@@ -67,6 +68,12 @@ export default async function StorybookPage({ params, searchParams }: Props) {
           <div className="flex flex-wrap items-center gap-2">
             <Badge className="border-white/15 bg-white/[0.03] text-white/80">{storybook.data.status}</Badge>
             <Badge className="border-white/15 bg-white/[0.03] text-white/80">{storybook.data.book_mode}</Badge>
+            <Link
+              href={`/app/storybooks/${storybook.data.id}/layout`}
+              className="inline-flex h-9 items-center rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-3 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15"
+            >
+              Open Layout Studio
+            </Link>
           </div>
         </div>
       </Card>

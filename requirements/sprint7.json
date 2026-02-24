@@ -1,0 +1,350 @@
+{
+  "meta": {
+    "project": "Memorioso / Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 7,
+      "title": "Layout→PDF Renderer v1 (Pixel-perfect export matching editor)",
+      "duration": "1 week",
+      "goal": "Generate high-clarity PDFs that match the WYSIWYG canvas (pages + frames). The renderer must respect page size, margins/grid, typography, and image cropping so users can trust the output.",
+      "definitionOfDone": [
+        "Server-side PDF generation pipeline working end-to-end",
+        "Renderer consumes canonical Pages + Frames model from Convex",
+        "Typography + spacing parity is predictable (embedded fonts + consistent line height)",
+        "Image frames render with correct crop/focal point and high enough resolution",
+        "Both export targets supported: DIGITAL_PDF and HARDCOPY_PRINT_PDF (same content, print-safe settings)",
+        "Export is accessible from UI and produces a downloadable PDF"
+      ]
+    },
+    "assumptions": {
+      "mediaEnabledNow": ["TEXT", "IMAGE"],
+      "pdfEngine": "Headless Chromium via Playwright (recommended for layout fidelity)",
+      "hosting": "Vercel (note: heavy PDF generation may later need a separate worker/runtime if timeouts occur)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S7-T01",
+      "title": "Define PDF rendering contract (from Pages+Frames → HTML print layout)",
+      "skill": ["Architecture", "TypeScript", "Print Layout"],
+      "priority": "P0",
+      "requirements": {
+        "inputs": [
+          "storybookId",
+          "exportTarget: DIGITAL_PDF | HARDCOPY_PRINT_PDF",
+          "pageSize preset + margins/grid",
+          "pages[] + frames[] + styles + crop/focalPoint"
+        ],
+        "output": [
+          "single multi-page PDF",
+          "metadata: pageCount, warnings (overflow, low-res)"
+        ],
+        "constraints": [
+          "Renderer must be deterministic (same input -> same PDF)",
+          "No reliance on client rendering; server is source of truth"
+        ]
+      },
+      "acceptanceTests": [
+        "Contract types compile and are used by renderer + API endpoint",
+        "A small fixture storybook produces a stable PDF (byte-identical except timestamps if any)"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/contracts.ts",
+        "docs/pdf_renderer_contract.md"
+      ]
+    },
+    {
+      "id": "S7-T02",
+      "title": "Build HTML print template system (Page component + Frame renderers)",
+      "skill": ["Frontend (HTML/CSS)", "Print CSS"],
+      "priority": "P0",
+      "requirements": {
+        "htmlStructure": [
+          "One HTML document containing all pages",
+          "Each page is a fixed-size container using CSS for print",
+          "Frames absolutely positioned within the page (x,y,w,h)"
+        ],
+        "printCSS": [
+          "@page size set from preset",
+          "No scaling surprises",
+          "Consistent margins/safe area baked into frame coords",
+          "Support background colors/images if used"
+        ],
+        "frameTypes": [
+          "TEXT frame: render with controlled typography rules",
+          "IMAGE frame: render with object-fit cover + crop/focalPoint"
+        ],
+        "constraints": [
+          "Use embedded fonts (local files) to avoid font substitution",
+          "Avoid CSS that Chromium print engine handles inconsistently"
+        ]
+      },
+      "acceptanceTests": [
+        "Given a page fixture, frames land at expected positions in a browser screenshot",
+        "Print CSS produces correct page breaks and no content clipping",
+        "Text aligns and wraps consistently"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/templates/document.html.ts",
+        "packages/pdf-renderer/src/templates/page.css",
+        "packages/pdf-renderer/src/templates/frames/TextFrame.ts",
+        "packages/pdf-renderer/src/templates/frames/ImageFrame.ts"
+      ]
+    },
+    {
+      "id": "S7-T03",
+      "title": "Typography parity: font embedding + line-height rules + overflow detection",
+      "skill": ["Typography", "Frontend (CSS)", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "fonts": [
+          "Pick 1-2 families used in editor and ship font files in repo",
+          "Embed via @font-face in renderer HTML"
+        ],
+        "rules": [
+          "Define H1/H2/body/caption styles",
+          "Enforce consistent line-height per style token",
+          "Max line width guidelines per template (warn when violated)"
+        ],
+        "overflow": [
+          "Detect text overflow per text frame (best-effort)",
+          "Return warnings list (frame path + message)"
+        ],
+        "constraints": [
+          "v1 overflow detection can be approximate (measure scrollHeight in Chromium during render)"
+        ]
+      },
+      "acceptanceTests": [
+        "PDF output uses embedded font (no fallback font visible)",
+        "Text overflow produces a warning record",
+        "Same content renders consistently across runs"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/assets/fonts/*",
+        "packages/pdf-renderer/src/typography.ts",
+        "packages/pdf-renderer/src/overflowDetector.ts"
+      ]
+    },
+    {
+      "id": "S7-T04",
+      "title": "Image rendering parity: crop/focal point + resolution strategy (print clarity)",
+      "skill": ["Imaging", "Print QA", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "cropModel": [
+          "Support crop box (x,y,w,h normalized 0..1) OR focalPoint (x,y)",
+          "Apply consistently in both editor preview and PDF"
+        ],
+        "resolution": [
+          "Define target pixel density per export target",
+          "HARDCOPY_PRINT_PDF uses higher resolution than DIGITAL_PDF",
+          "Warn if source image is below a minimum threshold"
+        ],
+        "constraints": [
+          "No actual upload pipeline required here; use placeholder URLs or existing assets metadata",
+          "Implementation must allow later R2 signed URLs"
+        ]
+      },
+      "acceptanceTests": [
+        "Same crop shown on canvas matches PDF result visually",
+        "Low-res images trigger warnings for print target",
+        "PDF embeds images without severe compression artifacts"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/imageResolver.ts",
+        "packages/pdf-renderer/src/cropMath.ts",
+        "docs/print_image_quality_rules.md"
+      ]
+    },
+    {
+      "id": "S7-T05",
+      "title": "Playwright PDF generation pipeline (server-side) with caching keys",
+      "skill": ["Backend", "Node.js", "Playwright"],
+      "priority": "P0",
+      "requirements": {
+        "pipeline": [
+          "Build HTML string for storybook",
+          "Launch headless chromium",
+          "Set content + wait for fonts/images",
+          "Generate PDF (printBackground true)",
+          "Return PDF buffer/stream"
+        ],
+        "caching": [
+          "Compute exportHash from storybook updatedAt + pages/frames version",
+          "If same hash requested again, reuse stored output (v1 can be in-memory or Convex metadata; file storage later)"
+        ],
+        "constraints": [
+          "Avoid long cold starts; reuse browser instance if possible (when not serverless constrained)",
+          "Fail gracefully with clear error messages"
+        ]
+      },
+      "acceptanceTests": [
+        "Export endpoint generates a PDF for a sample storybook within reasonable time",
+        "Repeated export with no changes reuses cached result (or at least returns same hash)",
+        "Fonts and images reliably load before PDF capture"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/renderWithPlaywright.ts",
+        "lib/export/exportHash.ts",
+        "docs/pdf_generation_runtime_notes.md"
+      ]
+    },
+    {
+      "id": "S7-T06",
+      "title": "Export API endpoint + Convex integration (fetch pages/frames securely)",
+      "skill": ["Next.js", "Convex", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "endpoint": [
+          "POST /api/export/pdf",
+          "Body: { storybookId, exportTarget }"
+        ],
+        "security": [
+          "Require authenticated user",
+          "Verify user can access storybook (owner-only for now)",
+          "Do not expose internal asset URLs if private (prepare for signed URLs later)"
+        ],
+        "dataFetch": [
+          "Convex queries: get storybook settings, pages ordered, frames per page, referenced assets metadata"
+        ]
+      },
+      "acceptanceTests": [
+        "Unauthorized users cannot export others' books",
+        "Export works for owner and returns application/pdf",
+        "Errors return actionable codes (NOT raw stack traces)"
+      ],
+      "deliverables": [
+        "app/api/export/pdf/route.ts",
+        "convex/exports.ts (queries for export payload)",
+        "docs/export_api_contract.md"
+      ]
+    },
+    {
+      "id": "S7-T07",
+      "title": "Export UI: “Preview PDF” + “Download PDF” from editor (Digital + Hardcopy)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Top-right Export button (Canva-like placement)",
+          "Export modal: choose DIGITAL_PDF / HARDCOPY_PRINT_PDF (or both if enabled)",
+          "Progress states: generating, ready, failed",
+          "Inline warnings list (overflow/low-res)"
+        ],
+        "download": [
+          "Return file as download",
+          "Optional: open in new tab for preview"
+        ]
+      },
+      "acceptanceTests": [
+        "User can generate and download a PDF from editor UI",
+        "Warnings are shown if present",
+        "UI stays responsive during generation"
+      ],
+      "deliverables": [
+        "components/editor2/ExportButton.tsx",
+        "components/editor2/ExportModal.tsx",
+        "lib/export/client.ts"
+      ]
+    },
+    {
+      "id": "S7-T08",
+      "title": "Parity tests: screenshot-based regression for PDF output (v1)",
+      "skill": ["Testing", "QA"],
+      "priority": "P1",
+      "requirements": {
+        "tests": [
+          "Render fixture storybook to PDF",
+          "Convert PDF pages to images (or use Playwright screenshots pre-PDF) and compare baselines",
+          "Track deltas when layout changes"
+        ],
+        "constraints": [
+          "Keep tests lightweight; 2–3 fixtures max",
+          "Accept small antialiasing diffs via threshold"
+        ]
+      },
+      "acceptanceTests": [
+        "CI (or local) can run parity tests with stable results",
+        "Regression failures are actionable (which page differs)"
+      ],
+      "deliverables": [
+        "tests/pdf/fixtures/*",
+        "tests/pdf/render.spec.ts (or script)",
+        "docs/pdf_regression_testing.md"
+      ]
+    },
+    {
+      "id": "S7-T09",
+      "title": "Print-specific hardcopy rules v1 (bleed placeholder, safe margins, no edge text)",
+      "skill": ["Print Production", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "hardcopyDefaults": [
+          "Larger safe margins",
+          "Optional bleed guides (visual only for now)",
+          "Disable hyperlinks styling",
+          "Higher image quality settings"
+        ],
+        "warnings": [
+          "Text too close to edge",
+          "Images below quality threshold",
+          "Frames outside safe area"
+        ]
+      },
+      "acceptanceTests": [
+        "HARDCOPY_PRINT_PDF uses the print defaults automatically",
+        "Warnings appear when frames violate safe zone",
+        "Digital export remains more permissive"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/targets/hardcopy.ts",
+        "packages/pdf-renderer/src/targets/digital.ts",
+        "docs/hardcopy_rules_v1.md"
+      ]
+    },
+    {
+      "id": "S7-T10",
+      "title": "Release Sprint 7: deploy export pipeline + validate real-world output",
+      "skill": ["Release", "QA", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Create storybook using page templates",
+          "Export DIGITAL_PDF and verify layout matches canvas",
+          "Export HARDCOPY_PRINT_PDF and verify margins/quality",
+          "Verify warnings appear for overflow/low-res",
+          "Verify authz prevents exporting other users’ books"
+        ]
+      },
+      "acceptanceTests": [
+        "PDF export works reliably in production",
+        "Output is clear and consistent (no blurry text, no shifted frames)",
+        "Checklist recorded"
+      ],
+      "deliverables": ["docs/release_checklist_s7.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S7-T01",
+      "S7-T02",
+      "S7-T03",
+      "S7-T04",
+      "S7-T05",
+      "S7-T06",
+      "S7-T07",
+      "S7-T09",
+      "S7-T08",
+      "S7-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5.5,
+      "P1_total_days": 1,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "The renderer must use the same canonical model as the editor (pages/frames). Avoid a second layout system.",
+      "If Vercel runtime becomes limiting, keep the renderer isolated in a module so you can move it to a worker later without rewriting."
+    ]
+  }
+}

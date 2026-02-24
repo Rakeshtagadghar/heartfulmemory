@@ -1,0 +1,374 @@
+{
+  "meta": {
+    "project": "Memorioso / Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 8,
+      "title": "Media Pipeline v1 (Images only): Upload + Stock Search + Crop/Placement",
+      "duration": "1 week",
+      "goal": "Let users add real images into frames: upload personal photos to Cloudflare R2, search/select free-to-use stock images (with license metadata), crop inside frames Canva-style, and ensure PDF export uses the correct optimized assets.",
+      "definitionOfDone": [
+        "Image upload works end-to-end (client → signed URL → R2 → metadata in Convex)",
+        "Stock image search works for at least 2 providers (expandable) with license capture",
+        "Image picker integrates into IMAGE frames (replace placeholder with actual image)",
+        "Crop/focal point UI works and persists (frame-level crop)",
+        "PDF renderer resolves images via R2 signed URLs or cached public variants",
+        "Attribution metadata stored for all stock assets"
+      ]
+    },
+    "constraints": {
+      "mediaEnabledNow": ["IMAGE"],
+      "noVideoGif": true,
+      "storage": {
+        "primary": "Cloudflare R2 (free tier)",
+        "metadata": "Convex assets collection"
+      }
+    }
+  },
+  "scope": {
+    "inScope": [
+      "R2 image upload pipeline",
+      "Asset metadata creation + linking to frames",
+      "Stock image provider integration (start with 2 providers)",
+      "License metadata capture + enforcement",
+      "Crop/focal point within frames",
+      "Renderer image resolution strategy (digital vs hardcopy)"
+    ],
+    "outOfScope": [
+      "Video/GIF",
+      "Full multi-provider aggregator (beyond 2-3 providers in v1)",
+      "Full credits page generation (that’s Sprint 10 in your updated roadmap)"
+    ]
+  },
+  "backlog": [
+    {
+      "id": "S8-T01",
+      "title": "Cloudflare R2 setup + bucket policy + CORS (images only)",
+      "skill": ["Cloudflare", "Storage", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "setup": [
+          "Create R2 bucket(s): memorioso-assets (or separate originals/derivatives)",
+          "Configure CORS for upload and GET (limit origins to your domains)",
+          "Decide access mode: private objects with signed URLs (recommended)"
+        ],
+        "outputs": [
+          "Env vars: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET",
+          "Documented bucket naming and folder/key strategy"
+        ],
+        "constraints": [
+          "Do NOT expose R2 secret keys to client",
+          "Prefer private storage; use signed URLs for view/export"
+        ]
+      },
+      "acceptanceTests": [
+        "You can PUT an object using server credentials",
+        "CORS allows browser upload via signed URL",
+        "Objects are not publicly listable"
+      ],
+      "deliverables": ["docs/r2_setup.md", ".env.example updated"]
+    },
+    {
+      "id": "S8-T02",
+      "title": "Signed upload endpoint (Next.js) + key strategy + basic malware-safe checks",
+      "skill": ["Backend", "Next.js", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "endpoint": [
+          "POST /api/uploads/r2/sign",
+          "Body: { fileName, mimeType, sizeBytes }",
+          "Returns: { uploadUrl, key, headersRequired }"
+        ],
+        "validation": [
+          "Allow only image/*",
+          "Max size limit (e.g., 10MB configurable)",
+          "Generate unique key (userId/storybookId/date/uuid.ext)"
+        ],
+        "security": [
+          "Require auth",
+          "Rate limit per user/IP",
+          "No open proxy behavior"
+        ]
+      },
+      "acceptanceTests": [
+        "Unauthenticated requests are rejected",
+        "Non-image mimeTypes rejected",
+        "Client can upload to R2 using returned signed URL"
+      ],
+      "deliverables": [
+        "app/api/uploads/r2/sign/route.ts",
+        "lib/uploads/keygen.ts",
+        "config/limits.default.json updated"
+      ]
+    },
+    {
+      "id": "S8-T03",
+      "title": "Asset metadata mutations in Convex (create + link) for uploads",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "mutations": [
+          "assets.createFromUpload({ storageProvider:'R2', storageKey, mimeType, width, height, sizeBytes, checksum? }) -> assetId",
+          "assets.getSignedViewUrl({ assetId, purpose:'preview'|'export', target }) -> url (or returns key for server resolver)"
+        ],
+        "fields": [
+          "ownerId",
+          "source: 'UPLOAD'",
+          "storageProvider/storageBucket/storageKey",
+          "dimensions",
+          "createdAt/updatedAt"
+        ],
+        "constraints": [
+          "Only owner can read/resolve their assets",
+          "Do not store long-lived public URLs as the source of truth"
+        ]
+      },
+      "acceptanceTests": [
+        "After upload completes, asset record is created in Convex",
+        "Non-owner cannot fetch asset metadata or URLs",
+        "Asset can be resolved for PDF export use later"
+      ],
+      "deliverables": [
+        "convex/assets.ts (upload)",
+        "convex/exports.ts updated to include assets",
+        "docs/assets_r2_contract.md"
+      ]
+    },
+    {
+      "id": "S8-T04",
+      "title": "Image Picker v1 (Upload tab) integrated into IMAGE frames",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Open image picker from selected IMAGE frame",
+          "Tabs: Upload | Stock",
+          "Upload flow: choose file → progress → success",
+          "On success: frame.content.assetId = new assetId"
+        ],
+        "states": [
+          "upload progress bar",
+          "retry on failure",
+          "recent uploads grid"
+        ],
+        "constraints": [
+          "Editor should stay full-screen and clean (Canva-style modal/panel)",
+          "Autosave frame content changes"
+        ]
+      },
+      "acceptanceTests": [
+        "User uploads an image and it appears in the selected frame",
+        "Reload persists the image in the frame",
+        "Progress and error states are clear"
+      ],
+      "deliverables": [
+        "components/editor2/ImagePicker.tsx",
+        "components/editor2/pickers/UploadTab.tsx",
+        "lib/uploads/clientUpload.ts"
+      ]
+    },
+    {
+      "id": "S8-T05",
+      "title": "Stock provider integration v1 (start with 2): search + select + license capture",
+      "skill": ["Backend", "API Integration", "Compliance"],
+      "priority": "P0",
+      "requirements": {
+        "providersV1": ["Unsplash", "Pexels"],
+        "api": [
+          "Server route: GET /api/stock/search?provider=&q=&page=",
+          "Normalizes results to a common shape"
+        ],
+        "normalizedFields": [
+          "provider",
+          "assetId",
+          "thumbUrl",
+          "previewUrl",
+          "fullUrl (if allowed)",
+          "authorName",
+          "authorUrl",
+          "sourceUrl",
+          "licenseName",
+          "licenseUrl",
+          "requiresAttribution",
+          "attributionText"
+        ],
+        "constraints": [
+          "Store license snapshot metadata in Convex when user selects an item",
+          "Default: commercial use only; exclude editorial-only where applicable",
+          "Respect provider API guidelines (rate limits, attribution requirements)"
+        ]
+      },
+      "acceptanceTests": [
+        "Search returns results for both providers",
+        "Selecting a stock image creates an Asset record with source != UPLOAD and license metadata populated",
+        "Frame updates to reference selected stock asset"
+      ],
+      "deliverables": [
+        "app/api/stock/search/route.ts",
+        "lib/stock/providers/unsplash.ts",
+        "lib/stock/providers/pexels.ts",
+        "convex/assets.ts (createFromStock)"
+      ]
+    },
+    {
+      "id": "S8-T06",
+      "title": "Stock tab UI in Image Picker (search, filters, license badges, preview)",
+      "skill": ["Frontend", "UX", "Compliance UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Search bar + provider selector (or 'All v1' combined)",
+          "Results grid with hover preview",
+          "License badge + attribution required indicator",
+          "Insert button updates selected frame"
+        ],
+        "filters": [
+          "orientation (landscape/portrait/square)",
+          "color (optional v1)",
+          "safe-search toggle (optional)"
+        ],
+        "constraints": [
+          "Always display attribution requirement clearly (esp if expanded to Vecteezy later)",
+          "Do not imply all providers are identical licensing; show provider name"
+        ]
+      },
+      "acceptanceTests": [
+        "User can search, preview, and insert stock image into a frame",
+        "License/attribution indicators are visible before insert",
+        "Inserted stock image persists on refresh"
+      ],
+      "deliverables": [
+        "components/editor2/pickers/StockTab.tsx",
+        "components/editor2/pickers/StockResultCard.tsx"
+      ]
+    },
+    {
+      "id": "S8-T07",
+      "title": "Crop/focal point editor v1 (Canva-like) for image frames",
+      "skill": ["Frontend", "Canvas Interaction"],
+      "priority": "P0",
+      "requirements": {
+        "features": [
+          "Double-click image frame to enter crop mode",
+          "Drag image inside frame (pan) to set focal point",
+          "Zoom slider (scale)",
+          "Reset crop"
+        ],
+        "data": [
+          "Persist crop/focalPoint on the frame: { focalX,focalY, scale } or normalized crop rect",
+          "Renderer must use the same crop values"
+        ],
+        "constraints": [
+          "Crop mode must be smooth and not trigger excessive autosave writes (throttle)",
+          "Works for both uploaded and stock images"
+        ]
+      },
+      "acceptanceTests": [
+        "Crop changes persist and match after refresh",
+        "Crop appears the same in exported PDF (using Sprint 7 renderer hooks)",
+        "Performance remains smooth"
+      ],
+      "deliverables": [
+        "components/editor2/CropMode.tsx",
+        "lib/editor2/cropModel.ts",
+        "convex/frames.ts update content fields"
+      ]
+    },
+    {
+      "id": "S8-T08",
+      "title": "Image optimization strategy v1 (derivatives for digital vs hardcopy)",
+      "skill": ["Backend", "Imaging", "Architecture"],
+      "priority": "P1",
+      "requirements": {
+        "derivatives": [
+          "Generate or fetch appropriate size for preview (editor) vs export (PDF)",
+          "Define target widths for DIGITAL_PDF and HARDCOPY_PRINT_PDF"
+        ],
+        "implementationOptions": [
+          "Option A (simple): use original for export + rely on PDF engine scaling (ok for small usage)",
+          "Option B (better): create resized derivatives server-side (later) and store in R2"
+        ],
+        "v1Decision": "Start with Option A, add warnings if originals too small; prepare hooks for Option B."
+      },
+      "acceptanceTests": [
+        "Editor uses a lightweight preview URL",
+        "Export uses the best available URL/key",
+        "Low-res warnings appear for print target"
+      ],
+      "deliverables": [
+        "docs/image_derivatives_strategy.md",
+        "packages/pdf-renderer/src/imageResolver.ts updated"
+      ]
+    },
+    {
+      "id": "S8-T09",
+      "title": "Integrate license metadata validation with Sprint 6 rules engine",
+      "skill": ["TypeScript", "Compliance", "Validation"],
+      "priority": "P1",
+      "requirements": {
+        "rules": [
+          "Assets with source != UPLOAD must carry license metadata",
+          "If requiresAttribution=true, flag INFO to include credits later",
+          "Block export if license metadata missing"
+        ],
+        "constraints": [
+          "Do not break uploads (UPLOAD assets can have license null)"
+        ]
+      },
+      "acceptanceTests": [
+        "Stock asset without license fails validation",
+        "Stock asset with license passes validation",
+        "Attribution-required stock asset flagged"
+      ],
+      "deliverables": [
+        "packages/rules-engine updates",
+        "tests/fixtures/stock_license_cases.json"
+      ]
+    },
+    {
+      "id": "S8-T10",
+      "title": "Release Sprint 8: deploy image pipeline + verify end-to-end (editor → PDF)",
+      "skill": ["Release", "QA", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "qaChecklist": [
+          "Upload image → place into frame → crop → export DIGITAL_PDF",
+          "Insert Unsplash image → export HARDCOPY_PRINT_PDF",
+          "Verify crop parity in PDF",
+          "Verify stock asset license metadata stored",
+          "Verify non-owner cannot access asset URLs"
+        ]
+      },
+      "acceptanceTests": [
+        "Users can reliably add and crop images",
+        "Export uses correct images with good clarity",
+        "No security regressions"
+      ],
+      "deliverables": ["docs/release_checklist_s8.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S8-T01",
+      "S8-T02",
+      "S8-T03",
+      "S8-T04",
+      "S8-T05",
+      "S8-T06",
+      "S8-T07",
+      "S8-T09",
+      "S8-T08",
+      "S8-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5.5,
+      "P1_total_days": 1,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "Start with 2 stock providers to keep scope controlled; add Pixabay/Openverse/Vecteezy later once licensing/attribution handling is proven.",
+      "Keep assets private by default. Use signed URLs for preview/export, and store only keys + metadata in Convex.",
+      "Crop should be stored on the FRAME (not the asset) because the same image may appear in multiple frames with different crops."
+    ]
+  }
+}

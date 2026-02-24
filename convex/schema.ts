@@ -58,6 +58,61 @@ export default defineSchema({
   })
     .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"])
     .index("by_ownerId", ["ownerId"]),
+  pages: defineTable({
+    storybookId: v.id("storybooks"),
+    ownerId: v.string(),
+    orderIndex: v.number(),
+    sizePreset: v.union(
+      v.literal("A4"),
+      v.literal("US_LETTER"),
+      v.literal("BOOK_6X9"),
+      v.literal("BOOK_8_5X11")
+    ),
+    widthPx: v.number(),
+    heightPx: v.number(),
+    margins: v.object({
+      top: v.number(),
+      right: v.number(),
+      bottom: v.number(),
+      left: v.number(),
+      unit: v.literal("px")
+    }),
+    grid: v.object({
+      enabled: v.boolean(),
+      columns: v.number(),
+      gutter: v.number(),
+      rowHeight: v.number(),
+      showGuides: v.boolean()
+    }),
+    background: v.object({
+      fill: v.string()
+    }),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"])
+    .index("by_ownerId", ["ownerId"]),
+  frames: defineTable({
+    storybookId: v.id("storybooks"),
+    pageId: v.id("pages"),
+    ownerId: v.string(),
+    type: v.union(v.literal("TEXT"), v.literal("IMAGE")),
+    x: v.number(),
+    y: v.number(),
+    w: v.number(),
+    h: v.number(),
+    zIndex: v.number(),
+    locked: v.boolean(),
+    style: v.optional(v.any()),
+    content: v.optional(v.any()),
+    crop: v.optional(v.any()),
+    version: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_pageId_zIndex", ["pageId", "zIndex"])
+    .index("by_storybookId", ["storybookId"])
+    .index("by_ownerId", ["ownerId"]),
   chapterBlocks: defineTable({
     storybookId: v.id("storybooks"),
     chapterId: v.id("chapters"),
