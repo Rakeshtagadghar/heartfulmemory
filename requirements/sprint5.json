@@ -4,137 +4,140 @@
     "planType": "SPRINT_TASKS_JSON",
     "sprint": {
       "number": 5,
-      "title": "Create Storybook Flow (Templates → Chapters → Editor v0)",
+      "title": "Create Storybook Flow (Templates → Chapters → Editor v0) — Convex",
       "duration": "1 week",
-      "goal": "Ship a usable v0 storybook creation experience: choose template/blank, generate chapters, edit chapter content (text + basic image placeholders), reorder chapters, and autosave to Supabase.",
+      "goal": "Ship a usable v0 storybook creation experience on Convex: choose template/blank, generate chapters, edit chapter content (text + basic image placeholders), reorder chapters, and autosave with resilient UX.",
       "definitionOfDone": [
-        "User can create a storybook from template or blank",
+        "User can create a storybook from template or blank (Convex)",
         "Chapters list view with reorder + rename + add/delete",
         "Editor v0 supports rich text blocks + image placeholder blocks (no uploads yet)",
-        "Autosave with optimistic UI + conflict-safe versioning v0",
-        "Keyboard-friendly UX and mobile responsive",
-        "Basic validation and error recovery (offline-ish handling)"
+        "Autosave with optimistic UX + retry/backoff + conflict-safe v0",
+        "All reads/writes protected by Convex AuthZ helpers",
+        "Basic analytics events for creation funnel wired"
       ]
     },
     "stackAssumptions": {
       "frontend": "Next.js (App Router) + TypeScript",
-      "ui": "Tailwind + shadcn/ui OR MUI",
-      "editor": "TipTap (recommended) OR Slate (acceptable)",
-      "state": "TanStack Query (or React Query) for server state",
-      "db": "Supabase Postgres + RLS (from Sprint 4)"
+      "db": "Convex",
+      "ui": "Tailwind + shadcn/ui",
+      "editor": "TipTap (recommended)",
+      "state": "Convex React hooks (useQuery/useMutation) + local debounced state",
+      "auth": "As implemented in Migration Sprint 3.5"
     }
   },
   "scope": {
     "inScope": [
-      "Templates gallery and apply template",
-      "Storybook dashboard (list + open)",
+      "Templates gallery and apply template (Convex mutation)",
+      "Storybook dashboard (list + open + rename)",
       "Chapters management (add, rename, delete, reorder)",
       "Chapter editor v0 (text blocks + image placeholder blocks)",
-      "Autosave and draft persistence",
-      "Minimal empty states and onboarding guidance"
+      "Autosave and draft persistence using Convex mutations",
+      "Empty states and onboarding guidance"
     ],
     "outOfScope": [
-      "Actual media uploads (R2) — Sprint 7/8",
-      "Stock media search (Unsplash/Pexels/Pixabay/Openverse) — later sprint",
-      "Video/GIF blocks — later sprint when rules engine lands",
+      "Actual media uploads (Cloudflare R2) — later sprint",
+      "Stock media search providers (Unsplash/Pexels/Pixabay/Openverse/Rawpixel/Vecteezy) — later sprint",
+      "Video/GIF blocks — later sprint with media rules",
       "PDF export — later sprint"
     ]
   },
   "backlog": [
     {
-      "id": "S5-T01",
-      "title": "Templates gallery UX (browse, preview, apply) with versioned templates",
-      "skill": ["Frontend (Next.js)", "Product UX"],
+      "id": "S5C-T01",
+      "title": "Templates gallery UX + apply template using Convex",
+      "skill": ["Frontend (Next.js)", "Convex Functions", "Product UX"],
       "priority": "P0",
       "requirements": {
-        "pages": [
-          "/app/templates (gallery)",
-          "/app/start (choose template or blank)"
-        ],
+        "pages": ["/app/templates", "/app/start"],
         "templateCard": [
           "name",
           "short description",
           "chapter count",
-          "preview chapters list",
+          "preview chapters",
           "apply CTA"
         ],
         "applyBehavior": [
-          "Creates storybook",
-          "Creates chapters with correct order_index",
-          "Seeds each chapter with a starter TEXT block (empty or prompt)"
+          "Call Convex mutation templates.apply({ templateId })",
+          "Creates storybook + chapters with correct orderIndex",
+          "Seeds each chapter with starter TEXT block (empty or prompt)"
         ],
         "constraints": [
-          "Templates must be versioned (template_id + template_version)",
-          "Applying template copies content into user-owned rows (no shared references)"
+          "Templates are versioned (templateId + templateVersion)",
+          "Applying template copies into user-owned docs; no shared references"
         ]
       },
       "acceptanceTests": [
         "User can apply a template and lands in the created storybook",
         "Chapters appear in correct order and are editable",
-        "Template updates do not alter existing books"
+        "Reload persists created storybook and chapters"
       ],
       "deliverables": [
         "app/app/templates/page.tsx",
         "components/templates/*",
-        "lib/templates/applyTemplate.ts (final wiring)"
+        "convex/templates.ts (apply mutation) OR content/templates/* + convex/storybooks.createFromTemplate mutation"
       ]
     },
     {
-      "id": "S5-T02",
-      "title": "Storybook dashboard v0 (list, create blank, open, rename)",
-      "skill": ["Frontend (Next.js)", "UI Engineering"],
+      "id": "S5C-T02",
+      "title": "Storybook dashboard v0 (list, create blank, open, rename) using Convex queries",
+      "skill": ["Frontend (Next.js)", "Convex Client"],
       "priority": "P0",
       "requirements": {
-        "pages": [
-          "/app (dashboard list)",
-          "/app/storybooks/:id (storybook home)"
-        ],
+        "pages": ["/app", "/app/storybooks/:id"],
         "features": [
           "List storybooks (recent first)",
           "Create blank storybook (default DIGITAL mode for now)",
           "Rename storybook title/subtitle",
-          "Delete/Archive (optional soft delete)"
+          "Archive/Delete (optional)"
         ],
         "states": [
-          "Empty state with CTA to templates",
+          "Empty state CTA to /app/start",
           "Loading skeletons",
           "Error state with retry"
+        ],
+        "data": [
+          "useQuery(storybooks.listMine)",
+          "useMutation(storybooks.create / update / archive)"
+        ],
+        "constraints": [
+          "Ensure auth is required for all app routes",
+          "No cross-user access (server checks enforced)"
         ]
       },
       "acceptanceTests": [
-        "User sees only their storybooks (RLS enforced)",
+        "User sees only their storybooks",
         "Rename persists and reflects after reload",
-        "Empty state directs to start flow"
+        "Empty state correctly routes into start flow"
       ],
       "deliverables": [
         "app/app/page.tsx updated",
         "app/app/storybooks/[id]/page.tsx",
-        "components/storybooks/*"
+        "components/storybooks/* updated to Convex"
       ]
     },
     {
-      "id": "S5-T03",
-      "title": "Chapters sidebar: add/rename/delete + reorder (drag & drop)",
-      "skill": ["Frontend", "UX", "State Management"],
+      "id": "S5C-T03",
+      "title": "Chapters sidebar: add/rename/delete + reorder (drag & drop) persisted to Convex",
+      "skill": ["Frontend", "UX", "Convex Mutations"],
       "priority": "P0",
       "requirements": {
         "features": [
-          "Add chapter",
+          "Add chapter (append to end)",
           "Rename inline",
-          "Delete chapter with undo toast (optional)",
-          "Reorder chapters via drag-and-drop",
-          "Persist order_index updates"
+          "Delete chapter (optional undo toast)",
+          "Reorder via drag-and-drop",
+          "Keyboard alternative reorder (move up/down) for accessibility"
+        ],
+        "libraries": ["@dnd-kit/core (recommended)"],
+        "mutations": [
+          "chapters.create",
+          "chapters.rename",
+          "chapters.remove",
+          "chapters.reorder({ storybookId, orderedChapterIds })"
         ],
         "constraints": [
-          "Reordering must be stable and persisted atomically (or best-effort with rollback on failure)",
-          "Keyboard alternative for reorder (move up/down buttons) for accessibility"
-        ],
-        "libraries": [
-          "@dnd-kit/core (recommended) OR react-beautiful-dnd fork"
-        ],
-        "data": [
-          "Chapters loaded by storybook_id ordered by order_index",
-          "Reorder writes updated order_index for affected chapters"
+          "Reorder should be optimistic with rollback on failure",
+          "Do not lose unsaved editor state when switching chapters"
         ]
       },
       "acceptanceTests": [
@@ -144,121 +147,115 @@
       ],
       "deliverables": [
         "components/chapters/ChaptersSidebar.tsx",
-        "lib/data/chapters.ts updated (reorder)"
+        "convex/chapters.ts (ensure reorder mutation exists and efficient)"
       ]
     },
     {
-      "id": "S5-T04",
-      "title": "Editor v0 foundation: TipTap (or Slate) with autosave and block model",
-      "skill": ["Frontend Editor", "TypeScript"],
+      "id": "S5C-T04",
+      "title": "Editor v0 foundation: rich text (TipTap/Slate) + block list UI",
+      "skill": ["Frontend Editor", "TypeScript", "UX"],
       "priority": "P0",
       "requirements": {
-        "editor": {
-          "capabilities": [
-            "Rich text editing (headings, bold/italic, lists, quote)",
-            "Basic slash menu (optional) for inserting blocks",
-            "Placeholder text prompts (e.g., 'Start writing…')"
-          ],
-          "storageFormat": "Store editor doc as JSON in chapter_blocks.content (TEXT blocks)"
-        },
-        "blockModelV0": [
-          { "type": "TEXT", "content": "tiptapDocJson" },
-          {
-            "type": "IMAGE",
-            "content": "placeholder only: caption + intended placement"
-          }
+        "editorCapabilities": [
+          "Rich text: headings, bold/italic, lists, quote",
+          "Placeholder prompts",
+          "Block list container (render blocks ordered)",
+          "Insert block menu: Text / Image placeholder"
         ],
-        "ui": [
-          "Main editor pane",
-          "Insert block menu (Text / Image placeholder)",
-          "Block reorder within chapter (P1 if time)"
+        "storageFormat": [
+          "TEXT block: store editor doc JSON in chapterBlocks.content",
+          "IMAGE placeholder block: store { caption, placementPreset, sizePct }"
         ],
         "constraints": [
-          "No actual media upload in Sprint 5 (placeholder only)",
-          "Keep schema compatible with Sprint 4 chapter_blocks table"
+          "No actual uploads in Sprint 5",
+          "Keep content structure compatible with later media rules sprint"
         ]
       },
       "acceptanceTests": [
-        "Text edits persist after refresh (autosave)",
-        "User can insert an image placeholder block with caption",
-        "Blocks load in correct order_index"
+        "Text edits persist after refresh (via autosave)",
+        "User can insert an image placeholder block with caption + placement preset",
+        "Blocks load in correct orderIndex"
       ],
       "deliverables": [
         "components/editor/EditorShell.tsx",
+        "components/editor/BlockList.tsx",
         "components/editor/blocks/TextBlock.tsx",
         "components/editor/blocks/ImagePlaceholderBlock.tsx",
         "lib/editor/serialize.ts"
       ]
     },
     {
-      "id": "S5-T05",
-      "title": "Autosave v0: debounced saves + optimistic UI + retry/backoff",
-      "skill": ["Frontend", "Resilience", "State Management"],
+      "id": "S5C-T05",
+      "title": "Autosave v0: debounced saves + optimistic UI + retry/backoff (Convex)",
+      "skill": ["Frontend", "Resilience", "Convex Client"],
       "priority": "P0",
       "requirements": {
         "autosave": [
           "Debounce 800–1500ms after user stops typing",
-          "Show saving indicator (Saving… / Saved / Error)",
-          "Retry with exponential backoff on transient errors",
-          "Do not spam writes (coalesce updates)"
+          "Saving indicator: Saving… / Saved / Error",
+          "Retry with exponential backoff for transient errors",
+          "Coalesce updates (do not spam mutations)"
         ],
-        "conflictStrategyV0": [
-          "Store updated_at and/or version integer on blocks",
-          "On conflict: show toast 'Newer version exists' + reload option"
+        "writeStrategy": [
+          "Prefer block-level saves: updateBlock(blockId, patch)",
+          "If block doesn't exist yet: insertBlock then update",
+          "Use local dirty state to avoid unnecessary writes"
         ],
         "constraints": [
-          "Must work without websockets",
-          "Must not block typing on slow network"
+          "Must not block typing",
+          "Must handle rapid chapter switching safely"
         ]
       },
       "acceptanceTests": [
-        "Typing does not trigger more than ~1 write per second",
-        "Offline/failed write shows error and retries",
-        "User sees clear 'Saved' state"
+        "Typing triggers at most ~1 mutation/sec per active block",
+        "Transient failures show error and recover automatically",
+        "User sees stable 'Saved' state after successful write"
       ],
       "deliverables": [
         "lib/editor/autosave.ts",
         "components/editor/SaveStatus.tsx",
-        "lib/data/blocks.ts updated"
+        "convex/blocks.ts (ensure update mutation supports partial patch)"
       ]
     },
     {
-      "id": "S5-T06",
-      "title": "Chapter blocks CRUD: list, insert, update, reorder within a chapter",
-      "skill": ["Backend Integration", "TypeScript"],
+      "id": "S5C-T06",
+      "title": "Conflict-safe v0 editing: versioning + last-write detection",
+      "skill": ["Architecture", "Convex", "Frontend"],
       "priority": "P1",
       "requirements": {
-        "crud": [
-          "listChapterBlocks(chapterId) ordered by order_index",
-          "insertBlock(chapterId, type, content)",
-          "updateBlock(blockId, patch)",
-          "deleteBlock(blockId)",
-          "reorderBlocks(chapterId, newOrder[])"
+        "mechanism": [
+          "Add `version` number to chapterBlocks (or use updatedAt checks)",
+          "Mutation updateBlock validates expectedVersion (optional param)",
+          "On mismatch: return a structured conflict error"
+        ],
+        "ui": [
+          "Toast/banner: 'This chapter changed elsewhere' + actions (Reload / Overwrite)",
+          "Basic overwrite path allowed for v0"
         ],
         "constraints": [
-          "All operations must respect RLS",
-          "Reorder should update only affected rows"
+          "No realtime collaboration yet; this is to prevent accidental overwrites across tabs"
         ]
       },
       "acceptanceTests": [
-        "Blocks persist correctly across reload",
-        "Delete removes block and reorders gracefully",
-        "Reorder persists (if implemented)"
+        "Two tabs editing the same block triggers a conflict in the older tab",
+        "User can reload and continue without data loss",
+        "Conflict errors are understandable"
       ],
       "deliverables": [
-        "lib/data/blocks.ts enhanced",
-        "components/editor/BlockList.tsx"
+        "convex/blocks.ts (version checks)",
+        "components/editor/ConflictBanner.tsx",
+        "docs/conflict_handling_v0.md"
       ]
     },
     {
-      "id": "S5-T07",
-      "title": "Editor UX polish: empty states, shortcuts, and mobile layout",
+      "id": "S5C-T07",
+      "title": "Editor UX polish: empty states, shortcuts, mobile layout",
       "skill": ["UX", "Frontend"],
       "priority": "P1",
       "requirements": {
         "ux": [
           "Empty chapter state with starter prompt",
-          "Keyboard shortcuts (Cmd/Ctrl+B/I, headings optional)",
+          "Keyboard shortcuts (Cmd/Ctrl+B/I; headings optional)",
           "Sticky chapter title input",
           "Responsive: sidebar collapses into drawer on mobile"
         ],
@@ -269,7 +266,7 @@
       },
       "acceptanceTests": [
         "Mobile editing is usable without horizontal scroll",
-        "Switching chapters preserves selection and does not lose content",
+        "Switching chapters preserves current draft and does not lose text",
         "Keyboard shortcuts work"
       ],
       "deliverables": [
@@ -278,8 +275,8 @@
       ]
     },
     {
-      "id": "S5-T08",
-      "title": "Basic instrumentation for creation funnel (template → chapter → first save)",
+      "id": "S5C-T08",
+      "title": "Creation funnel analytics (template → chapter → first save) updated for Convex flow",
       "skill": ["Analytics", "Product"],
       "priority": "P1",
       "requirements": {
@@ -295,57 +292,55 @@
         ],
         "constraints": [
           "No PII in analytics payload",
-          "Avoid firing on rerenders"
+          "Avoid duplicate firing due to rerenders"
         ]
       },
       "acceptanceTests": [
         "Events fire once per user action",
-        "Template apply flow emits storybook_created",
+        "Template apply emits storybook_created",
         "First successful autosave emits chapter_first_save"
       ],
       "deliverables": [
-        "lib/analytics/events_creation.ts",
+        "lib/analytics/events_creation.ts updated",
         "instrumentation in templates/editor"
       ]
     },
     {
-      "id": "S5-T09",
-      "title": "Testing + QA: happy path for create → edit → refresh",
+      "id": "S5C-T09",
+      "title": "QA checklist + smoke tests (create → edit → refresh → reorder) on Convex",
       "skill": ["QA", "Testing"],
       "priority": "P0",
       "requirements": {
         "testFlows": [
-          "New user creates storybook from template",
-          "Renames storybook and a chapter",
-          "Edits text, inserts image placeholder, refreshes page",
-          "Reorders chapters and refreshes page"
+          "Create storybook from template",
+          "Rename storybook and a chapter",
+          "Edit text, insert image placeholder, refresh page",
+          "Reorder chapters, refresh page",
+          "Open same chapter in two tabs to test conflict-safe v0 (if S5C-T06 implemented)"
         ],
-        "tools": [
-          "Playwright (optional) or manual QA checklist",
-          "Unit tests for autosave debounce (optional)"
-        ]
+        "tools": ["Manual checklist required", "Playwright optional"]
       },
       "acceptanceTests": [
         "All flows pass without data loss",
         "No console errors in production build",
-        "RLS prevents cross-user access"
+        "Unauthorized access blocked"
       ],
       "deliverables": [
-        "docs/qa_checklist_s5.md",
+        "docs/qa_checklist_s5_convex.md",
         "tests/e2e/create_edit_refresh.spec.ts (optional)"
       ]
     },
     {
-      "id": "S5-T10",
-      "title": "Release Sprint 5: deploy and verify editor v0 in production",
-      "skill": ["Release", "DevOps-lite"],
+      "id": "S5C-T10",
+      "title": "Release Sprint 5: deploy and verify editor v0 in production (Convex)",
+      "skill": ["Release", "DevOps-lite", "Convex"],
       "priority": "P0",
       "requirements": {
         "releaseChecklist": [
-          "Verify template apply creates DB rows correctly",
+          "Verify template apply creates Convex docs correctly",
           "Verify autosave status and persistence on refresh",
           "Verify chapter reorder persists",
-          "Verify error handling on failed save (simulate offline)",
+          "Verify error handling on failed saves (simulate offline)",
           "Verify mobile layout"
         ]
       },
@@ -354,21 +349,21 @@
         "No data loss on refresh",
         "Checklist recorded"
       ],
-      "deliverables": ["docs/release_checklist_s5.md"]
+      "deliverables": ["docs/release_checklist_s5_convex.md"]
     }
   ],
   "sprintPlanning": {
     "suggestedOrder": [
-      "S5-T01",
-      "S5-T02",
-      "S5-T03",
-      "S5-T04",
-      "S5-T05",
-      "S5-T06",
-      "S5-T07",
-      "S5-T08",
-      "S5-T09",
-      "S5-T10"
+      "S5C-T01",
+      "S5C-T02",
+      "S5C-T03",
+      "S5C-T04",
+      "S5C-T05",
+      "S5C-T07",
+      "S5C-T06",
+      "S5C-T08",
+      "S5C-T09",
+      "S5C-T10"
     ],
     "timeboxGuidance": {
       "P0_total_days": 5,
@@ -376,8 +371,9 @@
       "buffer_days": 0.5
     },
     "notes": [
-      "Keep Editor v0 intentionally simple: rich text + image placeholders only. Real uploads + stock image selection arrive after media rules + R2 pipeline.",
-      "Storing blocks in JSONB keeps flexibility; later sprints will enforce print/digital rules and richer media types."
+      "This sprint assumes Sprint 4 Convex schema + CRUD is complete.",
+      "Keep Editor v0 intentionally limited to rich text + image placeholders; real uploads/stock providers come later and plug into the same block model.",
+      "For autosave, block-level updates are best: they limit payload size and reduce conflicts."
     ]
   }
 }

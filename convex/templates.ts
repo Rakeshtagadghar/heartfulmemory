@@ -66,6 +66,7 @@ export const apply = mutationGeneric({
         type: "TEXT",
         orderIndex: 0,
         content: starterTextContent(chapterTitle),
+        version: 1,
         createdAt: now,
         updatedAt: now
       });
@@ -78,4 +79,3 @@ export const apply = mutationGeneric({
     };
   }
 });
-

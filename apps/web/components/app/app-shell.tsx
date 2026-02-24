@@ -17,6 +17,7 @@ export function AppShell({ children, email, profile }: { children: ReactNode; em
           <div className="flex items-center gap-2">
             <Link href="/app" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Dashboard</Link>
             <Link href="/app/start" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Start</Link>
+            <Link href="/app/templates" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Templates</Link>
             <Link href="/app/onboarding" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Onboarding</Link>
             <LogoutButton />
           </div>
@@ -28,7 +29,7 @@ export function AppShell({ children, email, profile }: { children: ReactNode; em
             <p className="text-xs uppercase tracking-[0.18em] text-white/45">Workspace</p>
             <ul className="mt-3 space-y-2 text-sm text-white/70">
               <li>Storybooks (soon)</li>
-              <li>Templates (soon)</li>
+              <li>Templates gallery</li>
               <li>Exports (soon)</li>
               <li>Family invites (soon)</li>
             </ul>

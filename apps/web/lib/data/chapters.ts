@@ -37,6 +37,21 @@ export async function renameChapterForUser(
   return { ok: true, data: chapterDtoSchema.parse(result.data) };
 }
 
+export async function updateChapterForUser(
+  viewerSubject: string,
+  chapterId: string,
+  patch: {
+    title?: string;
+    status?: ChapterDTO["status"];
+    summary?: string | null;
+  }
+): Promise<DataResult<ChapterDTO>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<unknown>(anyApi.chapters.update, { viewerSubject, chapterId, patch });
+  if (!result.ok) return result;
+  return { ok: true, data: chapterDtoSchema.parse(result.data) };
+}
+
 export async function removeChapterForUser(
   viewerSubject: string,
   chapterId: string
@@ -70,4 +85,3 @@ export async function createChapter(storybookId: string, title: string, viewerSu
 export async function reorderChapters(storybookId: string, chapterOrder: string[], viewerSubject = "dev:anonymous") {
   return reorderChaptersForUser(viewerSubject, storybookId, chapterOrder);
 }
-

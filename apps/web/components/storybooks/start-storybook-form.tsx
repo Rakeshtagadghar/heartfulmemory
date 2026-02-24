@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
+import { trackStorybookCreateStart, trackTemplateApply } from "../../lib/analytics/events_creation";
 
 type StartOption = {
   id: string;
@@ -12,17 +13,38 @@ type StartOption = {
   desc: string;
   kind: "blank" | "template" | "gift";
   templateId?: string;
+  chapterCount?: number;
+  previewChapters?: string[];
 };
 
 type StartActionState = {
   error: string | null;
 };
 
-function SubmitActionButton({ children }: { children: string }) {
+function StartSubmitButton({ option }: { option: StartOption }) {
   const { pending } = useFormStatus();
+
   return (
-    <Button type="submit" loading={pending} className="mt-4 w-full justify-center">
-      {children}
+    <Button
+      type="submit"
+      loading={pending}
+      className="mt-4 w-full justify-center"
+      onClick={() => {
+        trackStorybookCreateStart({
+          source: "start_page",
+          kind: option.kind,
+          template_id: option.templateId ?? null
+        });
+        if (option.templateId) {
+          trackTemplateApply({
+            source: "start_page",
+            template_id: option.templateId,
+            chapter_count: option.chapterCount ?? 0
+          });
+        }
+      }}
+    >
+      {option.kind === "blank" ? "Create Blank Storybook" : "Use Template"}
     </Button>
   );
 }
@@ -49,6 +71,13 @@ export function StartStorybookForm({
             <p className="text-xs uppercase tracking-[0.16em] text-white/45">Option</p>
             <h2 className="mt-2 text-lg font-semibold text-parchment">{option.label}</h2>
             <p className="mt-2 min-h-16 text-sm leading-7 text-white/70">{option.desc}</p>
+            {option.previewChapters?.length ? (
+              <ul className="mt-3 space-y-1 text-xs text-white/55">
+                {option.previewChapters.map((chapterTitle) => (
+                  <li key={`${option.id}-${chapterTitle}`}>- {chapterTitle}</li>
+                ))}
+              </ul>
+            ) : null}
 
             {option.kind === "gift" ? (
               <Link
@@ -63,9 +92,7 @@ export function StartStorybookForm({
                 {option.templateId ? (
                   <input type="hidden" name="templateId" value={option.templateId} />
                 ) : null}
-                <SubmitActionButton>
-                  {option.kind === "blank" ? "Create Blank Storybook" : "Use Template"}
-                </SubmitActionButton>
+                <StartSubmitButton option={option} />
               </form>
             )}
           </Card>
@@ -74,4 +101,3 @@ export function StartStorybookForm({
     </div>
   );
 }
-

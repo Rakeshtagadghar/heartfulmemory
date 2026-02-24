@@ -26,6 +26,7 @@ function toBlockDto(doc: {
   type: "TEXT" | "IMAGE" | "VIDEO" | "GIF" | "EMBED";
   orderIndex: number;
   content?: unknown;
+  version?: number;
   createdAt: number;
   updatedAt: number;
 }) {
@@ -36,6 +37,7 @@ function toBlockDto(doc: {
     owner_id: doc.ownerId,
     type: doc.type,
     order_index: doc.orderIndex,
+    version: doc.version ?? 1,
     content:
       doc.content && typeof doc.content === "object" && !Array.isArray(doc.content)
         ? (doc.content as Record<string, unknown>)
@@ -112,6 +114,7 @@ export const insert = mutationGeneric({
       type: args.type,
       orderIndex: requestedIndex,
       content: args.content ?? {},
+      version: 1,
       createdAt: now,
       updatedAt: now
     });
@@ -129,14 +132,22 @@ export const update = mutationGeneric({
     blockId: v.id("chapterBlocks"),
     patch: v.object({
       type: v.optional(blockTypeValidator),
-      content: v.optional(v.any())
+      content: v.optional(v.any()),
+      expectedVersion: v.optional(v.number())
     })
   },
   handler: async (ctx, args) => {
     const block = await getBlockOrThrow(ctx, args.blockId);
     const access = await assertCanAccessStorybook(ctx, block.storybookId, "OWNER", args.viewerSubject);
+    const currentVersion = block.version ?? 1;
+    if (
+      typeof args.patch.expectedVersion === "number" &&
+      args.patch.expectedVersion !== currentVersion
+    ) {
+      throw new Error(`CONFLICT:block_version_mismatch:${currentVersion}`);
+    }
     const now = Date.now();
-    const patch: Record<string, unknown> = { updatedAt: now };
+    const patch: Record<string, unknown> = { updatedAt: now, version: currentVersion + 1 };
     if (args.patch.type) patch.type = args.patch.type;
     if ("content" in args.patch) patch.content = args.patch.content ?? {};
     await ctx.db.patch(args.blockId, patch as never);

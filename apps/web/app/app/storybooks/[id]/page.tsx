@@ -1,18 +1,30 @@
 import { redirect } from "next/navigation";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
+import { EditorShell } from "../../../../components/editor/EditorShell";
 import { getOrCreateProfileForUser } from "../../../../lib/profile";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
 import { getStorybookForUser } from "../../../../lib/data/storybooks";
 import { listChaptersByStorybookForUser } from "../../../../lib/data/chapters";
-import { StorybookChaptersList } from "../../../../components/storybooks/storybook-chapters-list";
+import { listChapterBlocksForUser } from "../../../../lib/data/blocks";
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function StorybookPage({ params }: Props) {
+function getSearchString(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string
+) {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0];
+  return typeof value === "string" ? value : undefined;
+}
+
+export default async function StorybookPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(`/app/storybooks/${id}`);
   const profile = await getOrCreateProfileForUser(user);
 
@@ -32,6 +44,11 @@ export default async function StorybookPage({ params }: Props) {
   }
 
   const chapters = await listChaptersByStorybookForUser(user.id, id);
+  const initialChapterId = chapters.ok ? chapters.data[0]?.id : undefined;
+  const initialBlocks =
+    chapters.ok && initialChapterId
+      ? await listChapterBlocksForUser(user.id, initialChapterId)
+      : { ok: true as const, data: [] };
 
   return (
     <div className="space-y-6">
@@ -44,7 +61,7 @@ export default async function StorybookPage({ params }: Props) {
               <p className="mt-2 text-sm text-white/70">{storybook.data.subtitle}</p>
             ) : null}
             <p className="mt-3 text-sm leading-7 text-white/70">
-              Sprint 4 validates persistence and ordering. Editor block editing lands in Sprint 5.
+              Manage chapter order, write in rich text blocks, add image placeholders, and rely on autosave with conflict-safe version checks.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -54,21 +71,29 @@ export default async function StorybookPage({ params }: Props) {
         </div>
       </Card>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl font-semibold text-parchment">Chapters</h2>
-          {chapters.ok ? <p className="text-sm text-white/55">{chapters.data.length} chapters</p> : null}
-        </div>
-
-        {chapters.ok ? (
-          <StorybookChaptersList chapters={chapters.data} />
-        ) : (
-          <Card className="p-5">
-            <p className="text-sm text-rose-100">Could not load chapters: {chapters.error}</p>
-          </Card>
-        )}
-      </section>
+      {chapters.ok ? (
+        <EditorShell
+          initialStorybook={storybook.data}
+          initialChapters={chapters.data}
+          initialBlocksByChapterId={initialChapterId && initialBlocks.ok ? { [initialChapterId]: initialBlocks.data } : {}}
+          createdEvent={
+            getSearchString(resolvedSearchParams, "created")
+              ? {
+                  source: getSearchString(resolvedSearchParams, "source"),
+                  template_id: getSearchString(resolvedSearchParams, "templateId"),
+                  template_version: Number.parseInt(
+                    getSearchString(resolvedSearchParams, "templateVersion") ?? "",
+                    10
+                  ) || undefined
+                }
+              : null
+          }
+        />
+      ) : (
+        <Card className="p-5">
+          <p className="text-sm text-rose-100">Could not load chapters: {chapters.error}</p>
+        </Card>
+      )}
     </div>
   );
 }
-

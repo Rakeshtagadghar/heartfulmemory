@@ -36,7 +36,7 @@ export async function insertBlockForUser(
 export async function updateBlockForUser(
   viewerSubject: string,
   blockId: string,
-  patch: Partial<Pick<BlockDTO, "type" | "content">>
+  patch: Partial<Pick<BlockDTO, "type" | "content">> & { expectedVersion?: number }
 ): Promise<DataResult<BlockDTO>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
   const result = await convexMutation<unknown>(anyApi.blocks.update, {
@@ -44,10 +44,17 @@ export async function updateBlockForUser(
     blockId,
     patch: {
       type: patch.type,
-      content: patch.content
+      content: patch.content,
+      expectedVersion: patch.expectedVersion
     }
   });
-  if (!result.ok) return result;
+  if (!result.ok) {
+    const isConflict = result.error.includes("CONFLICT:block_version_mismatch");
+    return {
+      ...result,
+      code: isConflict ? "conflict" : undefined
+    };
+  }
   return { ok: true, data: blockDtoSchema.parse(result.data) };
 }
 
@@ -99,4 +106,3 @@ export async function upsertBlock(
     orderIndex: block.order_index
   });
 }
-

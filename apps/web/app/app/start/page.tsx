@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Card } from "../../../components/ui/card";
 import { getOrCreateProfileForUser } from "../../../lib/profile";
 import { requireAuthenticatedUser } from "../../../lib/auth/server";
@@ -27,8 +28,10 @@ function getStartOptions() {
       id: template.id,
       kind: "template" as const,
       label: `Use ${template.name}`,
-      desc: `Create ${template.chapters.length} starter chapters with one text block in each.`,
-      templateId: template.id
+      desc: template.shortDescription,
+      templateId: template.id,
+      chapterCount: template.chapters.length,
+      previewChapters: template.chapters.slice(0, 3)
     })),
     {
       id: "gift",
@@ -63,7 +66,7 @@ export default async function StartPage() {
         bookMode: "DIGITAL"
       });
       if (!created.ok) return { error: created.error };
-      redirect(`/app/storybooks/${created.data.id}`);
+      redirect(`/app/storybooks/${created.data.id}?created=1&source=start_blank`);
     }
 
     if (kind === "template") {
@@ -73,7 +76,9 @@ export default async function StartPage() {
       }
       const created = await applyStarterTemplateForUser(currentUser.id, templateId);
       if (!created.ok) return { error: created.error };
-      redirect(`/app/storybooks/${created.data.storybookId}`);
+      redirect(
+        `/app/storybooks/${created.data.storybookId}?created=1&source=start_template&templateId=${encodeURIComponent(created.data.templateId)}&templateVersion=${created.data.templateVersion}`
+      );
     }
 
     return { error: "Invalid start option." };
@@ -87,6 +92,11 @@ export default async function StartPage() {
         <p className="mt-3 text-sm leading-7 text-white/70">
           Sprint 4 creates real Convex storybooks with owner-first authorization. Blank starts create a draft book; templates create chapters and starter text blocks.
         </p>
+        <div className="mt-4">
+          <Link href="/app/templates" className="text-sm font-semibold text-gold hover:text-[#e3c17b]">
+            Browse templates gallery
+          </Link>
+        </div>
       </Card>
 
       <StartStorybookForm options={getStartOptions()} action={createFromChoice} />

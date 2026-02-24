@@ -71,6 +71,7 @@ export default defineSchema({
     ),
     orderIndex: v.number(),
     content: v.optional(v.any()),
+    version: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number()
   })
