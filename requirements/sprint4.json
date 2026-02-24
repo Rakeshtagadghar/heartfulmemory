@@ -1,0 +1,443 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 4,
+      "title": "Storybook Core Data Model (Supabase Postgres + RLS)",
+      "duration": "1 week",
+      "goal": "Create the core database schema for storybooks, chapters, blocks, and collaborators with strict RLS so every row is private by default and ready for editor + exports.",
+      "definitionOfDone": [
+        "Core tables created with migrations",
+        "RLS enabled and policies verified for all tables",
+        "Draft-friendly data model supports templates and chapter ordering",
+        "Server endpoints for CRUD (minimal) using anon key + RLS",
+        "Seed templates (optional) stored in DB or static config",
+        "Basic integration tests for RLS + CRUD"
+      ]
+    },
+    "stackAssumptions": {
+      "db": "Supabase Postgres",
+      "auth": "Supabase Auth",
+      "app": "Next.js App Router",
+      "clientAccess": "Supabase anon key + RLS for user-owned data",
+      "serverAccess": "Service role only for admin-only ops (rare)"
+    }
+  },
+  "dataModel": {
+    "enums": {
+      "book_mode": ["DIGITAL", "PRINT"],
+      "book_status": ["DRAFT", "ACTIVE", "ARCHIVED", "DELETED"],
+      "chapter_status": ["DRAFT", "FINAL"],
+      "collab_role": ["OWNER", "EDITOR", "VIEWER"],
+      "asset_source": [
+        "UPLOAD",
+        "UNSPLASH",
+        "PEXELS",
+        "PIXABAY",
+        "OPENVERSE",
+        "RAWPIXEL_PD",
+        "VECTEEZY"
+      ],
+      "block_type": ["TEXT", "IMAGE", "VIDEO", "GIF", "EMBED"]
+    },
+    "tables": [
+      "storybooks",
+      "chapters",
+      "chapter_blocks",
+      "assets",
+      "collaborators",
+      "templates (optional)",
+      "activity_log (optional minimal)"
+    ],
+    "designPrinciples": [
+      "Private by default: all user content protected by RLS",
+      "Draft-first: allow incomplete chapters/blocks without failing writes",
+      "Order preserved: chapter ordering and block ordering stored explicitly",
+      "Provider-ready: assets store license metadata and source references",
+      "Print-safe foundation: book_mode exists now; stricter validations come later"
+    ]
+  },
+  "backlog": [
+    {
+      "id": "S4-T01",
+      "title": "Finalize core schema (ERD-level) and generate SQL migrations",
+      "skill": ["Backend Schema", "Supabase", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "tables": {
+          "storybooks": {
+            "fields": [
+              "id uuid pk default gen_random_uuid()",
+              "owner_id uuid not null references auth.users(id)",
+              "title text not null default 'Untitled Storybook'",
+              "subtitle text null",
+              "book_mode book_mode not null default 'DIGITAL'",
+              "status book_status not null default 'DRAFT'",
+              "cover_asset_id uuid null references assets(id)",
+              "settings jsonb not null default '{}'",
+              "created_at timestamptz not null default now()",
+              "updated_at timestamptz not null default now()"
+            ],
+            "indexes": ["owner_id", "status", "updated_at"]
+          },
+          "chapters": {
+            "fields": [
+              "id uuid pk default gen_random_uuid()",
+              "storybook_id uuid not null references storybooks(id) on delete cascade",
+              "owner_id uuid not null references auth.users(id)",
+              "title text not null default 'Untitled Chapter'",
+              "status chapter_status not null default 'DRAFT'",
+              "order_index int not null default 0",
+              "summary text null",
+              "created_at timestamptz not null default now()",
+              "updated_at timestamptz not null default now()"
+            ],
+            "indexes": ["storybook_id", "owner_id", "order_index"]
+          },
+          "chapter_blocks": {
+            "fields": [
+              "id uuid pk default gen_random_uuid()",
+              "chapter_id uuid not null references chapters(id) on delete cascade",
+              "storybook_id uuid not null references storybooks(id) on delete cascade",
+              "owner_id uuid not null references auth.users(id)",
+              "type block_type not null",
+              "order_index int not null default 0",
+              "content jsonb not null default '{}'",
+              "created_at timestamptz not null default now()",
+              "updated_at timestamptz not null default now()"
+            ],
+            "indexes": [
+              "chapter_id",
+              "storybook_id",
+              "owner_id",
+              "type",
+              "order_index"
+            ]
+          },
+          "assets": {
+            "fields": [
+              "id uuid pk default gen_random_uuid()",
+              "owner_id uuid not null references auth.users(id)",
+              "source asset_source not null",
+              "source_asset_id text null",
+              "source_url text null",
+              "storage_provider text null",
+              "storage_bucket text null",
+              "storage_key text null",
+              "mime_type text null",
+              "width int null",
+              "height int null",
+              "duration_seconds int null",
+              "size_bytes bigint null",
+              "checksum text null",
+              "license jsonb null",
+              "created_at timestamptz not null default now()",
+              "updated_at timestamptz not null default now()"
+            ],
+            "indexes": ["owner_id", "source", "storage_key"]
+          },
+          "collaborators": {
+            "fields": [
+              "id uuid pk default gen_random_uuid()",
+              "storybook_id uuid not null references storybooks(id) on delete cascade",
+              "invited_email text null",
+              "user_id uuid null references auth.users(id)",
+              "role collab_role not null default 'VIEWER'",
+              "status text not null default 'PENDING'",
+              "created_at timestamptz not null default now()",
+              "updated_at timestamptz not null default now()"
+            ],
+            "indexes": ["storybook_id", "user_id", "invited_email", "status"]
+          }
+        },
+        "constraints": [
+          "owner_id denormalized on chapters/blocks for RLS speed",
+          "storybook_id denormalized on blocks for query simplicity",
+          "content jsonb is editor-flexible; strict validation occurs in app rules engine later"
+        ],
+        "outputs": [
+          "SQL migrations (supabase/migrations)",
+          "Optional ERD diagram (markdown)"
+        ]
+      },
+      "acceptanceTests": [
+        "Migrations apply cleanly on a fresh Supabase DB",
+        "Foreign keys enforce cascade deletes for storybooks → chapters → blocks",
+        "Indexes exist for common queries"
+      ],
+      "deliverables": [
+        "supabase/migrations/003_storybooks.sql",
+        "supabase/migrations/004_chapters.sql",
+        "supabase/migrations/005_blocks.sql",
+        "supabase/migrations/006_assets.sql",
+        "supabase/migrations/007_collaborators.sql",
+        "docs/erd_storybook_core.md"
+      ]
+    },
+    {
+      "id": "S4-T02",
+      "title": "Enable RLS + write policies for storybooks/chapters/blocks/assets",
+      "skill": ["Security", "Supabase (RLS)"],
+      "priority": "P0",
+      "requirements": {
+        "policies": {
+          "storybooks": [
+            "SELECT: owner_id = auth.uid() OR user is collaborator with VIEW/EDIT",
+            "INSERT: owner_id = auth.uid()",
+            "UPDATE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)",
+            "DELETE: owner_id = auth.uid()"
+          ],
+          "chapters": [
+            "SELECT: owner_id = auth.uid() OR collaborator can view",
+            "INSERT/UPDATE/DELETE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)"
+          ],
+          "chapter_blocks": [
+            "SELECT: owner_id = auth.uid() OR collaborator can view",
+            "INSERT/UPDATE/DELETE: owner_id = auth.uid() OR collaborator role in (OWNER, EDITOR)"
+          ],
+          "assets": [
+            "SELECT: owner_id = auth.uid()",
+            "INSERT/UPDATE/DELETE: owner_id = auth.uid()",
+            "Note: assets are private; sharing uses storybook association later"
+          ]
+        },
+        "constraints": [
+          "RLS must be ENABLED on every table with user data",
+          "No public read access to any story content",
+          "Collaborator logic can be simplified in Sprint 4 (owner-only), then extended in Sprint 10"
+        ],
+        "outputs": ["RLS SQL policies", "RLS verification script"]
+      },
+      "acceptanceTests": [
+        "Anon cannot read any storybooks/chapters/blocks/assets",
+        "Authenticated user can read/write only their own rows",
+        "If collaborator policy enabled: collaborator can read permitted storybook"
+      ],
+      "deliverables": [
+        "supabase/policies/rls_storybook_core.sql",
+        "docs/rls_verification_steps.md"
+      ]
+    },
+    {
+      "id": "S4-T03",
+      "title": "Trigger functions: updated_at maintenance + optional soft-delete strategy",
+      "skill": ["Postgres", "Supabase"],
+      "priority": "P1",
+      "requirements": {
+        "triggers": [
+          "updated_at auto-update on storybooks/chapters/blocks/assets/collaborators"
+        ],
+        "softDeleteOption": {
+          "approach": "status=DELETED + deleted_at (optional)",
+          "note": "Hard delete still allowed for owner; soft delete useful for recovery later"
+        }
+      },
+      "acceptanceTests": [
+        "updated_at changes on row update automatically",
+        "Soft delete (if implemented) prevents accidental permanent loss"
+      ],
+      "deliverables": ["supabase/migrations/008_triggers.sql"]
+    },
+    {
+      "id": "S4-T04",
+      "title": "Data access layer (TypeScript) for core CRUD operations",
+      "skill": ["TypeScript", "Frontend/Backend Integration"],
+      "priority": "P0",
+      "requirements": {
+        "apis": [
+          "createStorybook(title, mode)",
+          "listStorybooks()",
+          "getStorybook(id)",
+          "updateStorybook(id, patch)",
+          "createChapter(storybookId, title)",
+          "reorderChapters(storybookId, chapterOrder[])",
+          "upsertBlock(chapterId, block)",
+          "listChapterBlocks(chapterId)"
+        ],
+        "constraints": [
+          "Use anon key + RLS for user-owned data",
+          "Server actions or route handlers allowed, but keep it minimal",
+          "Return typed results + structured errors"
+        ]
+      },
+      "acceptanceTests": [
+        "CRUD functions work under RLS with authenticated user",
+        "Unauthorized access fails with predictable error messages",
+        "Ordering updates are atomic (transaction-like) or consistent"
+      ],
+      "deliverables": [
+        "lib/data/storybooks.ts",
+        "lib/data/chapters.ts",
+        "lib/data/blocks.ts",
+        "lib/data/assets.ts"
+      ]
+    },
+    {
+      "id": "S4-T05",
+      "title": "Template model (minimal) + seed initial template set",
+      "skill": ["Product", "Backend Schema", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "approachOptions": [
+          "Option A: templates in DB (templates table + JSON chapters/blocks)",
+          "Option B: templates in code (content/templates/*.ts) for simplicity"
+        ],
+        "minimumTemplates": [
+          {
+            "id": "childhood_roots",
+            "name": "Childhood & Roots",
+            "chapters": [
+              "Origins",
+              "Childhood Home",
+              "School Days",
+              "Family Traditions"
+            ]
+          },
+          {
+            "id": "love_family",
+            "name": "Love & Family",
+            "chapters": [
+              "How We Met",
+              "Wedding",
+              "First Home",
+              "Lessons of Love"
+            ]
+          }
+        ],
+        "constraints": [
+          "Templates must be versioned (template_version)",
+          "Applying template creates user-owned chapters/blocks copies"
+        ]
+      },
+      "acceptanceTests": [
+        "User can apply a template to create a storybook with chapters in correct order",
+        "Template changes do not retroactively modify existing user books"
+      ],
+      "deliverables": [
+        "content/templates/* (or supabase/migrations/009_templates.sql)",
+        "lib/templates/applyTemplate.ts",
+        "docs/templates_v1.md"
+      ]
+    },
+    {
+      "id": "S4-T06",
+      "title": "Minimal API contract for future editor (DTOs + validation stubs)",
+      "skill": ["Architecture", "TypeScript"],
+      "priority": "P1",
+      "requirements": {
+        "dtos": ["StorybookDTO", "ChapterDTO", "BlockDTO", "AssetDTO"],
+        "validation": [
+          "Client-side schema validation using Zod (or equivalent) for DTO shape",
+          "Do NOT implement full media rules yet (that sprint comes later)"
+        ]
+      },
+      "acceptanceTests": [
+        "DTO types match DB fields and are used across data layer",
+        "Invalid shapes are rejected early (developer-facing)"
+      ],
+      "deliverables": [
+        "lib/dto/storybook.ts",
+        "lib/dto/chapter.ts",
+        "lib/dto/block.ts",
+        "lib/dto/asset.ts"
+      ]
+    },
+    {
+      "id": "S4-T07",
+      "title": "RLS integration tests (owner-only) + collaborator future hook",
+      "skill": ["Testing", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "tests": [
+          "User A can create/read/update/delete their storybook",
+          "User B cannot read User A storybook",
+          "Anon cannot read anything",
+          "If collaborator policy enabled: collaborator can read but not write (viewer role)"
+        ],
+        "constraints": [
+          "Tests can be node scripts or minimal integration harness",
+          "Focus on preventing accidental public access"
+        ]
+      },
+      "acceptanceTests": [
+        "Tests pass consistently",
+        "A failing RLS policy would be caught by tests"
+      ],
+      "deliverables": [
+        "tests/integration/rls_storybooks.test.ts",
+        "docs/testing_rls.md"
+      ]
+    },
+    {
+      "id": "S4-T08",
+      "title": "App wiring: Create-first storybook entrypoint from onboarding",
+      "skill": ["Frontend (Next.js)", "Product Flow"],
+      "priority": "P0",
+      "requirements": {
+        "flow": [
+          "After onboarding complete, route to /app/start",
+          "Start page: choose template or blank",
+          "Create storybook row + initial chapters",
+          "Route to /app/storybooks/:id"
+        ],
+        "constraints": [
+          "No editor yet—just show created chapters list and placeholders"
+        ]
+      },
+      "acceptanceTests": [
+        "New user can create a storybook and see it listed",
+        "Chapters created in correct order",
+        "Reload persists state from DB"
+      ],
+      "deliverables": [
+        "app/app/start/page.tsx",
+        "app/app/storybooks/[id]/page.tsx (stub)",
+        "components/storybooks/* (stub list)"
+      ]
+    },
+    {
+      "id": "S4-T09",
+      "title": "Release Sprint 4: deploy migrations + validate RLS in production",
+      "skill": ["Release", "Supabase", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Apply migrations to prod Supabase",
+          "Confirm RLS enabled on all new tables",
+          "Manual test: create storybook, reload, verify persistence",
+          "Manual test: attempt unauthorized read with anon client (should fail)",
+          "Verify error states are friendly in UI"
+        ]
+      },
+      "acceptanceTests": [
+        "Prod DB schema matches expected version",
+        "No user data is publicly readable",
+        "Core create/list/get flows work end-to-end"
+      ],
+      "deliverables": ["docs/release_checklist_s4.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S4-T01",
+      "S4-T02",
+      "S4-T03",
+      "S4-T04",
+      "S4-T07",
+      "S4-T05",
+      "S4-T08",
+      "S4-T06",
+      "S4-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Start with owner-only policies if collaborator rules feel heavy; you can extend collaborator logic in the Sharing sprint.",
+      "Keep block content in JSONB for flexibility; strict rules/validation will be introduced in the Media Rules & Book Modes sprint."
+    ]
+  }
+}

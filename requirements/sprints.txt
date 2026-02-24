@@ -1,14 +1,16 @@
-Sprint titles (in order)
+Brand + Landing Page v1 (Conversion Ready) ✅
 
-Brand + Landing Page v1 (Conversion Ready)
-
-Design System + Marketing Components (Reusable Blocks)
+Design System + Marketing Components (Reusable Blocks) ✅
 
 Auth + Onboarding (Supabase)
 
 Storybook Core Data Model (Supabase Postgres + RLS)
 
 Create Storybook Flow (Templates → Chapters → Editor v0)
+
+Media Rules & Book Modes Foundation (Digital vs Print Constraints) ← insert here
+
+Stock Media Search + Placement v1 (Unsplash/Pexels/Pixabay/Openverse/Rawpixel/Vecteezy) ← (this can be part of 6 or 7; I’d keep separate)
 
 Media Upload Pipeline v1 (Cloudflare R2 + Signed URLs)
 

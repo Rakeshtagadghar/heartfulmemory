@@ -1,23 +1,345 @@
-Media Rules & Book Modes Foundation (Digital vs Print Constraints)
-
-Chapter Editor v1: Blocks for Text, Images, Video, GIF
-
-Stock Media Search v1: Provider Aggregator + License Filters
-
-Image Selector UX: Search → Preview → Crop/Resize → Placement
-
-Attribution & Compliance v1: License Metadata, Captions, Credit Pages
-
-Media Upload Pipeline v1: Supabase Metadata + Cloudflare R2 Assets
-
-Template Chapters v1: Presets + Smart Prompts + Section Reorder
-
-Digital Export v1: Interactive eBook/PDF with Embedded Media Links
-
-Print Export v1: Print-safe Layout Engine + Static-only Validation
-
-Sharing & Collaboration v1: Invites, Comments, Approvals, Audit Trail
-
-Performance & Cost Control: Media Optimization, Quotas, Caching
-
-Polish & Launch: QA, Edge Cases, Legal Pages, Release Checklist
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 3,
+      "title": "Auth + Onboarding (Supabase)",
+      "duration": "1 week",
+      "goal": "Enable secure authentication and a minimal onboarding flow so users can enter the app and create their first storybook draft.",
+      "definitionOfDone": [
+        "Supabase project created and connected to Vercel",
+        "Auth enabled (email magic link and/or password + optional OAuth)",
+        "Protected app routes implemented",
+        "Onboarding flow shipped (profile + first storybook intent)",
+        "Waitlist captures migrated to Supabase table (optional but recommended)",
+        "RLS baseline enabled for user-owned data tables created in this sprint",
+        "Basic auth-related analytics events wired"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "auth": "Supabase Auth",
+      "db": "Supabase Postgres",
+      "hosting": "Vercel",
+      "ui": "Same as Sprint 1-2 (Tailwind+shadcn or MUI)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S3-T01",
+      "title": "Create Supabase project + configure environments (local + Vercel)",
+      "skill": ["DevOps-lite", "Supabase"],
+      "priority": "P0",
+      "requirements": {
+        "setup": [
+          "Create Supabase project",
+          "Set env vars: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY (server only)",
+          "Configure Vercel envs for Preview + Production",
+          "Enable email auth provider(s)"
+        ],
+        "constraints": [
+          "Service role key MUST NOT be exposed to client",
+          "Use separate env values for prod vs preview if needed"
+        ]
+      },
+      "acceptanceTests": [
+        "App can connect to Supabase from server and client using correct keys",
+        "No secrets are bundled into client-side code",
+        "Preview deploys work with their env vars"
+      ],
+      "deliverables": ["docs/supabase_setup.md", ".env.example updated"]
+    },
+    {
+      "id": "S3-T02",
+      "title": "Implement Supabase Auth integration for Next.js App Router",
+      "skill": ["Frontend (Next.js)", "Auth"],
+      "priority": "P0",
+      "requirements": {
+        "authMethods": [
+          "Email magic link (recommended for family/elders)",
+          "Email+password (optional fallback)"
+        ],
+        "pages": [
+          "/login",
+          "/signup (optional if magic link only)",
+          "/auth/callback (if needed)",
+          "/logout"
+        ],
+        "sessionHandling": [
+          "Server-side session awareness for protected routes",
+          "Client hooks/utilities for current user state"
+        ],
+        "constraints": [
+          "No auth flicker: avoid showing protected UI before session resolves",
+          "Handle expired sessions gracefully"
+        ]
+      },
+      "acceptanceTests": [
+        "User can sign in via magic link and returns to app",
+        "User can log out and session is cleared",
+        "Protected routes redirect unauthenticated users to /login"
+      ],
+      "deliverables": [
+        "lib/supabase/client.ts",
+        "lib/supabase/server.ts",
+        "app/login/page.tsx",
+        "app/logout/route.ts (or page/action)"
+      ]
+    },
+    {
+      "id": "S3-T03",
+      "title": "Add route protection + app shell (authenticated area scaffold)",
+      "skill": ["Frontend (Next.js)", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "routes": [
+          "/app (dashboard stub)",
+          "/app/start (first storybook intent)",
+          "/app/onboarding"
+        ],
+        "protection": [
+          "Middleware or server checks to require auth",
+          "Redirect back to intended URL after login"
+        ],
+        "appShell": [
+          "Minimal header (app name, user menu)",
+          "Sidebar stub (future: storybooks, templates, exports)"
+        ]
+      },
+      "acceptanceTests": [
+        "Unauthenticated access to /app/* redirects to /login with returnTo param",
+        "Authenticated user sees app shell consistently across /app routes",
+        "No hydration mismatch warnings"
+      ],
+      "deliverables": [
+        "middleware.ts (if used)",
+        "app/app/layout.tsx",
+        "app/app/page.tsx"
+      ]
+    },
+    {
+      "id": "S3-T04",
+      "title": "Define initial user profile model + onboarding capture",
+      "skill": ["Backend Schema", "Supabase", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "data": {
+          "table": "profiles",
+          "fields": [
+            "id (uuid, pk, equals auth.users.id)",
+            "display_name",
+            "email (optional mirror)",
+            "created_at",
+            "onboarding_completed (bool)",
+            "locale (optional)",
+            "timezone (optional)"
+          ]
+        },
+        "onboardingUI": [
+          "Step 1: display name",
+          "Step 2: goal selection (Create my storybook / Gift / Capture parent stories)",
+          "Step 3: consent checkbox for emails (optional marketing)"
+        ],
+        "constraints": [
+          "RLS: user can read/write only their own profile row",
+          "Idempotent upsert on first login"
+        ]
+      },
+      "acceptanceTests": [
+        "Profile row is created/updated on first login",
+        "RLS prevents reading other profiles",
+        "Onboarding completion persists and changes app routing"
+      ],
+      "deliverables": [
+        "supabase/migrations/001_profiles.sql",
+        "app/app/onboarding/page.tsx",
+        "lib/profile.ts"
+      ]
+    },
+    {
+      "id": "S3-T05",
+      "title": "Migrate waitlist capture to Supabase (from Sprint 1 endpoint)",
+      "skill": ["Backend-lite (Next.js)", "Supabase"],
+      "priority": "P1",
+      "requirements": {
+        "table": "waitlist",
+        "fields": [
+          "id (uuid)",
+          "email (text, unique optional)",
+          "source (text: landing, pricing, gift)",
+          "utm_source, utm_campaign, utm_medium",
+          "referrer",
+          "created_at"
+        ],
+        "endpoint": [
+          "Update /api/waitlist to insert into Supabase",
+          "Keep honeypot + rate limit protections"
+        ],
+        "constraints": [
+          "No PII in analytics events (email only stored in DB)",
+          "Validate email server-side"
+        ]
+      },
+      "acceptanceTests": [
+        "Landing form submissions create rows in waitlist table",
+        "Duplicate submissions handled gracefully (no 500)",
+        "Spam protection still works"
+      ],
+      "deliverables": [
+        "supabase/migrations/002_waitlist.sql",
+        "app/api/waitlist/route.ts updated"
+      ]
+    },
+    {
+      "id": "S3-T06",
+      "title": "Baseline RLS policies (profiles + waitlist) + security checklist",
+      "skill": ["Security", "Supabase (RLS)"],
+      "priority": "P0",
+      "requirements": {
+        "policies": [
+          "profiles: select/update only where id = auth.uid()",
+          "waitlist: insert allowed for anon; read disabled; admin reads via service role only"
+        ],
+        "checklist": [
+          "Confirm RLS enabled on tables",
+          "Confirm anon cannot read PII tables",
+          "Confirm service role used only on server routes"
+        ]
+      },
+      "acceptanceTests": [
+        "Anon cannot select from profiles/waitlist",
+        "Authenticated user can select/update only their own profile",
+        "RLS is enabled and enforced (not just defined)"
+      ],
+      "deliverables": [
+        "supabase/policies/rls_baseline.sql",
+        "docs/security_checklist_s3.md"
+      ]
+    },
+    {
+      "id": "S3-T07",
+      "title": "Auth UX polish (loading states, errors, email deliverability basics)",
+      "skill": ["Frontend UX", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "ux": [
+          "Clear states: sending link, link sent, invalid token, expired link",
+          "Resend link button with cooldown",
+          "Friendly copy for non-technical users"
+        ],
+        "emailDeliverability": [
+          "Set sender name/logo in Supabase auth settings (where available)",
+          "Template copy minimal and clear"
+        ]
+      },
+      "acceptanceTests": [
+        "User always understands what to do next during login",
+        "Errors are actionable (not raw stack traces)",
+        "Mobile experience is clean and accessible"
+      ],
+      "deliverables": ["components/auth/*", "docs/auth_ux_copy.md"]
+    },
+    {
+      "id": "S3-T08",
+      "title": "Analytics events for auth + onboarding funnel",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "auth_view_login",
+          "auth_magiclink_requested",
+          "auth_login_success",
+          "auth_logout",
+          "onboarding_view",
+          "onboarding_complete"
+        ],
+        "properties": ["returnTo", "source", "utm_source", "utm_campaign"],
+        "constraints": [
+          "No email/user PII in analytics payload",
+          "Avoid duplicate firing due to rerenders"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per action",
+        "Onboarding complete event fires only when persisted",
+        "No PII appears in analytics console"
+      ],
+      "deliverables": [
+        "lib/analytics/events_auth.ts",
+        "instrumentation in auth/onboarding pages"
+      ]
+    },
+    {
+      "id": "S3-T09",
+      "title": "E2E smoke tests (auth + protected routes) + local dev workflow docs",
+      "skill": ["Testing", "Dev Experience"],
+      "priority": "P1",
+      "requirements": {
+        "tests": [
+          "Unauthenticated redirect to /login",
+          "Magic link request flow (mock where needed)",
+          "Profile creation on first login",
+          "Onboarding completion routing"
+        ],
+        "docs": [
+          "How to run locally",
+          "How to apply migrations",
+          "How to test auth quickly"
+        ]
+      },
+      "acceptanceTests": [
+        "Smoke tests pass on CI or locally consistently",
+        "Dev can onboard a user end-to-end in under 2 minutes"
+      ],
+      "deliverables": [
+        "tests/e2e/auth.spec.ts (optional)",
+        "docs/dev_workflow_s3.md"
+      ]
+    },
+    {
+      "id": "S3-T10",
+      "title": "Release Sprint 3: deploy + validate auth in production environment",
+      "skill": ["Release", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Verify Supabase env vars on Vercel",
+          "Verify magic link email arrives and callback works",
+          "Verify /app routes protected",
+          "Verify RLS enforcement using anon key",
+          "Verify onboarding persistence"
+        ]
+      },
+      "acceptanceTests": [
+        "Production login works reliably",
+        "No security holes (anon cannot read tables)",
+        "Release checklist recorded"
+      ],
+      "deliverables": ["docs/release_checklist_s3.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S3-T01",
+      "S3-T02",
+      "S3-T03",
+      "S3-T04",
+      "S3-T06",
+      "S3-T07",
+      "S3-T05",
+      "S3-T08",
+      "S3-T09",
+      "S3-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 2,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "If you want the simplest auth for family/elders: start with magic links only and add passwords later.",
+      "Keep service role usage limited to server routes; everything else should use anon key + RLS."
+    ]
+  }
+}

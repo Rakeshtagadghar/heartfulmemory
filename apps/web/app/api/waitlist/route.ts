@@ -1,6 +1,7 @@
 import { mkdir, appendFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { convexMutation, anyApi, getConvexUrl } from "../../../lib/convex/ops";
 import { isValidEmail, normalizeEmail } from "../../../lib/validation/email";
 
 export const runtime = "nodejs";
@@ -37,13 +38,60 @@ function isRateLimited(ip: string) {
   return false;
 }
 
-async function storeEntry(entry: Record<string, unknown>) {
+async function storeEntryFallback(entry: Record<string, unknown>) {
   const filePath =
-    process.env.WAITLIST_STORAGE_FILE ||
-    path.join(process.cwd(), ".data", "waitlist.jsonl");
+    process.env.WAITLIST_STORAGE_FILE || path.join(process.cwd(), ".data", "waitlist.jsonl");
 
   await mkdir(path.dirname(filePath), { recursive: true });
   await appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+}
+
+function inferSource(referrer?: string) {
+  if (!referrer) return "landing";
+  try {
+    const url = new URL(referrer);
+    if (url.pathname.startsWith("/pricing")) return "pricing";
+    if (url.pathname.startsWith("/gift")) return "gift";
+    if (url.pathname.startsWith("/templates")) return "templates";
+  } catch {
+    return "landing";
+  }
+  return "landing";
+}
+
+async function storeWaitlistEntry(entry: {
+  email: string;
+  referrer?: string;
+  utm_source?: string;
+  utm_campaign?: string;
+  utm_medium?: string;
+  timestamp: string;
+  ip: string;
+}) {
+  if (!getConvexUrl()) {
+    await storeEntryFallback(entry);
+    return { ok: true as const, storage: "file" as const };
+  }
+
+  const result = await convexMutation<{ duplicate?: boolean }>(anyApi.waitlist.upsertEntry, {
+    email: entry.email,
+    source: inferSource(entry.referrer),
+    utm_source: entry.utm_source ?? null,
+    utm_campaign: entry.utm_campaign ?? null,
+    utm_medium: entry.utm_medium ?? null,
+    referrer: entry.referrer ?? null,
+    createdAt: entry.timestamp
+  });
+
+  if (!result.ok) {
+    throw new Error(result.error);
+  }
+
+  return {
+    ok: true as const,
+    storage: "convex" as const,
+    duplicate: Boolean(result.data?.duplicate)
+  };
 }
 
 export async function POST(request: Request) {
@@ -52,10 +100,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Invalid JSON body." },
-      { status: 400 }
-    );
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
 
   const parsed = body as {
@@ -68,10 +113,7 @@ export async function POST(request: Request) {
   };
 
   if (parsed.website) {
-    return NextResponse.json(
-      { ok: false, error: "Rejected." },
-      { status: 400 }
-    );
+    return NextResponse.json({ ok: false, error: "Rejected." }, { status: 400 });
   }
 
   const email = normalizeEmail(parsed.email || "");
@@ -85,16 +127,12 @@ export async function POST(request: Request) {
   const ip = getClientIp(request);
   if (isRateLimited(ip)) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Too many requests. Please wait a minute and try again."
-      },
+      { ok: false, error: "Too many requests. Please wait a minute and try again." },
       { status: 429 }
     );
   }
 
-  const headerReferrer =
-    request.headers.get("referer") || request.headers.get("referrer") || undefined;
+  const headerReferrer = request.headers.get("referer") || request.headers.get("referrer") || undefined;
 
   const entry = {
     email,
@@ -107,14 +145,11 @@ export async function POST(request: Request) {
   };
 
   try {
-    await storeEntry(entry);
+    await storeWaitlistEntry(entry);
   } catch (error) {
     console.error("waitlist_store_error", error);
     return NextResponse.json(
-      {
-        ok: false,
-        error: "We could not save your request. Please try again."
-      },
+      { ok: false, error: "We could not save your request. Please try again." },
       { status: 500 }
     );
   }
@@ -127,4 +162,3 @@ export const __waitlistTestUtils = {
     rateLimitStore.clear();
   }
 };
-

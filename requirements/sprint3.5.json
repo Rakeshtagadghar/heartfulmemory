@@ -1,0 +1,283 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "planType": "MIGRATION_SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": "3.5",
+      "title": "Migrate Auth + Backend Foundation from Supabase → Convex",
+      "duration": "2-4 days",
+      "goal": "Remove Supabase dependency and replace it with Convex (auth + database foundation) so Sprint 4 can start on Convex schema + access rules.",
+      "definitionOfDone": [
+        "Convex project created and connected to Next.js app",
+        "Auth works end-to-end (login → protected routes → logout)",
+        "Existing onboarding state persists (profiles equivalent in Convex)",
+        "Waitlist endpoint writes to Convex (optional but recommended)",
+        "Supabase client code removed and build passes",
+        "Deployment works on Vercel with Convex env vars"
+      ]
+    },
+    "keyDecisions": {
+      "authApproachOptions": [
+        {
+          "option": "Convex Auth",
+          "whenToChoose": "If you want auth fully inside Convex (passwords/social/OTP). Convex Auth is beta.",
+          "refs": ["turn0search0", "turn0search4", "turn0search8"]
+        },
+        {
+          "option": "Auth.js (NextAuth) + Convex",
+          "whenToChoose": "If you prefer a mature Next.js-first auth system and treat Next.js + Convex as a unified issuer.",
+          "refs": ["turn0search16"]
+        },
+        {
+          "option": "Clerk/Auth0 hybrid SDKs",
+          "whenToChoose": "If you want hosted auth + server components support; Convex docs highlight Next.js SDKs for these setups.",
+          "refs": ["turn0search12"]
+        }
+      ],
+      "defaultRecommendation": "Auth.js (NextAuth) + Convex for stability, unless you strongly want Convex Auth (beta) simplicity."
+    }
+  },
+  "backlog": [
+    {
+      "id": "MIG-T01",
+      "title": "Create Convex project + wire Next.js client providers",
+      "skill": ["Convex Setup", "Next.js"],
+      "priority": "P0",
+      "requirements": {
+        "steps": [
+          "Create Convex project/deployment",
+          "Install Convex packages and initialize (convex/ folder)",
+          "Add ConvexProvider to App Router client layout"
+        ],
+        "outputs": [
+          "convex/ directory scaffolded",
+          "ConvexProvider configured in app root",
+          "Env var set for deployment URL"
+        ],
+        "constraints": [
+          "Keep marketing pages unaffected",
+          "No Supabase runtime dependency after this task"
+        ]
+      },
+      "acceptanceTests": [
+        "App builds with Convex provider enabled",
+        "Convex dev server runs locally",
+        "No Supabase packages required for runtime"
+      ],
+      "deliverables": [
+        "convex/*",
+        "app/providers.tsx (or equivalent)",
+        ".env.example updated"
+      ]
+    },
+    {
+      "id": "MIG-T02",
+      "title": "Choose auth strategy and implement end-to-end auth",
+      "skill": ["Auth", "Next.js", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "chooseOne": [
+          {
+            "name": "Auth.js + Convex",
+            "implement": [
+              "Set up Auth.js in Next.js server",
+              "Bridge auth identity into Convex (user identity accessible in queries/mutations)",
+              "Ensure server-side session access works for protected routes"
+            ],
+            "refs": ["turn0search16"]
+          },
+          {
+            "name": "Convex Auth",
+            "implement": [
+              "Configure Convex Auth provider",
+              "Implement sign-in/sign-up UI flow",
+              "Enable server-side auth state in Next.js App Router per Convex Auth guidance"
+            ],
+            "refs": ["turn0search0", "turn0search8"]
+          }
+        ],
+        "routeRequirements": [
+          "/login",
+          "/logout",
+          "/app/* protected routes",
+          "returnTo redirects after login"
+        ],
+        "constraints": [
+          "Magic link or one-time codes are preferred (elder-friendly)",
+          "No auth flicker on app shell"
+        ]
+      },
+      "acceptanceTests": [
+        "User can login and reach /app",
+        "User can logout and is redirected to /login",
+        "Protected routes block unauthenticated users",
+        "Auth state is available where needed (client and server if you rely on server components)"
+      ],
+      "deliverables": [
+        "auth implementation files (Auth.js or Convex Auth)",
+        "updated route guards/middleware",
+        "docs/auth_convex.md"
+      ]
+    },
+    {
+      "id": "MIG-T03",
+      "title": "Replace Supabase profile model with Convex `users` table + onboarding persistence",
+      "skill": ["Data Modeling", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "convexSchema": [
+          "Create `users` table storing display_name, email (optional), onboarding_completed, locale, timezone, createdAt"
+        ],
+        "functions": [
+          "mutation: upsertCurrentUser() on first login",
+          "mutation: completeOnboarding(payload)",
+          "query: getCurrentUser()"
+        ],
+        "constraints": [
+          "Do not store sensitive PII beyond what's required",
+          "Ensure the auth subject maps to one `users` document"
+        ],
+        "refs": ["turn0search1", "turn0search5"]
+      },
+      "acceptanceTests": [
+        "First login creates a `users` record",
+        "Onboarding completion persists and gates routing",
+        "Reload retains state correctly"
+      ],
+      "deliverables": [
+        "convex/schema.ts",
+        "convex/users.ts (queries/mutations)",
+        "app/app/onboarding updated"
+      ]
+    },
+    {
+      "id": "MIG-T04",
+      "title": "Migrate waitlist storage endpoint to Convex",
+      "skill": ["Backend-lite", "Convex", "Next.js"],
+      "priority": "P1",
+      "requirements": {
+        "convexSchema": [
+          "Create `waitlist` table with email, source, utm fields, referrer, createdAt"
+        ],
+        "api": [
+          "Update /api/waitlist to call Convex mutation OR",
+          "Call Convex mutation directly from client if acceptable (email is PII; server route preferred)"
+        ],
+        "protections": [
+          "Honeypot",
+          "Rate-limit (per IP) at Next.js route",
+          "Server-side email validation"
+        ]
+      },
+      "acceptanceTests": [
+        "Waitlist submission creates a row in Convex",
+        "Duplicate emails handled gracefully",
+        "Spam submissions are rejected"
+      ],
+      "deliverables": [
+        "convex/waitlist.ts",
+        "app/api/waitlist/route.ts updated"
+      ]
+    },
+    {
+      "id": "MIG-T05",
+      "title": "Remove Supabase codepaths, deps, and env vars; replace data layer contracts",
+      "skill": ["Refactoring", "Next.js", "TypeScript"],
+      "priority": "P0",
+      "requirements": {
+        "remove": [
+          "lib/supabase/*",
+          "supabase env vars",
+          "supabase auth callbacks/routes"
+        ],
+        "replace": [
+          "data access interfaces to call Convex queries/mutations",
+          "auth guards to use chosen auth approach"
+        ],
+        "constraints": [
+          "Keep public marketing pages unchanged",
+          "Keep Sprint 1–2 analytics intact"
+        ]
+      },
+      "acceptanceTests": [
+        "No Supabase imports remain",
+        "Build passes and lints pass",
+        "All auth/onboarding flows still work"
+      ],
+      "deliverables": [
+        "package.json cleaned",
+        ".env.example cleaned",
+        "lib/data/* updated stubs for Convex"
+      ]
+    },
+    {
+      "id": "MIG-T06",
+      "title": "Access control model for Convex (prepare for Sprint 4 schema + permissions)",
+      "skill": ["Security", "Convex Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Document a consistent pattern: ownerId on every story doc + authorization checks in queries/mutations",
+          "Decide: per-document owner vs ACL list (for sharing later)",
+          "Utility function: requireUser(ctx) and requireOwner(ctx, doc)"
+        ],
+        "constraints": [
+          "Convex security is enforced in server functions, not SQL RLS",
+          "Every query/mutation must check auth and ownership"
+        ],
+        "refs": ["turn0search5", "turn0search17"]
+      },
+      "acceptanceTests": [
+        "A non-owner cannot fetch another user's documents (via unit tests or manual test)",
+        "Unauthenticated calls fail with clear errors",
+        "Helper utilities are used across functions"
+      ],
+      "deliverables": [
+        "convex/authz.ts",
+        "docs/convex_access_control.md",
+        "tests/integration/authz_smoke.md"
+      ]
+    },
+    {
+      "id": "MIG-T07",
+      "title": "Vercel deployment wiring for Convex + smoke test in production",
+      "skill": ["DevOps-lite", "Release"],
+      "priority": "P0",
+      "requirements": {
+        "env": [
+          "Set required Convex env vars on Vercel",
+          "Ensure Auth provider secrets configured (Auth.js/Convex Auth)"
+        ],
+        "smokeTests": [
+          "Login",
+          "Onboarding completed persists",
+          "Waitlist submission works",
+          "Protected route behavior"
+        ],
+        "constraints": ["No secrets in client bundle"]
+      },
+      "acceptanceTests": [
+        "Prod deploy works and auth is stable",
+        "No 500s on login callback routes",
+        "Convex functions run in production"
+      ],
+      "deliverables": ["docs/release_checklist_migration_convex.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "MIG-T01",
+      "MIG-T02",
+      "MIG-T03",
+      "MIG-T06",
+      "MIG-T04",
+      "MIG-T05",
+      "MIG-T07"
+    ],
+    "notes": [
+      "You said you haven't created the Supabase DB yet, so this migration is mostly: auth wiring + onboarding persistence + waitlist.",
+      "Convex schemas are defined in code using `defineSchema/defineTable` and validators, so Sprint 4 becomes a Convex schema sprint. :contentReference[oaicite:0]{index=0}",
+      "Convex can also handle file uploads via generated upload URLs, which may later reduce the need for R2 if you ever want to simplify. :contentReference[oaicite:1]{index=1}"
+    ]
+  }
+}

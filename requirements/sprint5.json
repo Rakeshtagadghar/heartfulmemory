@@ -1,0 +1,383 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 5,
+      "title": "Create Storybook Flow (Templates → Chapters → Editor v0)",
+      "duration": "1 week",
+      "goal": "Ship a usable v0 storybook creation experience: choose template/blank, generate chapters, edit chapter content (text + basic image placeholders), reorder chapters, and autosave to Supabase.",
+      "definitionOfDone": [
+        "User can create a storybook from template or blank",
+        "Chapters list view with reorder + rename + add/delete",
+        "Editor v0 supports rich text blocks + image placeholder blocks (no uploads yet)",
+        "Autosave with optimistic UI + conflict-safe versioning v0",
+        "Keyboard-friendly UX and mobile responsive",
+        "Basic validation and error recovery (offline-ish handling)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Tailwind + shadcn/ui OR MUI",
+      "editor": "TipTap (recommended) OR Slate (acceptable)",
+      "state": "TanStack Query (or React Query) for server state",
+      "db": "Supabase Postgres + RLS (from Sprint 4)"
+    }
+  },
+  "scope": {
+    "inScope": [
+      "Templates gallery and apply template",
+      "Storybook dashboard (list + open)",
+      "Chapters management (add, rename, delete, reorder)",
+      "Chapter editor v0 (text blocks + image placeholder blocks)",
+      "Autosave and draft persistence",
+      "Minimal empty states and onboarding guidance"
+    ],
+    "outOfScope": [
+      "Actual media uploads (R2) — Sprint 7/8",
+      "Stock media search (Unsplash/Pexels/Pixabay/Openverse) — later sprint",
+      "Video/GIF blocks — later sprint when rules engine lands",
+      "PDF export — later sprint"
+    ]
+  },
+  "backlog": [
+    {
+      "id": "S5-T01",
+      "title": "Templates gallery UX (browse, preview, apply) with versioned templates",
+      "skill": ["Frontend (Next.js)", "Product UX"],
+      "priority": "P0",
+      "requirements": {
+        "pages": [
+          "/app/templates (gallery)",
+          "/app/start (choose template or blank)"
+        ],
+        "templateCard": [
+          "name",
+          "short description",
+          "chapter count",
+          "preview chapters list",
+          "apply CTA"
+        ],
+        "applyBehavior": [
+          "Creates storybook",
+          "Creates chapters with correct order_index",
+          "Seeds each chapter with a starter TEXT block (empty or prompt)"
+        ],
+        "constraints": [
+          "Templates must be versioned (template_id + template_version)",
+          "Applying template copies content into user-owned rows (no shared references)"
+        ]
+      },
+      "acceptanceTests": [
+        "User can apply a template and lands in the created storybook",
+        "Chapters appear in correct order and are editable",
+        "Template updates do not alter existing books"
+      ],
+      "deliverables": [
+        "app/app/templates/page.tsx",
+        "components/templates/*",
+        "lib/templates/applyTemplate.ts (final wiring)"
+      ]
+    },
+    {
+      "id": "S5-T02",
+      "title": "Storybook dashboard v0 (list, create blank, open, rename)",
+      "skill": ["Frontend (Next.js)", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "pages": [
+          "/app (dashboard list)",
+          "/app/storybooks/:id (storybook home)"
+        ],
+        "features": [
+          "List storybooks (recent first)",
+          "Create blank storybook (default DIGITAL mode for now)",
+          "Rename storybook title/subtitle",
+          "Delete/Archive (optional soft delete)"
+        ],
+        "states": [
+          "Empty state with CTA to templates",
+          "Loading skeletons",
+          "Error state with retry"
+        ]
+      },
+      "acceptanceTests": [
+        "User sees only their storybooks (RLS enforced)",
+        "Rename persists and reflects after reload",
+        "Empty state directs to start flow"
+      ],
+      "deliverables": [
+        "app/app/page.tsx updated",
+        "app/app/storybooks/[id]/page.tsx",
+        "components/storybooks/*"
+      ]
+    },
+    {
+      "id": "S5-T03",
+      "title": "Chapters sidebar: add/rename/delete + reorder (drag & drop)",
+      "skill": ["Frontend", "UX", "State Management"],
+      "priority": "P0",
+      "requirements": {
+        "features": [
+          "Add chapter",
+          "Rename inline",
+          "Delete chapter with undo toast (optional)",
+          "Reorder chapters via drag-and-drop",
+          "Persist order_index updates"
+        ],
+        "constraints": [
+          "Reordering must be stable and persisted atomically (or best-effort with rollback on failure)",
+          "Keyboard alternative for reorder (move up/down buttons) for accessibility"
+        ],
+        "libraries": [
+          "@dnd-kit/core (recommended) OR react-beautiful-dnd fork"
+        ],
+        "data": [
+          "Chapters loaded by storybook_id ordered by order_index",
+          "Reorder writes updated order_index for affected chapters"
+        ]
+      },
+      "acceptanceTests": [
+        "Reorder persists after refresh",
+        "Rename persists and updates in sidebar",
+        "Keyboard reorder works (minimum: move up/down)"
+      ],
+      "deliverables": [
+        "components/chapters/ChaptersSidebar.tsx",
+        "lib/data/chapters.ts updated (reorder)"
+      ]
+    },
+    {
+      "id": "S5-T04",
+      "title": "Editor v0 foundation: TipTap (or Slate) with autosave and block model",
+      "skill": ["Frontend Editor", "TypeScript"],
+      "priority": "P0",
+      "requirements": {
+        "editor": {
+          "capabilities": [
+            "Rich text editing (headings, bold/italic, lists, quote)",
+            "Basic slash menu (optional) for inserting blocks",
+            "Placeholder text prompts (e.g., 'Start writing…')"
+          ],
+          "storageFormat": "Store editor doc as JSON in chapter_blocks.content (TEXT blocks)"
+        },
+        "blockModelV0": [
+          { "type": "TEXT", "content": "tiptapDocJson" },
+          {
+            "type": "IMAGE",
+            "content": "placeholder only: caption + intended placement"
+          }
+        ],
+        "ui": [
+          "Main editor pane",
+          "Insert block menu (Text / Image placeholder)",
+          "Block reorder within chapter (P1 if time)"
+        ],
+        "constraints": [
+          "No actual media upload in Sprint 5 (placeholder only)",
+          "Keep schema compatible with Sprint 4 chapter_blocks table"
+        ]
+      },
+      "acceptanceTests": [
+        "Text edits persist after refresh (autosave)",
+        "User can insert an image placeholder block with caption",
+        "Blocks load in correct order_index"
+      ],
+      "deliverables": [
+        "components/editor/EditorShell.tsx",
+        "components/editor/blocks/TextBlock.tsx",
+        "components/editor/blocks/ImagePlaceholderBlock.tsx",
+        "lib/editor/serialize.ts"
+      ]
+    },
+    {
+      "id": "S5-T05",
+      "title": "Autosave v0: debounced saves + optimistic UI + retry/backoff",
+      "skill": ["Frontend", "Resilience", "State Management"],
+      "priority": "P0",
+      "requirements": {
+        "autosave": [
+          "Debounce 800–1500ms after user stops typing",
+          "Show saving indicator (Saving… / Saved / Error)",
+          "Retry with exponential backoff on transient errors",
+          "Do not spam writes (coalesce updates)"
+        ],
+        "conflictStrategyV0": [
+          "Store updated_at and/or version integer on blocks",
+          "On conflict: show toast 'Newer version exists' + reload option"
+        ],
+        "constraints": [
+          "Must work without websockets",
+          "Must not block typing on slow network"
+        ]
+      },
+      "acceptanceTests": [
+        "Typing does not trigger more than ~1 write per second",
+        "Offline/failed write shows error and retries",
+        "User sees clear 'Saved' state"
+      ],
+      "deliverables": [
+        "lib/editor/autosave.ts",
+        "components/editor/SaveStatus.tsx",
+        "lib/data/blocks.ts updated"
+      ]
+    },
+    {
+      "id": "S5-T06",
+      "title": "Chapter blocks CRUD: list, insert, update, reorder within a chapter",
+      "skill": ["Backend Integration", "TypeScript"],
+      "priority": "P1",
+      "requirements": {
+        "crud": [
+          "listChapterBlocks(chapterId) ordered by order_index",
+          "insertBlock(chapterId, type, content)",
+          "updateBlock(blockId, patch)",
+          "deleteBlock(blockId)",
+          "reorderBlocks(chapterId, newOrder[])"
+        ],
+        "constraints": [
+          "All operations must respect RLS",
+          "Reorder should update only affected rows"
+        ]
+      },
+      "acceptanceTests": [
+        "Blocks persist correctly across reload",
+        "Delete removes block and reorders gracefully",
+        "Reorder persists (if implemented)"
+      ],
+      "deliverables": [
+        "lib/data/blocks.ts enhanced",
+        "components/editor/BlockList.tsx"
+      ]
+    },
+    {
+      "id": "S5-T07",
+      "title": "Editor UX polish: empty states, shortcuts, and mobile layout",
+      "skill": ["UX", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "ux": [
+          "Empty chapter state with starter prompt",
+          "Keyboard shortcuts (Cmd/Ctrl+B/I, headings optional)",
+          "Sticky chapter title input",
+          "Responsive: sidebar collapses into drawer on mobile"
+        ],
+        "a11y": [
+          "Focus management when switching chapters",
+          "Aria labels on block actions"
+        ]
+      },
+      "acceptanceTests": [
+        "Mobile editing is usable without horizontal scroll",
+        "Switching chapters preserves selection and does not lose content",
+        "Keyboard shortcuts work"
+      ],
+      "deliverables": [
+        "components/editor/* updates",
+        "docs/editor_shortcuts.md"
+      ]
+    },
+    {
+      "id": "S5-T08",
+      "title": "Basic instrumentation for creation funnel (template → chapter → first save)",
+      "skill": ["Analytics", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "storybook_create_start",
+          "template_view",
+          "template_apply",
+          "storybook_created",
+          "chapter_selected",
+          "block_inserted",
+          "chapter_first_save",
+          "storybook_rename"
+        ],
+        "constraints": [
+          "No PII in analytics payload",
+          "Avoid firing on rerenders"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per user action",
+        "Template apply flow emits storybook_created",
+        "First successful autosave emits chapter_first_save"
+      ],
+      "deliverables": [
+        "lib/analytics/events_creation.ts",
+        "instrumentation in templates/editor"
+      ]
+    },
+    {
+      "id": "S5-T09",
+      "title": "Testing + QA: happy path for create → edit → refresh",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "testFlows": [
+          "New user creates storybook from template",
+          "Renames storybook and a chapter",
+          "Edits text, inserts image placeholder, refreshes page",
+          "Reorders chapters and refreshes page"
+        ],
+        "tools": [
+          "Playwright (optional) or manual QA checklist",
+          "Unit tests for autosave debounce (optional)"
+        ]
+      },
+      "acceptanceTests": [
+        "All flows pass without data loss",
+        "No console errors in production build",
+        "RLS prevents cross-user access"
+      ],
+      "deliverables": [
+        "docs/qa_checklist_s5.md",
+        "tests/e2e/create_edit_refresh.spec.ts (optional)"
+      ]
+    },
+    {
+      "id": "S5-T10",
+      "title": "Release Sprint 5: deploy and verify editor v0 in production",
+      "skill": ["Release", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Verify template apply creates DB rows correctly",
+          "Verify autosave status and persistence on refresh",
+          "Verify chapter reorder persists",
+          "Verify error handling on failed save (simulate offline)",
+          "Verify mobile layout"
+        ]
+      },
+      "acceptanceTests": [
+        "Users can create and edit storybooks reliably",
+        "No data loss on refresh",
+        "Checklist recorded"
+      ],
+      "deliverables": ["docs/release_checklist_s5.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S5-T01",
+      "S5-T02",
+      "S5-T03",
+      "S5-T04",
+      "S5-T05",
+      "S5-T06",
+      "S5-T07",
+      "S5-T08",
+      "S5-T09",
+      "S5-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1.5,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "Keep Editor v0 intentionally simple: rich text + image placeholders only. Real uploads + stock image selection arrive after media rules + R2 pipeline.",
+      "Storing blocks in JSONB keeps flexibility; later sprints will enforce print/digital rules and richer media types."
+    ]
+  }
+}

@@ -14,8 +14,8 @@ test.describe("Landing page", () => {
     await expect(startCta).toBeVisible();
     await startCta.click();
 
-    await expect(page).toHaveURL(/\/app\/start$/);
-    await expect(page.getByRole("heading", { name: "/app/start" })).toBeVisible();
+    await expect(page).toHaveURL(/\/login\?(.+&)?returnTo=%2Fapp%2Fstart/);
+    await expect(page.getByRole("heading", { name: /continue to memorioso/i })).toBeVisible();
   });
 
   test("pricing CTA preserves plan query param", async ({ page }) => {
