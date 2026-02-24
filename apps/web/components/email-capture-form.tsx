@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { track } from "./analytics";
+import { Button } from "./ui/button";
 
 export function EmailCaptureForm() {
   const [email, setEmail] = useState("");
@@ -85,17 +86,18 @@ export function EmailCaptureForm() {
           placeholder="Enter your email"
           className="h-12 flex-1 rounded-xl border border-white/15 bg-black/20 px-4 text-white placeholder:text-white/45 outline-none transition focus:border-gold/60"
         />
-        <button
+        <Button
           type="submit"
+          size="lg"
           disabled={status === "submitting"}
-          className="h-12 rounded-xl border border-gold/60 bg-gold px-5 font-semibold text-ink transition hover:bg-[#e3c17b] disabled:cursor-not-allowed disabled:opacity-70"
+          className="sm:min-w-[176px]"
         >
           {status === "success"
             ? "You are in"
             : status === "submitting"
               ? "Joining..."
               : "Join the waitlist"}
-        </button>
+        </Button>
       </div>
       {status === "error" && error ? (
         <p className="text-xs text-[#ffb4a9]" role="alert">

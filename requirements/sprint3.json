@@ -1,0 +1,23 @@
+Media Rules & Book Modes Foundation (Digital vs Print Constraints)
+
+Chapter Editor v1: Blocks for Text, Images, Video, GIF
+
+Stock Media Search v1: Provider Aggregator + License Filters
+
+Image Selector UX: Search → Preview → Crop/Resize → Placement
+
+Attribution & Compliance v1: License Metadata, Captions, Credit Pages
+
+Media Upload Pipeline v1: Supabase Metadata + Cloudflare R2 Assets
+
+Template Chapters v1: Presets + Smart Prompts + Section Reorder
+
+Digital Export v1: Interactive eBook/PDF with Embedded Media Links
+
+Print Export v1: Print-safe Layout Engine + Static-only Validation
+
+Sharing & Collaboration v1: Invites, Comments, Approvals, Audit Trail
+
+Performance & Cost Control: Media Optimization, Quotas, Caching
+
+Polish & Launch: QA, Edge Cases, Legal Pages, Release Checklist

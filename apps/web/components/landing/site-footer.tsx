@@ -12,6 +12,9 @@ export function SiteFooter() {
         </div>
         <nav className="flex flex-wrap gap-2 text-sm text-white/65">
           {[
+            ["/pricing", "Pricing"],
+            ["/gift", "Gift"],
+            ["/templates", "Templates"],
             ["/privacy", "Privacy"],
             ["/terms", "Terms"],
             ["/contact", "Contact"]

@@ -1,0 +1,329 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 2,
+      "title": "Design System + Marketing Components (Reusable Blocks)",
+      "duration": "1 week",
+      "goal": "Turn the landing into a reusable marketing system: polished components, content-driven blocks, and a scalable foundation for future pages (Pricing, Gift, Templates, Blog).",
+      "definitionOfDone": [
+        "Reusable marketing component library implemented and documented",
+        "Landing page refactored to use the shared marketing blocks",
+        "New marketing routes scaffolded (Pricing, Gift, Templates)",
+        "Content configuration centralized and type-safe",
+        "Accessibility and responsive behavior validated across components",
+        "Performance remains within Sprint 1 targets"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Tailwind + shadcn/ui (or MUI if already standard)",
+      "animation": "Framer Motion",
+      "analytics": "Same provider chosen in Sprint 1",
+      "hosting": "Vercel"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S2-T01",
+      "title": "Create marketing design system package (tokens + primitives) and usage guidelines",
+      "skill": ["UI Engineering", "Design Systems", "Frontend (CSS/Tailwind)"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "tokens (colors, typography scale, spacing, shadows, radii)",
+          "primitives: Button, Link, Card, Badge, Chip, Tag, Divider, Container, Section",
+          "guidelines: do/don't + examples"
+        ],
+        "constraints": [
+          "WCAG AA contrast",
+          "No hard-coded colors in feature sections (use tokens)",
+          "All primitives include hover/focus/disabled/loading states"
+        ]
+      },
+      "acceptanceTests": [
+        "All landing CTAs use the shared Button primitive",
+        "Focus states are visible and consistent",
+        "Tokens can be changed in one place and propagate across the landing"
+      ],
+      "deliverables": [
+        "design/tokens.ts (or tailwind.config.ts tokens)",
+        "components/ui/* (primitives)",
+        "docs/design-system.md"
+      ]
+    },
+    {
+      "id": "S2-T02",
+      "title": "Build reusable marketing blocks (section-level components)",
+      "skill": ["Frontend (Next.js)", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "blocks": [
+          "HeroSplit",
+          "Stepper",
+          "FeatureGrid",
+          "HighlightBanner",
+          "Carousel",
+          "TestimonialSlider",
+          "PricingCards",
+          "FaqAccordion",
+          "EmailCapture",
+          "Footer"
+        ],
+        "contentDriven": true,
+        "constraints": [
+          "Blocks accept props from a single typed config schema",
+          "Blocks support light/dark backgrounds and optional ornaments (texture/glow) without rewriting"
+        ]
+      },
+      "acceptanceTests": [
+        "Landing composes blocks purely from config (no inline copy in components)",
+        "Blocks render correctly when optional fields are missing",
+        "All blocks are responsive and keyboard-accessible"
+      ],
+      "deliverables": [
+        "components/marketing/blocks/*",
+        "content/landing.schema.ts",
+        "content/landingContent.ts (refactored)"
+      ]
+    },
+    {
+      "id": "S2-T03",
+      "title": "Refactor landing page to fully config-driven marketing blocks",
+      "skill": ["Frontend (Next.js)", "Refactoring"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "landing page uses only MarketingBlocks + config",
+          "remove duplicated styles/logic from landing components"
+        ],
+        "constraints": [
+          "No visual regression against Sprint 1 (except improvements)",
+          "Keep analytics events intact"
+        ]
+      },
+      "acceptanceTests": [
+        "Diff check: section order and copy match config",
+        "Events still fire from the right block and include section context",
+        "No runtime warnings and no hydration mismatches"
+      ],
+      "deliverables": [
+        "app/page.tsx updated",
+        "components/marketing/* refactor"
+      ]
+    },
+    {
+      "id": "S2-T04",
+      "title": "Add top navigation + marketing layout shell (sticky, responsive, polished)",
+      "skill": ["Frontend (Next.js)", "UX", "Accessibility"],
+      "priority": "P1",
+      "requirements": {
+        "nav": [
+          "sticky header",
+          "mobile drawer",
+          "anchor scroll to sections",
+          "CTA in header"
+        ],
+        "layout": [
+          "MarketingLayout wrapper",
+          "shared background/ornament system"
+        ],
+        "constraints": [
+          "Accessible menu (aria, focus trap, ESC to close)",
+          "Smooth anchor scroll without breaking browser back behavior"
+        ]
+      },
+      "acceptanceTests": [
+        "Keyboard navigation works end-to-end",
+        "Active section highlight behaves reasonably on scroll",
+        "No CLS introduced by header"
+      ],
+      "deliverables": [
+        "components/marketing/NavBar.tsx",
+        "components/marketing/MarketingLayout.tsx"
+      ]
+    },
+    {
+      "id": "S2-T05",
+      "title": "Scaffold additional marketing routes (Pricing, Gift, Templates) using the same block system",
+      "skill": ["Frontend (Next.js)", "Product/UX"],
+      "priority": "P0",
+      "requirements": {
+        "routes": [
+          { "path": "/pricing", "purpose": "Plan comparison + FAQ + CTA" },
+          {
+            "path": "/gift",
+            "purpose": "Gift explanation + how it works + CTA"
+          },
+          { "path": "/templates", "purpose": "Template gallery + CTA" }
+        ],
+        "constraints": [
+          "Reuse MarketingLayout and blocks",
+          "Copy/config lives in content/*.ts"
+        ]
+      },
+      "acceptanceTests": [
+        "All routes render and are linked from footer/nav",
+        "Each route has correct metadata (title/description/OG)",
+        "Routes are indexable (unless intentionally blocked)"
+      ],
+      "deliverables": [
+        "app/pricing/page.tsx",
+        "app/gift/page.tsx",
+        "app/templates/page.tsx",
+        "content/pricingContent.ts",
+        "content/giftContent.ts",
+        "content/templatesContent.ts"
+      ]
+    },
+    {
+      "id": "S2-T06",
+      "title": "Asset pipeline: book mock placeholders + icon set + illustration style",
+      "skill": ["UI/Visual Design", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "assets": [
+          "storybook cover mock (placeholder)",
+          "chapter page mock (placeholder)",
+          "family poster mock (placeholder)",
+          "consistent icon set (lucide or equivalent)"
+        ],
+        "constraints": [
+          "Use next/image with correct sizing",
+          "Provide fallbacks if assets missing (skeleton/gradient blocks)"
+        ]
+      },
+      "acceptanceTests": [
+        "All marketing visuals load with blur placeholders",
+        "No broken images in production build",
+        "Hero visual remains performant on mobile"
+      ],
+      "deliverables": [
+        "public/marketing/*",
+        "components/marketing/MediaMock.tsx"
+      ]
+    },
+    {
+      "id": "S2-T07",
+      "title": "Marketing copy system: variants + tone guardrails + disclaimers for roadmap features",
+      "skill": ["Copywriting", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "outputs": [
+          "copy tokens: headline, subheadline, benefit bullets",
+          "2 hero variants (for future A/B testing)",
+          "roadmap disclaimers (QR/print marked as coming soon)"
+        ],
+        "constraints": [
+          "No claims about features not shipped",
+          "Keep copy warm and family-first"
+        ]
+      },
+      "acceptanceTests": [
+        "Copy can be swapped via config without component edits",
+        "Roadmap features always show 'coming soon' badge",
+        "No competitor names on-page"
+      ],
+      "deliverables": ["docs/copy_styleguide.md", "content/copyTokens.ts"]
+    },
+    {
+      "id": "S2-T08",
+      "title": "Accessibility + QA sweep across marketing components",
+      "skill": ["Accessibility", "QA", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "checks": [
+          "keyboard navigation for all interactive elements",
+          "aria roles/labels for sliders, accordions, nav",
+          "focus outlines and skip-to-content link",
+          "prefers-reduced-motion"
+        ],
+        "tools": [
+          "eslint-plugin-jsx-a11y (if applicable)",
+          "manual keyboard pass",
+          "Lighthouse a11y"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical a11y issues in Lighthouse",
+        "Accordion, slider, nav all usable without mouse",
+        "Reduced motion works across blocks"
+      ],
+      "deliverables": ["docs/a11y_sweep_s2.md", "code fixes across components"]
+    },
+    {
+      "id": "S2-T09",
+      "title": "Performance regression guard + bundle hygiene",
+      "skill": ["Performance Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "targets": {
+          "noRegressionFromSprint1": true,
+          "bundle_initial_kb_gzip_target": 180,
+          "lcp_ms": 2500,
+          "cls": 0.1
+        },
+        "tactics": [
+          "lazy-load below-the-fold blocks where appropriate",
+          "defer analytics",
+          "avoid heavy animation libraries beyond Framer Motion",
+          "optimize fonts"
+        ]
+      },
+      "acceptanceTests": [
+        "Lighthouse meets or exceeds Sprint 1 targets",
+        "No new console errors",
+        "No excessive JS for simple blocks"
+      ],
+      "deliverables": [
+        "docs/lighthouse_report_s2.md",
+        "perf optimizations committed"
+      ]
+    },
+    {
+      "id": "S2-T10",
+      "title": "Release Sprint 2: deploy, verify routes, update checklist",
+      "skill": ["Release", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Verify /, /pricing, /gift, /templates",
+          "Verify meta tags on each route",
+          "Verify waitlist form still works",
+          "Verify analytics events still fire",
+          "Broken link scan"
+        ]
+      },
+      "acceptanceTests": [
+        "All marketing routes are live on Vercel",
+        "No broken navigation",
+        "Checklist recorded"
+      ],
+      "deliverables": ["docs/release_checklist_s2.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S2-T01",
+      "S2-T02",
+      "S2-T03",
+      "S2-T05",
+      "S2-T04",
+      "S2-T06",
+      "S2-T08",
+      "S2-T09",
+      "S2-T07",
+      "S2-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Sprint 2 keeps backend dependencies minimal; Supabase/R2 integration begins Sprint 3+.",
+      "All marketing pages should be config-driven to enable rapid iteration without refactors."
+    ]
+  }
+}

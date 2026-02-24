@@ -1,4 +1,5 @@
 import brandJson from "../../../docs/brand.json";
+import type { MarketingPageConfig } from "./landing.schema";
 
 export type HowItWorksStep = { title: string; desc: string };
 export type FeatureItem = { icon: string; title: string; desc: string };
@@ -145,3 +146,148 @@ export const faqs: readonly FaqItem[] = [
     a: "Your content is private by default. You control invites and sharing."
   }
 ];
+
+export const landingPageConfig: MarketingPageConfig = {
+  meta: {
+    title: landingSeo.title,
+    description: landingSeo.description,
+    ogTitle: landingSeo.ogTitle,
+    ogDescription: landingSeo.ogDescription
+  },
+  nav: brand.navLabels.map((item) => ({ label: item.label, href: `#${item.id}` })),
+  blocks: [
+    {
+      type: "hero_split",
+      id: "hero",
+      content: {
+        badge: heroCopy.badge,
+        headline: heroCopy.headline,
+        subheadline: heroCopy.subheadline,
+        bullets: heroBullets,
+        socialProof: heroCopy.socialProof,
+        ctas: [
+          {
+            label: "Start your Storybook",
+            href: "/app/start",
+            eventName: "cta_start_click",
+            eventProps: { section: "hero" },
+            variant: "primary"
+          },
+          {
+            label: "Gift a Storybook",
+            href: "/gift",
+            eventName: "cta_gift_click",
+            eventProps: { section: "hero" },
+            variant: "secondary"
+          }
+        ]
+      }
+    },
+    {
+      type: "stepper",
+      id: "how_it_works",
+      theme: "emerald",
+      content: {
+        kicker: "Simple in four steps",
+        title: "How it works",
+        steps: howItWorks
+      }
+    },
+    {
+      type: "feature_grid",
+      id: "feature_grid",
+      theme: "navy",
+      content: {
+        kicker: "Built for memory capture, not busywork",
+        title: "Everything you need to start (Phase 1)",
+        items: features
+      }
+    },
+    {
+      type: "highlight_banner",
+      id: "qr_teaser",
+      content: {
+        badge: "Roadmap",
+        title: "Scan-to-relive (coming next)",
+        desc: "Future chapters can include QR codes so readers can hear the original voice behind each story.",
+        cta: {
+          label: "Join the waitlist",
+          href: "#email_capture",
+          eventName: "email_capture_focus",
+          variant: "primary"
+        }
+      }
+    },
+    {
+      type: "carousel_cards",
+      id: "templates",
+      theme: "rose",
+      content: {
+        kicker: "Choose a guided path, then personalize it",
+        title: "Start faster with story templates",
+        items: templates,
+        cta: {
+          label: "Browse templates",
+          href: "/templates",
+          eventName: "cta_templates_click",
+          variant: "secondary"
+        }
+      }
+    },
+    {
+      type: "testimonials",
+      id: "testimonials",
+      theme: "pearl",
+      content: {
+        kicker: "Placeholder reviews for Phase 1",
+        title: "Made for families, easy for elders",
+        items: testimonials
+      }
+    },
+    {
+      type: "pricing_cards",
+      id: "pricing",
+      theme: "gold",
+      content: {
+        kicker: "Start digital. Upgrade to print later.",
+        title: "Simple pricing",
+        plans: pricingPlans.map((plan, index) => ({
+          ...plan,
+          cta: {
+            label: plan.cta,
+            href: plan.href,
+            eventName: "pricing_plan_select",
+            eventProps: { plan_id: plan.id },
+            variant: index === 2 ? "secondary" : "primary"
+          },
+          badge: index === 1 ? "Popular gift" : undefined
+        })),
+        note:
+          "Pricing should remain configurable server-side and can be localized by region later."
+      }
+    },
+    {
+      type: "faq",
+      id: "faq",
+      theme: "midnight",
+      content: {
+        kicker: "Clear answers before you commit",
+        title: "Frequently asked questions",
+        items: faqs
+      }
+    },
+    {
+      type: "email_capture",
+      id: "email_capture",
+      content: {
+        badge: "Waitlist",
+        title: "Get notified when QR and print upgrades launch",
+        desc: "Join early to get roadmap updates and launch pricing when hardcover and scan-to-relive chapters become available."
+      }
+    },
+    {
+      type: "footer",
+      id: "footer"
+    }
+  ]
+};

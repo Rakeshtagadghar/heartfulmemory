@@ -1,5 +1,8 @@
 # Sprint 1 Release Checklist (Memorioso)
 
+Date: 2026-02-24
+Status: Local implementation complete. Deployment/release execution pending Vercel.
+
 ## Vercel Setup
 - [ ] Create Vercel project and connect repository
 - [ ] Set production domain
@@ -13,7 +16,15 @@
 - `WAITLIST_RATE_LIMIT_WINDOW_MS` (optional)
 - `WAITLIST_RATE_LIMIT_MAX` (optional)
 
-## QA Checklist
+## Local QA Completed
+- [x] Landing route implemented and renders from config-driven sections
+- [x] Legal pages (`/privacy`, `/terms`, `/contact`) render
+- [x] Waitlist API + honeypot + validation + rate limit implemented and tested locally
+- [x] Metadata + OG/Twitter tags + JSON-LD implemented
+- [x] Robots and sitemap endpoints implemented
+- [x] GA4 client instrumentation implemented (env-gated)
+
+## Production QA Checklist
 - [ ] Mobile + desktop visual QA on landing page
 - [ ] Broken link scan (`/`, `/privacy`, `/terms`, `/contact`)
 - [ ] Waitlist form success + error + rate-limit behavior
@@ -26,4 +37,3 @@
 - Version/Commit:
 - Reviewer:
 - Known limitations:
-

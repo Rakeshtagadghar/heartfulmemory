@@ -19,15 +19,33 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
   title: landingSeo.title,
   description: landingSeo.description,
+  applicationName: "Memorioso",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" }
+    ],
+    apple: [{ url: "/apple-icon.svg", type: "image/svg+xml" }],
+    shortcut: ["/icon.svg"]
+  },
   openGraph: {
     title: landingSeo.ogTitle,
     description: landingSeo.ogDescription,
-    type: "website"
+    type: "website",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Memorioso family storybook preview"
+      }
+    ]
   },
   twitter: {
     card: "summary_large_image",
     title: landingSeo.twitterTitle,
-    description: landingSeo.twitterDescription
+    description: landingSeo.twitterDescription,
+    images: ["/twitter-image"]
   }
 };
 
@@ -49,7 +67,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 function gtag(){dataLayer.push(arguments);}
                 window.gtag = gtag;
                 gtag('js', new Date());
-                gtag('config', '${gaMeasurementId}', { send_page_view: false });
+                gtag('config', '${gaMeasurementId}', { send_page_view: true });
               `}
             </Script>
           </>

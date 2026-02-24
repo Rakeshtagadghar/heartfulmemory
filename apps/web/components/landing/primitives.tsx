@@ -1,4 +1,4 @@
-type SectionTheme =
+export type SectionTheme =
   | "emerald"
   | "navy"
   | "rose"

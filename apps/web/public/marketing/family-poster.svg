@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1200">
+  <rect width="900" height="1200" rx="34" fill="#efe6d7"/>
+  <rect x="26" y="26" width="848" height="1148" rx="28" fill="none" stroke="rgba(15,30,53,.12)"/>
+  <text x="80" y="120" fill="rgba(15,30,53,.5)" font-size="34" letter-spacing="10" font-family="Arial">FAMILY TREE POSTER</text>
+  <g stroke="rgba(15,30,53,.1)" fill="rgba(255,255,255,.65)">
+    <rect x="88" y="180" width="200" height="200" rx="20"/>
+    <rect x="350" y="180" width="200" height="200" rx="20"/>
+    <rect x="612" y="180" width="200" height="200" rx="20"/>
+    <rect x="88" y="448" width="200" height="200" rx="20"/>
+    <rect x="350" y="448" width="200" height="200" rx="20" fill="rgba(213,179,106,.25)" stroke="#b78a37"/>
+    <rect x="612" y="448" width="200" height="200" rx="20"/>
+    <rect x="88" y="716" width="200" height="200" rx="20"/>
+    <rect x="350" y="716" width="200" height="200" rx="20"/>
+    <rect x="612" y="716" width="200" height="200" rx="20"/>
+  </g>
+  <text x="80" y="1030" fill="rgba(15,30,53,.62)" font-size="28" font-family="Arial">Placeholder visual for future printable family poster add-on.</text>
+</svg>
+

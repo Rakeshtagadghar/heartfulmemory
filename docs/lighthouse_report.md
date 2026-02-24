@@ -1,19 +1,24 @@
-# Sprint 1 Lighthouse Report (Placeholder)
+# Sprint 1 Lighthouse Report
 
-Status: Pending final production deployment and Vercel preview QA.
+Date: 2026-02-24
+Status: Local performance hygiene complete. Final Lighthouse scoring still requires deployed URLs.
 
 ## Target Gates
 - Mobile: Performance 85+, Accessibility 90+, Best Practices 90+, SEO 90+
 - Desktop: Performance 90+, Accessibility 90+, Best Practices 90+, SEO 90+
 
-## Planned Measurement Process
-1. Run production build on Vercel preview.
-2. Test `/` on mobile and desktop profiles.
-3. Record scores and key regressions (LCP, CLS, JS payload).
-4. Patch issues and re-run until thresholds are met.
+## What Is Implemented
+- Responsive landing sections rendered from central config
+- Lightweight decorative CSS visuals (no heavy hero video)
+- `next/image` usage for marketing placeholder assets / mocks (Sprint 2 route additions)
+- Reduced-motion support for motion-heavy interactions
+- Deferred analytics script initialization via `next/script`
 
-## Current Local Notes
-- Landing page uses CSS-based decorative visuals (no heavy media payload).
-- `prefers-reduced-motion` support is enabled in global styles.
-- Final scoring requires production-hosted measurement.
+## Validation Notes
+- Production build succeeds locally
+- No known large layout shift sources from image dimensions in landing/marketing mocks
+- Final score capture and exact metrics (LCP/CLS/INP) must be measured on Vercel preview or production
 
+## Pending External Measurement
+- [ ] Run Lighthouse on deployed `/`
+- [ ] Record scores and any fixes required

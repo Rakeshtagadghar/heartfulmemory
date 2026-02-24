@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#152742"/>
+      <stop offset="55%" stop-color="#102039"/>
+      <stop offset="100%" stop-color="#08111f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="20%" cy="15%" r="60%">
+      <stop offset="0%" stop-color="#d5b36a" stop-opacity=".25"/>
+      <stop offset="100%" stop-color="#d5b36a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="900" rx="44" fill="url(#bg)"/>
+  <rect width="1200" height="900" rx="44" fill="url(#glow)"/>
+  <g opacity=".08" stroke="#fff">
+    <path d="M0 90h1200M0 180h1200M0 270h1200M0 360h1200M0 450h1200M0 540h1200M0 630h1200M0 720h1200M0 810h1200"/>
+    <path d="M100 0v900M200 0v900M300 0v900M400 0v900M500 0v900M600 0v900M700 0v900M800 0v900M900 0v900M1000 0v900M1100 0v900"/>
+  </g>
+  <rect x="80" y="120" width="260" height="660" rx="28" fill="#0a172b" stroke="#d5b36a" stroke-opacity=".18"/>
+  <rect x="118" y="155" width="184" height="184" rx="20" fill="#12213a" stroke="#d5b36a" stroke-opacity=".25"/>
+  <text x="400" y="180" fill="#d5b36a" font-size="28" letter-spacing="8" font-family="Georgia">HEIRLOOM EDITION</text>
+  <text x="400" y="285" fill="#f4ecdc" font-size="76" font-family="Georgia">The House of</text>
+  <text x="400" y="370" fill="#f4ecdc" font-size="76" font-family="Georgia">Memory</text>
+  <text x="400" y="440" fill="rgba(255,255,255,.72)" font-size="30" font-family="Arial">Guided stories, family voices, and keepsake chapters.</text>
+  <g fill="none" stroke="rgba(255,255,255,.12)">
+    <rect x="400" y="515" width="240" height="74" rx="16"/>
+    <rect x="660" y="515" width="240" height="74" rx="16"/>
+    <rect x="920" y="515" width="200" height="74" rx="16"/>
+    <rect x="400" y="610" width="320" height="74" rx="16"/>
+    <rect x="740" y="610" width="380" height="74" rx="16"/>
+  </g>
+</svg>
+
