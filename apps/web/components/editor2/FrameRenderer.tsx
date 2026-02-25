@@ -101,7 +101,7 @@ export function FrameRenderer({ // NOSONAR
   selected: boolean;
   textEditing?: boolean;
   cropEditing?: boolean;
-  onSelect: () => void;
+  onSelect: (options?: { additive?: boolean; preserveIfSelected?: boolean }) => void;
   onStartTextEdit?: () => void;
   onEndTextEdit?: () => void;
   onTextChange?: (value: string) => void;
@@ -149,7 +149,109 @@ export function FrameRenderer({ // NOSONAR
     type: frame.type
   });
 
-  function renderFrameBody() {
+  function renderTextFrameContent() {
+    if (textEditing) {
+      return (
+        <textarea
+          ref={textareaRef}
+          value={previewText}
+          onChange={(event) => onTextChange?.(event.target.value)}
+          onBlur={() => onEndTextEdit?.()}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onEndTextEdit?.();
+            }
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              onEndTextEdit?.();
+            }
+          }}
+          onPaste={(event) => {
+            event.preventDefault();
+            const pasted = getSanitizedPastedText(event.nativeEvent);
+            const target = event.currentTarget;
+            const start = target.selectionStart ?? target.value.length;
+            const end = target.selectionEnd ?? target.value.length;
+            const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
+            onTextChange?.(next);
+            globalThis.requestAnimationFrame(() => {
+              const caret = start + pasted.length;
+              target.setSelectionRange(caret, caret);
+            });
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
+          style={{
+            fontFamily: "inherit",
+            fontSize: "inherit",
+            lineHeight: "inherit",
+            fontWeight: "inherit",
+            textAlign: "inherit",
+            color: "inherit"
+          }}
+        />
+      );
+    }
+    if (previewText) {
+      return <TextRenderer text={previewText} style={normalizedTextStyle} />;
+    }
+    return <span className="text-black/35">Empty text frame</span>;
+  }
+
+  function renderNonTextOverlay() {
+    if (!frame.locked && !isTextFrame && !cropEditing) {
+      return (
+        <button
+          type="button"
+          aria-label={`Select and move ${frame.type.toLowerCase()} frame`}
+          className="absolute inset-0 z-10 cursor-move"
+          onPointerDown={(event) => {
+            const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+            onSelect(additive ? { additive: true } : { preserveIfSelected: true });
+            if (additive) return;
+            onDragStart(event);
+          }}
+          onDoubleClick={(event) => {
+            if (!cropEditableImageSrc) return;
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect({ preserveIfSelected: true });
+            onStartCropEdit?.();
+          }}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onSelect({ preserveIfSelected: true });
+            onOpenElementContextMenu?.(event.clientX, event.clientY);
+          }}
+        />
+      );
+    }
+
+    if (!frame.locked) {
+      return null;
+    }
+
+    return (
+      <button
+        type="button"
+        aria-label={`Select ${frame.type.toLowerCase()} frame`}
+        className="absolute inset-0 z-10 cursor-pointer"
+        onClick={(event) => onSelect({ additive: event.shiftKey || event.metaKey || event.ctrlKey })}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect({ preserveIfSelected: true });
+          if (frame.type !== "TEXT") {
+            onOpenElementContextMenu?.(event.clientX, event.clientY);
+          }
+        }}
+      />
+    );
+  }
+
+  function renderFrameBody() { // NOSONAR
     if (isTextFrame) {
       return (
         <div
@@ -167,51 +269,7 @@ export function FrameRenderer({ // NOSONAR
             opacity: normalizedTextStyle.opacity
           }}
         >
-          {textEditing ? (
-            <textarea
-              ref={textareaRef}
-              value={previewText}
-              onChange={(event) => onTextChange?.(event.target.value)}
-              onBlur={() => onEndTextEdit?.()}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  onEndTextEdit?.();
-                }
-                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault();
-                  onEndTextEdit?.();
-                }
-              }}
-              onPaste={(event) => {
-                event.preventDefault();
-                const pasted = getSanitizedPastedText(event.nativeEvent);
-                const target = event.currentTarget;
-                const start = target.selectionStart ?? target.value.length;
-                const end = target.selectionEnd ?? target.value.length;
-                const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
-                onTextChange?.(next);
-                globalThis.requestAnimationFrame(() => {
-                  const caret = start + pasted.length;
-                  target.setSelectionRange(caret, caret);
-                });
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
-              style={{
-                fontFamily: "inherit",
-                fontSize: "inherit",
-                lineHeight: "inherit",
-                fontWeight: "inherit",
-                textAlign: "inherit",
-                color: "inherit"
-              }}
-            />
-          ) : previewText ? (
-            <TextRenderer text={previewText} style={normalizedTextStyle} />
-          ) : (
-            <span className="text-black/35">Empty text frame</span>
-          )}
+          {renderTextFrameContent()}
           {overflow && !textEditing ? (
             <div className="absolute inset-x-2 bottom-2 rounded border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200">
               Text overflow
@@ -311,45 +369,7 @@ export function FrameRenderer({ // NOSONAR
       }}
     >
       <div className={shellClasses}>
-        {!frame.locked && !isTextFrame && !cropEditing ? (
-          <button
-            type="button"
-            aria-label={`Select and move ${frame.type.toLowerCase()} frame`}
-            className="absolute inset-0 z-10 cursor-move"
-            onPointerDown={(event) => {
-              onSelect();
-              onDragStart(event);
-            }}
-            onDoubleClick={(event) => {
-              if (!cropEditableImageSrc) return;
-              event.preventDefault();
-              event.stopPropagation();
-              onSelect();
-              onStartCropEdit?.();
-            }}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onSelect();
-              onOpenElementContextMenu?.(event.clientX, event.clientY);
-            }}
-          />
-        ) : frame.locked ? (
-          <button
-            type="button"
-            aria-label={`Select ${frame.type.toLowerCase()} frame`}
-            className="absolute inset-0 z-10 cursor-pointer"
-            onClick={onSelect}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onSelect();
-              if (frame.type !== "TEXT") {
-                onOpenElementContextMenu?.(event.clientX, event.clientY);
-              }
-            }}
-          />
-        ) : null}
+        {renderNonTextOverlay()}
 
         {!frame.locked && isTextFrame && !textEditing ? (
           <button
@@ -358,7 +378,7 @@ export function FrameRenderer({ // NOSONAR
             className="absolute inset-0 z-10 cursor-text rounded-lg bg-transparent text-left"
             onClick={(event) => {
               event.stopPropagation();
-              onSelect();
+              onSelect({ additive: event.shiftKey || event.metaKey || event.ctrlKey });
               if (shouldEnterTextEditMode({ detail: event.detail })) {
                 onStartTextEdit?.();
               }
@@ -366,7 +386,7 @@ export function FrameRenderer({ // NOSONAR
             onContextMenu={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              onSelect();
+              onSelect({ preserveIfSelected: true });
               onOpenTextContextMenu?.(event.clientX, event.clientY);
             }}
           />

@@ -14,6 +14,18 @@ export function isNodeDuplicateShortcut(event: KeyboardEvent) {
   return isModifierPressed(event) && event.key.toLowerCase() === "d";
 }
 
+export function isNodeLockShortcut(event: KeyboardEvent) {
+  return isModifierPressed(event) && event.key.toLowerCase() === "l";
+}
+
+export function isNodeBringForwardShortcut(event: KeyboardEvent) {
+  return isModifierPressed(event) && event.key === "]";
+}
+
+export function isNodeSendBackwardShortcut(event: KeyboardEvent) {
+  return isModifierPressed(event) && event.key === "[";
+}
+
 export function isUndoShortcut(event: KeyboardEvent) {
   return isModifierPressed(event) && !event.shiftKey && event.key.toLowerCase() === "z";
 }

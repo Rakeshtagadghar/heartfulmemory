@@ -64,7 +64,7 @@ import { migrateTextFrameToTextNodeV1 } from "../../../../packages/editor/serial
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
 import {
   buildClipboardFramePayload,
-  buildFrameInputFromClipboard,
+  buildClipboardFramesPayload,
   getNodeClipboard,
   setNodeClipboard
 } from "../../../../packages/editor/clipboard/nodeClipboard";
@@ -72,7 +72,10 @@ import {
   isEditableTextTarget,
   isNodeCopyShortcut,
   isNodeDuplicateShortcut,
-  isNodePasteShortcut
+  isNodePasteShortcut,
+  isNodeBringForwardShortcut,
+  isNodeLockShortcut,
+  isNodeSendBackwardShortcut
 } from "../../../../packages/editor/shortcuts/shortcuts";
 import { buildCenteredShapeFrameInput } from "../../../../packages/editor/commands/insertShape";
 import { buildCenteredLineFrameInput } from "../../../../packages/editor/commands/insertLine";
@@ -80,8 +83,18 @@ import { buildCenteredPlaceholderFrameInput } from "../../../../packages/editor/
 import { buildCenteredGridGroupInput, type GridPresetId } from "../../../../packages/editor/commands/insertGrid";
 import { buildApplyCropPatch } from "../../../../packages/editor/commands/applyCrop";
 import { buildCropRotationPatch } from "../../../../packages/editor/commands/updateCropRotation";
+import { buildAlignToPagePatches } from "../../../../packages/editor/commands/alignToPage";
+import { buildAlignToSelectionPatches } from "../../../../packages/editor/commands/alignToSelection";
+import { buildDistributePatches } from "../../../../packages/editor/commands/distribute";
+import { bringForward, bringToFront, sendBackward, sendToBack } from "../../../../packages/editor/commands/layerCommands";
+import { buildFrameInputsFromClipboard } from "../../../../packages/editor/commands/pasteNodes";
+import { buildToggleLockSelectionPatches } from "../../../../packages/editor/commands/toggleLock";
+import { buildDrawOrderFromNodes, drawOrderToZIndexPatches } from "../../../../packages/editor/layers/layerModel";
 import type { ElementsCatalogItemId } from "../studio/panels/elementsCatalog";
 import type { DraggedMediaPayload } from "../studio/dnd/frameDropTarget";
+import type { NodeMenuActionId } from "../studio/menus/menuActions";
+import { buildSelectionState, clearSelection, withSelectionBounds } from "../../../../packages/editor/selection/selectionState";
+import { getSelectedNodes, isDistributionEligible } from "../../../../packages/editor/selection/selectionHelpers";
 import {
   normalizeCropModelV1,
   resetCropModelV1,
@@ -89,6 +102,7 @@ import {
   type CropModelV1
 } from "../../../../packages/editor/models/cropModel";
 import { updateCropZoomConstrained } from "../../../../packages/editor/interaction/cropPanZoom";
+import { canEnterCropMode, canEnterTextEdit } from "../../../../packages/editor/interaction/lockGuards";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -113,6 +127,17 @@ function mergeFrameIntoMap(
   next[updated.page_id] = sortFrames(frames);
   return next;
 }
+
+type EditorFramePatch = Partial<Pick<FrameDTO, "x" | "y" | "w" | "h" | "z_index" | "locked">> & {
+  style?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+  crop?: Record<string, unknown> | null;
+};
+
+type EditorFramePatchRequest = {
+  id: string;
+  patch: EditorFramePatch;
+};
 
 function getAssetPreviewUrl(asset: AssetDTO) {
   return asset.storage_provider === "R2"
@@ -181,6 +206,7 @@ export function Editor2Shell({// NOSONAR
     useState<Record<string, FrameDTO[]>>(initialFramesByPageId);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(initialPages[0]?.id ?? null);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
+  const [selectedFrameIds, setSelectedFrameIds] = useState<string[]>([]);
   const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);
   const [cropModeFrameId, setCropModeFrameId] = useState<string | null>(null);
   const [cropDraft, setCropDraft] = useState<{
@@ -203,13 +229,7 @@ export function Editor2Shell({// NOSONAR
   const [showSafeAreaOverlay, setShowSafeAreaOverlay] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<
-    Partial<Pick<FrameDTO, "x" | "y" | "w" | "h" | "z_index" | "locked">> & {
-      style?: Record<string, unknown>;
-      content?: Record<string, unknown>;
-      crop?: Record<string, unknown> | null;
-    }
-  >({});
+  const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<EditorFramePatch>({});
   const [isPending, startTransition] = useTransition();
   const studioShell = useHoverPanelController();
   const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
@@ -232,6 +252,21 @@ export function Editor2Shell({// NOSONAR
     () => currentFrames.find((frame) => frame.id === selectedFrameId) ?? null,
     [currentFrames, selectedFrameId]
   );
+  const selectedFrames = useMemo(
+    () => getSelectedNodes(currentFrames, selectedFrameIds),
+    [currentFrames, selectedFrameIds]
+  );
+  const selectionState = useMemo(() => {
+    const base = buildSelectionState({
+      selectedIds: selectedFrameIds,
+      primaryId: selectedFrameId
+    });
+    return withSelectionBounds(
+      base,
+      selectedFrames.map((frame) => ({ id: frame.id, x: frame.x, y: frame.y, w: frame.w, h: frame.h }))
+    );
+  }, [selectedFrameId, selectedFrameIds, selectedFrames]);
+  const selectionBounds = selectionState.bounds;
   const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
   const selectedTextStyle = useMemo(
     () => (selectedTextFrame ? normalizeTextNodeStyleV1(selectedTextFrame.style) : null),
@@ -271,7 +306,7 @@ export function Editor2Shell({// NOSONAR
     } as Record<string, Record<string, unknown>>;
   }, [cropDraft]);
 
-  async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
+  const persistFramePatch = useCallback(async (frameId: string, patch: Parameters<typeof updateFrameAction>[2]) => {
     const result = await updateFrameAction(storybook.id, frameId, patch);
     if (!result.ok) {
       setMessage(result.error);
@@ -283,7 +318,7 @@ export function Editor2Shell({// NOSONAR
       setSelectedFrameDraftPatch({});
     }
     return result;
-  }
+  }, [selectedFrameId, storybook.id]);
 
   function findFrameById(frameId: string) {
     return (
@@ -292,6 +327,43 @@ export function Editor2Shell({// NOSONAR
       null
     );
   }
+
+  function setPrimarySelection(
+    nextPrimaryId: string | null,
+    nextSelectedIds: string[],
+    options?: { preserveModes?: boolean }
+  ) {
+    const deduped = [...new Set(nextSelectedIds.filter((id) => id.length > 0))];
+    const primaryId = nextPrimaryId && deduped.includes(nextPrimaryId) ? nextPrimaryId : (deduped[0] ?? null);
+    setSelectedFrameIds(deduped);
+    setSelectedFrameId((current) => {
+      if (current !== primaryId) {
+        setSelectedFrameDraftPatch({});
+      }
+      return primaryId;
+    });
+    if (!options?.preserveModes) {
+      setEditingTextFrameId((current) => (primaryId && current === primaryId ? current : null));
+      setCropModeFrameId((current) => (primaryId && current === primaryId ? current : null));
+    }
+  }
+
+  const persistFramePatches = useCallback(async (patches: EditorFramePatchRequest[]) => {
+    if (patches.length === 0) return { ok: true as const };
+    const frameById = new Map(allFrames.map((frame) => [frame.id, frame]));
+    for (const { id, patch } of patches) {
+      const frame = frameById.get(id);
+      if (!frame) continue;
+      const result = await persistFramePatch(id, {
+        ...patch,
+        expectedVersion: frame.version
+      });
+      if (!result.ok) {
+        return { ok: false as const, error: result.error };
+      }
+    }
+    return { ok: true as const };
+  }, [allFrames, persistFramePatch]);
 
   const autosave = useFrameAutosave({
     enabled: Boolean(selectedFrame) && Object.keys(selectedFrameDraftPatch).length > 0,
@@ -324,6 +396,7 @@ export function Editor2Shell({// NOSONAR
     }
     setPages((current) => sortPages([...current, result.data]));
     setSelectedPageId(result.data.id);
+    setSelectedFrameIds([]);
     setFramesByPageId((current) => ({ ...current, [result.data.id]: [] }));
     setMessage(null);
   }
@@ -376,6 +449,7 @@ export function Editor2Shell({// NOSONAR
       setFramesByPageId(nextByPage);
     }
     setSelectedPageId(result.data.id);
+    setSelectedFrameIds([]);
     setSelectedFrameId(null);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
@@ -406,6 +480,7 @@ export function Editor2Shell({// NOSONAR
     if (selectedPageId === pageId) {
       const nextSelected = nextPages[Math.min(page.order_index, Math.max(0, nextPages.length - 1))] ?? nextPages[0] ?? null;
       setSelectedPageId(nextSelected?.id ?? null);
+      setSelectedFrameIds([]);
       setSelectedFrameId(null);
       setEditingTextFrameId(null);
       setCropModeFrameId(null);
@@ -422,7 +497,7 @@ export function Editor2Shell({// NOSONAR
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
+    setPrimarySelection(result.data.id, [result.data.id]);
     setCropModeFrameId(null);
     if (type === "IMAGE") {
       openImagePanel();
@@ -473,7 +548,7 @@ export function Editor2Shell({// NOSONAR
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
+    setPrimarySelection(result.data.id, [result.data.id]);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
@@ -502,7 +577,7 @@ export function Editor2Shell({// NOSONAR
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
+    setPrimarySelection(result.data.id, [result.data.id], { preserveModes: true });
     setEditingTextFrameId(result.data.id);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
@@ -533,13 +608,7 @@ export function Editor2Shell({// NOSONAR
     }
   }
 
-  const applySelectedFrameDraftPatch = useCallback((
-    patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h" | "z_index" | "locked">> & {
-      style?: Record<string, unknown>;
-      content?: Record<string, unknown>;
-      crop?: Record<string, unknown> | null;
-    }
-  ) => {
+  const applySelectedFrameDraftPatch = useCallback((patch: EditorFramePatch) => {
     if (!selectedFrame) return;
     setFramesByPageId((current) => {
       const next = { ...current };
@@ -580,6 +649,7 @@ export function Editor2Shell({// NOSONAR
       next[selectedPageId] = (next[selectedPageId] ?? []).filter((frame) => frame.id !== selectedFrameId);
       return next;
     });
+    setSelectedFrameIds([]);
     setSelectedFrameId(null);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
@@ -644,7 +714,7 @@ export function Editor2Shell({// NOSONAR
   function handleNavigateToExportIssue(issue: ExportValidationIssue) {
     setSelectedPageId(issue.pageId);
     if (issue.frameId) {
-      setSelectedFrameId(issue.frameId);
+      setPrimarySelection(issue.frameId, [issue.frameId]);
       setEditingTextFrameId(null);
       setCropModeFrameId(null);
     }
@@ -654,23 +724,32 @@ export function Editor2Shell({// NOSONAR
     }
   }
 
-  function handleSelectFrame(frameId: string) {
+  function handleSelectFrame(frameId: string, options?: { additive?: boolean; preserveIfSelected?: boolean }) {
     const frame = currentFrames.find((item) => item.id === frameId);
-    setSelectedFrameId((current) => {
-      if (current !== frameId) {
-        setSelectedFrameDraftPatch({});
+    if (options?.additive) {
+      const alreadySelected = selectedFrameIds.includes(frameId);
+      const nextIds = alreadySelected
+        ? selectedFrameIds.filter((id) => id !== frameId)
+        : [...selectedFrameIds, frameId];
+      let nextPrimaryId: string | null = frameId;
+      if (alreadySelected) {
+        nextPrimaryId = selectedFrameId === frameId ? (nextIds[0] ?? null) : selectedFrameId;
       }
-      return frameId;
-    });
-    setEditingTextFrameId((current) => (current === frameId ? current : null));
-    setCropModeFrameId((current) => (current === frameId ? current : null));
-    if (frame?.type === "IMAGE") {
+      setPrimarySelection(nextPrimaryId, nextIds);
+    } else if (options?.preserveIfSelected && selectedFrameIds.includes(frameId)) {
+      setPrimarySelection(selectedFrameId ?? frameId, selectedFrameIds, { preserveModes: true });
+    } else {
+      setPrimarySelection(frameId, [frameId]);
+    }
+    if (frame?.type === "IMAGE" && !options?.additive) {
       openImagePanel();
     }
   }
 
   function handleStartTextEdit(frameId: string) {
-    setSelectedFrameId(frameId);
+    const frame = findFrameById(frameId);
+    if (!canEnterTextEdit(frame)) return;
+    setPrimarySelection(frameId, [frameId], { preserveModes: true });
     setEditingTextFrameId(frameId);
     setCropModeFrameId((current) => (current === frameId ? null : current));
   }
@@ -681,8 +760,8 @@ export function Editor2Shell({// NOSONAR
 
   function handleStartCropEdit(frameId: string) {
     const frame = findFrameById(frameId);
-    if (!isCropEditableFrame(frame)) return;
-    setSelectedFrameId(frameId);
+    if (!isCropEditableFrame(frame) || !canEnterCropMode(frame)) return;
+    setPrimarySelection(frameId, [frameId], { preserveModes: true });
     setCropModeFrameId(frameId);
     setEditingTextFrameId((current) => (current === frameId ? null : current));
     const mode = frame.type === "FRAME" ? "frame" : "free";
@@ -782,75 +861,233 @@ export function Editor2Shell({// NOSONAR
   }
 
   function handleClearSelection() {
+    const emptySelection = clearSelection();
     if (cropDraft?.frameId === cropModeFrameId) {
       restorePanelAfterCropExit(cropDraft);
     }
-    setSelectedFrameId(null);
+    setSelectedFrameIds(emptySelection.selectedIds);
+    setSelectedFrameId(emptySelection.primaryId);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setCropDraft(null);
     setSelectedFrameDraftPatch({});
   }
 
-  async function handleDuplicateSelectedTextFrame() {
-    if (!selectedTextFrame || !selectedPage) return;
-    const payload = buildDuplicatedFrameInput(selectedTextFrame);
-    const result = await createFrameAction(storybook.id, selectedPage.id, payload);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
+  const createFramesAndSelect = useCallback(async (inputs: Parameters<typeof createFrameAction>[2][]) => {
+    if (!selectedPage || inputs.length === 0) return { ok: false as const, error: "No page selected." };
+    const created: FrameDTO[] = [];
+    for (const input of inputs) {
+      const result = await createFrameAction(storybook.id, selectedPage.id, input);
+      if (!result.ok) {
+        setMessage(result.error);
+        return { ok: false as const, error: result.error };
+      }
+      created.push(result.data);
+      setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
     }
-    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
+    const nextIds = created.map((frame) => frame.id);
+    setPrimarySelection(nextIds.at(-1) ?? null, nextIds);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
-    setMessage("Text box duplicated.");
+    return { ok: true as const, data: created };
+  }, [selectedPage, storybook.id]);
+
+  const handleDuplicateSelection = useCallback(async () => {
+    if (!selectedPage || selectedFrames.length === 0) return;
+    const orderedSelection = [...selectedFrames].sort((a, b) => a.z_index - b.z_index);
+    if (orderedSelection.length === 1) {
+      const payload = buildDuplicatedFrameInput(orderedSelection[0]);
+      const result = await createFramesAndSelect([payload]);
+      if (result.ok) {
+        setMessage(`${orderedSelection[0].type === "TEXT" ? "Text box" : "Frame"} duplicated.`);
+      }
+      return;
+    }
+    const clipboardPayload = buildClipboardFramesPayload(orderedSelection);
+    const inputs = buildFrameInputsFromClipboard(clipboardPayload);
+    const result = await createFramesAndSelect(inputs);
+    if (result.ok) {
+      setMessage(`${orderedSelection.length} items duplicated.`);
+    }
+  }, [createFramesAndSelect, selectedFrames, selectedPage]);
+
+  async function handleDuplicateSelectedTextFrame() {
+    await handleDuplicateSelection();
   }
 
   const handleDuplicateSelectedFrame = useCallback(async () => {
-    if (!selectedFrame || !selectedPage) return;
-    const payload = buildDuplicatedFrameInput(selectedFrame);
-    const result = await createFrameAction(storybook.id, selectedPage.id, payload);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
-    }
-    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
-    setEditingTextFrameId(null);
-    setCropModeFrameId(null);
-    setSelectedFrameDraftPatch({});
-    setMessage(`${selectedFrame.type === "TEXT" ? "Text box" : "Frame"} duplicated.`);
-  }, [selectedFrame, selectedPage, storybook.id]);
+    await handleDuplicateSelection();
+  }, [handleDuplicateSelection]);
 
   const handleCopySelectedFrame = useCallback(() => {
-    if (!selectedFrame) return;
-    setNodeClipboard(buildClipboardFramePayload(selectedFrame));
-    setMessage(`${selectedFrame.type === "TEXT" ? "Text box" : "Frame"} copied.`);
-  }, [selectedFrame]);
+    if (selectedFrames.length === 0) return;
+    const orderedSelection = [...selectedFrames].sort((a, b) => a.z_index - b.z_index);
+    if (orderedSelection.length === 1) {
+      setNodeClipboard(buildClipboardFramePayload(orderedSelection[0]));
+      setMessage(`${orderedSelection[0].type === "TEXT" ? "Text box" : "Frame"} copied.`);
+      return;
+    }
+    setNodeClipboard(buildClipboardFramesPayload(orderedSelection));
+    setMessage(`${orderedSelection.length} items copied.`);
+  }, [selectedFrames]);
 
   const handlePasteClipboardFrame = useCallback(async () => {
     if (!selectedPage) return;
     const clipboard = getNodeClipboard();
-    if (clipboard?.type !== "frame") return;
-    const result = await createFrameAction(storybook.id, selectedPage.id, buildFrameInputFromClipboard(clipboard));
-    if (!result.ok) {
-      setMessage(result.error);
+    const inputs = buildFrameInputsFromClipboard(clipboard);
+    if (inputs.length === 0) return;
+    const result = await createFramesAndSelect(inputs);
+    if (!result.ok) return;
+    setMessage(inputs.length === 1 ? "Item pasted." : `${inputs.length} items pasted.`);
+  }, [createFramesAndSelect, selectedPage]);
+
+  const handleToggleSelectedFrameLock = useCallback(async () => {
+    if (selectedFrames.length === 0) return;
+    if (selectedFrames.length === 1 && selectedFrame) {
+      applySelectedFrameDraftPatch(toggleNodeLocked(selectedFrame.locked));
       return;
     }
-    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setSelectedFrameId(result.data.id);
+    const patches = buildToggleLockSelectionPatches(currentFrames, selectedFrameIds).map((patch) => ({
+      id: patch.id,
+      patch: { locked: patch.locked }
+    }));
+    const result = await persistFramePatches(patches);
+    if (!result.ok) return;
+    setMessage("Selection lock updated.");
+  }, [
+    applySelectedFrameDraftPatch,
+    currentFrames,
+    persistFramePatches,
+    selectedFrame,
+    selectedFrameIds,
+    selectedFrames
+  ]);
+
+  async function applyGeometryPatches(
+    patches: Array<{ id: string; x?: number; y?: number }>,
+    successMessage: string
+  ) {
+    const framePatchList = patches.map((patch) => ({
+      id: patch.id,
+      patch: {
+        ...(typeof patch.x === "number" ? { x: patch.x } : {}),
+        ...(typeof patch.y === "number" ? { y: patch.y } : {})
+      }
+    }));
+    const result = await persistFramePatches(framePatchList);
+    if (!result.ok) return;
+    setMessage(successMessage);
+  }
+
+  const handleLayerAction = useCallback(async (
+    action: "bringForward" | "sendBackward" | "bringToFront" | "sendToBack"
+  ) => {
+    if (selectedFrames.length === 0) return;
+    const drawOrder = buildDrawOrderFromNodes(currentFrames);
+    const nextDrawOrder = (() => {
+      if (action === "bringForward") {
+        return bringForward(drawOrder, selectedFrameIds);
+      }
+      if (action === "sendBackward") {
+        return sendBackward(drawOrder, selectedFrameIds);
+      }
+      if (action === "bringToFront") {
+        return bringToFront(drawOrder, selectedFrameIds);
+      }
+      return sendToBack(drawOrder, selectedFrameIds);
+    })();
+
+    const currentZById = new Map(currentFrames.map((frame) => [frame.id, frame.z_index]));
+    const patches = drawOrderToZIndexPatches(nextDrawOrder)
+      .filter(({ id, z_index }) => currentZById.get(id) !== z_index)
+      .map(({ id, z_index }) => ({ id, patch: { z_index } }));
+
+    if (patches.length === 0) return;
+    const result = await persistFramePatches(patches);
+    if (!result.ok) return;
+    setMessage("Layer order updated.");
+  }, [currentFrames, persistFramePatches, selectedFrameIds, selectedFrames]);
+
+  async function handleAlignToPage(
+    action: Parameters<typeof buildAlignToPagePatches>[2]
+  ) {
+    if (!selectedPage || selectedFrames.length === 0) return;
+    const patches = buildAlignToPagePatches(selectedFrames, {
+      width: selectedPage.width_px,
+      height: selectedPage.height_px
+    }, action);
+    await applyGeometryPatches(patches, "Aligned to page.");
+  }
+
+  async function handleAlignToSelection(
+    action: Parameters<typeof buildAlignToSelectionPatches>[2]
+  ) {
+    if (!selectionBounds || selectedFrames.length < 2) return;
+    const patches = buildAlignToSelectionPatches(selectedFrames, selectionBounds, action);
+    await applyGeometryPatches(patches, "Aligned selection.");
+  }
+
+  async function handleDistribute(
+    action: Parameters<typeof buildDistributePatches>[1]
+  ) {
+    if (!isDistributionEligible(selectedFrames)) return;
+    const patches = buildDistributePatches(selectedFrames, action);
+    await applyGeometryPatches(patches, "Selection distributed.");
+  }
+
+  async function handleNodeMenuAction(action: NodeMenuActionId) { // NOSONAR
+    if (action === "copy") return handleCopySelectedFrame();
+    if (action === "paste") return handlePasteClipboardFrame();
+    if (action === "duplicate") return handleDuplicateSelectedFrame();
+    if (action === "delete") return handleDeleteSelection();
+    if (action === "replaceImage") return openImagePanel();
+    if (action === "lock" || action === "unlock") return handleToggleSelectedFrameLock();
+    if (action === "bringForward") return handleLayerAction("bringForward");
+    if (action === "sendBackward") return handleLayerAction("sendBackward");
+    if (action === "bringToFront") return handleLayerAction("bringToFront");
+    if (action === "sendToBack") return handleLayerAction("sendToBack");
+    if (action === "alignPageLeft") return handleAlignToPage("left");
+    if (action === "alignPageCenterX") return handleAlignToPage("centerX");
+    if (action === "alignPageRight") return handleAlignToPage("right");
+    if (action === "alignPageTop") return handleAlignToPage("top");
+    if (action === "alignPageCenterY") return handleAlignToPage("centerY");
+    if (action === "alignPageBottom") return handleAlignToPage("bottom");
+    if (action === "alignSelectionLeft") return handleAlignToSelection("left");
+    if (action === "alignSelectionCenterX") return handleAlignToSelection("centerX");
+    if (action === "alignSelectionRight") return handleAlignToSelection("right");
+    if (action === "alignSelectionTop") return handleAlignToSelection("top");
+    if (action === "alignSelectionCenterY") return handleAlignToSelection("centerY");
+    if (action === "alignSelectionBottom") return handleAlignToSelection("bottom");
+    if (action === "distributeHorizontal") return handleDistribute("horizontal");
+    if (action === "distributeVertical") return handleDistribute("vertical");
+  }
+
+  const handleDeleteSelection = useCallback(async () => {
+    if (!selectedPageId || selectedFrames.length === 0) return;
+    const unlockedIds = selectedFrames.filter((frame) => !frame.locked).map((frame) => frame.id);
+    if (unlockedIds.length === 0) {
+      setMessage("Unlock the selected items before deleting.");
+      return;
+    }
+    for (const id of unlockedIds) {
+      const result = await removeFrameAction(storybook.id, id);
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+    }
+    setFramesByPageId((current) => {
+      const next = { ...current };
+      next[selectedPageId] = (next[selectedPageId] ?? []).filter((frame) => !unlockedIds.includes(frame.id));
+      return next;
+    });
+    setPrimarySelection(null, []);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
-    setMessage(`${clipboard.frameType === "TEXT" ? "Text box" : "Frame"} pasted.`);
-  }, [selectedPage, storybook.id]);
-
-  function handleToggleSelectedFrameLock() {
-    if (!selectedFrame) return;
-    applySelectedFrameDraftPatch(toggleNodeLocked(selectedFrame.locked));
-  }
+    setMessage(unlockedIds.length === 1 ? "Item deleted." : `${unlockedIds.length} items deleted.`);
+  }, [selectedFrames, selectedPageId, storybook.id]);
 
   async function refreshAssets() {
     setAssetsLoading(true);
@@ -901,7 +1138,7 @@ export function Editor2Shell({// NOSONAR
       showStudioToast({ kind: "error", title: "Frame fill failed", message: result.error });
       return true;
     }
-    setSelectedFrameId(targetFrame.id);
+    setPrimarySelection(targetFrame.id, [targetFrame.id]);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
@@ -944,7 +1181,7 @@ export function Editor2Shell({// NOSONAR
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, inserted.frame));
-    setSelectedFrameId(inserted.frame.id);
+    setPrimarySelection(inserted.frame.id, [inserted.frame.id]);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
@@ -1000,7 +1237,7 @@ export function Editor2Shell({// NOSONAR
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, inserted.frame));
-    setSelectedFrameId(inserted.frame.id);
+    setPrimarySelection(inserted.frame.id, [inserted.frame.id]);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
@@ -1161,9 +1398,9 @@ export function Editor2Shell({// NOSONAR
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) { // NOSONAR
       if (
-        !selectedFrame ||
-        editingTextFrameId === selectedFrame.id ||
-        cropModeFrameId === selectedFrame.id ||
+        !selectedFrameId ||
+        (editingTextFrameId && selectedFrameIds.includes(editingTextFrameId)) ||
+        (cropModeFrameId && selectedFrameIds.includes(cropModeFrameId)) ||
         isEditableTextTarget(event.target)
       ) {
         return;
@@ -1185,7 +1422,6 @@ export function Editor2Shell({// NOSONAR
 
       if (isNodeDuplicateShortcut(event)) {
         event.preventDefault();
-        if (selectedFrame.locked) return;
         startTransition(() => {
           void handleDuplicateSelectedFrame();
         });
@@ -1194,14 +1430,37 @@ export function Editor2Shell({// NOSONAR
 
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
-        if (selectedFrame.locked) return;
         startTransition(() => {
-          void handleDeleteSelectedFrame();
+          void handleDeleteSelection();
         });
         return;
       }
 
-      if (event.key === "Enter" && selectedFrame.type === "TEXT") {
+      if (isNodeLockShortcut(event)) {
+        event.preventDefault();
+        startTransition(() => {
+          void handleToggleSelectedFrameLock();
+        });
+        return;
+      }
+
+      if (isNodeBringForwardShortcut(event)) {
+        event.preventDefault();
+        startTransition(() => {
+          void handleLayerAction("bringForward");
+        });
+        return;
+      }
+
+      if (isNodeSendBackwardShortcut(event)) {
+        event.preventDefault();
+        startTransition(() => {
+          void handleLayerAction("sendBackward");
+        });
+        return;
+      }
+
+      if (event.key === "Enter" && selectedFrame?.type === "TEXT") {
         event.preventDefault();
         setEditingTextFrameId(selectedFrame.id);
         return;
@@ -1210,7 +1469,7 @@ export function Editor2Shell({// NOSONAR
       const nudge = event.shiftKey ? 10 : 1;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         event.preventDefault();
-        if (selectedFrame.locked) return;
+        if (!selectedFrame || selectedFrameIds.length > 1 || selectedFrame.locked) return;
         let patch: { x?: number; y?: number };
         switch (event.key) {
           case "ArrowUp":
@@ -1238,9 +1497,13 @@ export function Editor2Shell({// NOSONAR
     editingTextFrameId,
     handleCopySelectedFrame,
     handleDuplicateSelectedFrame,
-    handleDeleteSelectedFrame,
+    handleDeleteSelection,
+    handleLayerAction,
     handlePasteClipboardFrame,
+    handleToggleSelectedFrameLock,
     selectedFrame,
+    selectedFrameId,
+    selectedFrameIds,
     startTransition
   ]);
 
@@ -1311,6 +1574,8 @@ export function Editor2Shell({// NOSONAR
                 page={selectedPage}
                 frames={currentFrames}
                 selectedFrameId={selectedFrameId}
+                selectedFrameIds={selectedFrameIds}
+                selectionBounds={selectionBounds}
                 zoom={zoom}
                 showGrid={showGridOverlay}
                 showMarginsOverlay={showMarginsOverlay}
@@ -1329,14 +1594,14 @@ export function Editor2Shell({// NOSONAR
                 onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
                 onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
                 onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
-                onDuplicateSelectedElementFrame={() => void handleDuplicateSelectedFrame()}
-                onDeleteSelectedTextFrame={() => void handleDeleteSelectedFrame()}
-                onToggleSelectedFrameLock={handleToggleSelectedFrameLock}
-                onBringSelectedFrameForward={handleBringToFront}
-                onSendSelectedFrameBackward={handleSendBackward}
-                onOpenSelectedElementImagePicker={
-                  selectedFrame?.type === "FRAME" ? openImagePanel : undefined
-                }
+                onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
+                onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
+                onNodeMenuAction={(action) => {
+                  void handleNodeMenuAction(action);
+                }}
+                nodeMenuCanPaste={Boolean(getNodeClipboard())}
+                nodeMenuCanAlignSelection={selectedFrames.length >= 2 && Boolean(selectionBounds)}
+                nodeMenuCanDistribute={isDistributionEligible(selectedFrames)}
                 onStartCropEdit={handleStartCropEdit}
                 onEndCropEdit={handleApplyCropEdit}
                 onCropChange={handleCropChange}

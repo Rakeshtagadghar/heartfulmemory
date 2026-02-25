@@ -11,8 +11,9 @@ import { resizeImageWithAspect } from "../../lib/editor2/resizeImage";
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
 import { FloatingTextToolbar } from "../studio/overlays/FloatingTextToolbar";
 import { useFloatingAnchor } from "../studio/overlays/useFloatingAnchor";
-import { TextContextMenu } from "../studio/menus/TextContextMenu";
-import { ElementContextMenu } from "../studio/menus/ElementContextMenu";
+import { NodeContextMenu } from "../studio/menus/NodeContextMenu";
+import type { NodeMenuActionId } from "../studio/menus/menuActions";
+import type { BoundsRect } from "../../../../packages/editor/selection/computeBounds";
 import {
   findTopmostFrameDropTarget,
   getDraggedMediaPayload,
@@ -35,6 +36,8 @@ export function CanvasStage({ // NOSONAR
   page,
   frames,
   selectedFrameId,
+  selectedFrameIds = [],
+  selectionBounds = null,
   zoom,
   showGrid,
   showMarginsOverlay = true,
@@ -53,12 +56,12 @@ export function CanvasStage({ // NOSONAR
   onOpenTextFontPanel,
   onOpenTextColorPanel,
   onDuplicateSelectedTextFrame,
-  onDuplicateSelectedElementFrame,
   onDeleteSelectedTextFrame,
   onToggleSelectedFrameLock,
-  onBringSelectedFrameForward,
-  onSendSelectedFrameBackward,
-  onOpenSelectedElementImagePicker,
+  onNodeMenuAction,
+  nodeMenuCanPaste = false,
+  nodeMenuCanAlignSelection = false,
+  nodeMenuCanDistribute = false,
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
@@ -70,6 +73,8 @@ export function CanvasStage({ // NOSONAR
   page: PageDTO | null;
   frames: FrameDTO[];
   selectedFrameId: string | null;
+  selectedFrameIds?: string[];
+  selectionBounds?: BoundsRect | null;
   zoom: number;
   showGrid: boolean;
   showMarginsOverlay?: boolean;
@@ -80,7 +85,7 @@ export function CanvasStage({ // NOSONAR
   editingTextFrameId: string | null;
   cropModeFrameId: string | null;
   cropDraftByFrameId?: Record<string, Record<string, unknown> | null>;
-  onSelectFrame: (frameId: string) => void;
+  onSelectFrame: (frameId: string, options?: { additive?: boolean; preserveIfSelected?: boolean }) => void;
   onStartTextEdit: (frameId: string) => void;
   onEndTextEdit: (frameId: string) => void;
   onTextContentChange: (frameId: string, text: string) => void;
@@ -88,12 +93,12 @@ export function CanvasStage({ // NOSONAR
   onOpenTextFontPanel?: () => void;
   onOpenTextColorPanel?: () => void;
   onDuplicateSelectedTextFrame: () => void;
-  onDuplicateSelectedElementFrame?: () => void;
   onDeleteSelectedTextFrame: () => void;
   onToggleSelectedFrameLock: () => void;
-  onBringSelectedFrameForward: () => void;
-  onSendSelectedFrameBackward: () => void;
-  onOpenSelectedElementImagePicker?: () => void;
+  onNodeMenuAction?: (action: NodeMenuActionId) => void;
+  nodeMenuCanPaste?: boolean;
+  nodeMenuCanAlignSelection?: boolean;
+  nodeMenuCanDistribute?: boolean;
   onStartCropEdit: (frameId: string) => void;
   onEndCropEdit: (frameId: string) => void;
   onCropChange: (frameId: string, crop: Record<string, unknown>) => void;
@@ -112,12 +117,7 @@ export function CanvasStage({ // NOSONAR
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [interaction, setInteraction] = useState<InteractionState>(null);
-  const [textContextMenu, setTextContextMenu] = useState<{
-    open: boolean;
-    left: number;
-    top: number;
-  }>({ open: false, left: 0, top: 0 });
-  const [elementContextMenu, setElementContextMenu] = useState<{
+  const [nodeContextMenu, setNodeContextMenu] = useState<{
     open: boolean;
     left: number;
     top: number;
@@ -269,12 +269,11 @@ export function CanvasStage({ // NOSONAR
     );
   }
 
-  const textContextMenuOpen =
-    textContextMenu.open && Boolean(selectedTextFrame) && editingTextFrameId !== selectedTextFrame?.id;
-  const elementContextMenuOpen =
-    elementContextMenu.open &&
-    Boolean(selectedFrame && selectedFrame.type !== "TEXT") &&
-    editingTextFrameId !== selectedFrame?.id;
+  const nodeContextMenuOpen =
+    nodeContextMenu.open &&
+    Boolean(selectedFrame) &&
+    editingTextFrameId !== selectedFrame?.id &&
+    Boolean(onNodeMenuAction);
 
   return (
     <div ref={stageRef} className="relative flex h-full min-h-0 flex-col bg-[#d7d8dc]">
@@ -375,18 +374,18 @@ export function CanvasStage({ // NOSONAR
                   <FrameRenderer
                     key={frame.id}
                     frame={frame}
-                    selected={frame.id === selectedFrameId}
+                    selected={selectedFrameIds.includes(frame.id)}
                     textEditing={frame.id === editingTextFrameId}
                     cropEditing={frame.id === cropModeFrameId}
                     cropOverride={cropDraftByFrameId?.[frame.id] ?? null}
-                    onSelect={() => onSelectFrame(frame.id)}
+                    onSelect={(options) => onSelectFrame(frame.id, options)}
                     onStartTextEdit={() => onStartTextEdit(frame.id)}
                     onEndTextEdit={() => onEndTextEdit(frame.id)}
                     onTextChange={(value) => onTextContentChange(frame.id, value)}
                     onOpenTextContextMenu={(clientX, clientY) => {
                       const stageRect = stageRef.current?.getBoundingClientRect();
                       if (!stageRect) return;
-                      setTextContextMenu({
+                      setNodeContextMenu({
                         open: true,
                         left: clientX - stageRect.left + 6,
                         top: clientY - stageRect.top + 6
@@ -395,7 +394,7 @@ export function CanvasStage({ // NOSONAR
                     onOpenElementContextMenu={(clientX, clientY) => {
                       const stageRect = stageRef.current?.getBoundingClientRect();
                       if (!stageRect) return;
-                      setElementContextMenu({
+                      setNodeContextMenu({
                         open: true,
                         left: clientX - stageRect.left + 6,
                         top: clientY - stageRect.top + 6
@@ -421,7 +420,7 @@ export function CanvasStage({ // NOSONAR
                       if (frame.locked) return;
                       event.preventDefault();
                       event.stopPropagation();
-                      onSelectFrame(frame.id);
+                      onSelectFrame(frame.id, { preserveIfSelected: true });
                       setInteraction({
                         mode: "resize",
                         resizeHandle: handle,
@@ -434,6 +433,21 @@ export function CanvasStage({ // NOSONAR
                     }}
                   />
                 ))}
+              {selectionBounds && selectedFrameIds.length > 1 ? (
+                <div
+                  className="pointer-events-none absolute z-30 rounded-md border border-cyan-300/80 ring-1 ring-cyan-300/30"
+                  style={{
+                    left: selectionBounds.x,
+                    top: selectionBounds.y,
+                    width: selectionBounds.w,
+                    height: selectionBounds.h
+                  }}
+                >
+                  <div className="absolute -top-6 left-0 rounded bg-cyan-400/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#052a33]">
+                    {selectedFrameIds.length} selected
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -455,33 +469,20 @@ export function CanvasStage({ // NOSONAR
           locked={Boolean(selectedTextFrame.locked)}
         />
       ) : null}
-      {selectedTextFrame ? (
-        <TextContextMenu
-          open={textContextMenuOpen}
-          x={textContextMenu.left}
-          y={textContextMenu.top}
-          onClose={() => setTextContextMenu((current) => ({ ...current, open: false }))}
-          onDuplicate={onDuplicateSelectedTextFrame}
-          onDelete={onDeleteSelectedTextFrame}
-          onToggleLock={onToggleSelectedFrameLock}
-          onBringForward={onBringSelectedFrameForward}
-          onSendBackward={onSendSelectedFrameBackward}
-          locked={Boolean(selectedTextFrame.locked)}
-        />
-      ) : null}
-      {selectedFrame && selectedFrame.type !== "TEXT" ? (
-        <ElementContextMenu
-          open={elementContextMenuOpen}
-          x={elementContextMenu.left}
-          y={elementContextMenu.top}
-          onClose={() => setElementContextMenu((current) => ({ ...current, open: false }))}
-          onDuplicate={onDuplicateSelectedElementFrame ?? onDuplicateSelectedTextFrame}
-          onDelete={onDeleteSelectedTextFrame}
-          onToggleLock={onToggleSelectedFrameLock}
-          onBringForward={onBringSelectedFrameForward}
-          onSendBackward={onSendSelectedFrameBackward}
-          onReplaceImage={selectedFrame.type === "FRAME" ? onOpenSelectedElementImagePicker : undefined}
-          locked={Boolean(selectedFrame.locked)}
+      {selectedFrame ? (
+        <NodeContextMenu
+          key={`${selectedFrame.id}:${selectedFrameIds.length}:${nodeContextMenu.open ? "open" : "closed"}`}
+          open={nodeContextMenuOpen}
+          x={nodeContextMenu.left}
+          y={nodeContextMenu.top}
+          onClose={() => setNodeContextMenu((current) => ({ ...current, open: false }))}
+          onAction={(action) => onNodeMenuAction?.(action)}
+          locked={selectedFrameIds.length > 1 ? selectedFrameIds.every((id) => frameMap.get(id)?.locked) : Boolean(selectedFrame.locked)}
+          canPaste={nodeMenuCanPaste}
+          canReplaceImage={selectedFrameIds.length === 1 && selectedFrame.type === "FRAME"}
+          isMulti={selectedFrameIds.length > 1}
+          canAlignSelection={nodeMenuCanAlignSelection}
+          canDistribute={nodeMenuCanDistribute}
         />
       ) : null}
     </div>
