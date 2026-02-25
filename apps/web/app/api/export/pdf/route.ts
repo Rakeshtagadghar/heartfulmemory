@@ -9,7 +9,7 @@ import { getR2FreeTierCaps } from "../../../../lib/uploads/r2Quota";
 import { normalizeStorybookExportSettingsV1 } from "../../../../../../packages/shared-schema/storybookSettings.types";
 import type { ExportTarget, PdfRenderContract, PdfRenderOutputMeta } from "../../../../../../packages/pdf-renderer/src/contracts";
 import { createPdfDocument } from "../../../../../../packages/pdf/engine";
-import { createExportTraceId, jsonExportError } from "../../../../../../packages/pdf/errors/exportErrors";
+import { buildExportErrorPayload, createExportTraceId } from "../../../../../../packages/pdf/errors/exportErrors";
 import { toRenderableContractV1FromLegacy } from "../../../../../../packages/pdf/contract/renderContractV1";
 import {
   type RenderableValidationIssue,
@@ -158,6 +158,11 @@ function toContract(payload: ExportPayload, exportTarget: ExportTarget): PdfRend
 
 function jsonError(status: number, error: string) {
   return NextResponse.json({ ok: false, error }, { status });
+}
+
+function jsonExportError(input: Parameters<typeof buildExportErrorPayload>[0]) {
+  const payload = buildExportErrorPayload(input);
+  return NextResponse.json(payload.body, { status: payload.status });
 }
 
 function shouldStoreExportPdfsInR2() {

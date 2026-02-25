@@ -1,5 +1,3 @@
-import { NextResponse } from "next/server";
-
 export type ExportErrorCode =
   | "EXPORT_UNAUTHORIZED"
   | "EXPORT_FORBIDDEN"
@@ -21,7 +19,7 @@ export function createExportTraceId() {
   return `exp_${crypto.randomUUID()}`;
 }
 
-export function jsonExportError(input: {
+export function buildExportErrorPayload(input: {
   status: number;
   code: ExportErrorCode;
   message: string;
@@ -35,6 +33,5 @@ export function jsonExportError(input: {
     traceId: input.traceId,
     ...(input.details === undefined ? {} : { details: input.details })
   };
-  return NextResponse.json(body, { status: input.status });
+  return { status: input.status, body };
 }
-
