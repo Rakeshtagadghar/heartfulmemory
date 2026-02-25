@@ -100,11 +100,30 @@ importers:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.3.0)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)
 
+  packages/editor:
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.14
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.14)
+      react:
+        specifier: ^19.2.4
+        version: 19.2.4
+      react-dom:
+        specifier: ^19.2.4
+        version: 19.2.4(react@19.2.4)
+
+  packages/pdf: {}
+
   packages/pdf-renderer:
     dependencies:
       playwright:
         specifier: ^1.58.2
         version: 1.58.2
+
+  packages/rules-engine: {}
 
   packages/shared-schema: {}
 
