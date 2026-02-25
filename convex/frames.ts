@@ -6,10 +6,73 @@ import { assertCanAccessStorybook } from "./authz";
 
 type ConvexCtx = MutationCtx | QueryCtx;
 
-const frameTypeValidator = v.union(v.literal("TEXT"), v.literal("IMAGE"));
+const frameTypeValidator = v.union(
+  v.literal("TEXT"),
+  v.literal("IMAGE"),
+  v.literal("SHAPE"),
+  v.literal("LINE"),
+  v.literal("FRAME"),
+  v.literal("GROUP")
+);
+type SupportedFrameType = "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP";
 
 function toIso(value: number) {
   return new Date(value).toISOString();
+}
+
+function getDefaultFrameWidth(type: SupportedFrameType) {
+  if (type === "TEXT") return 320;
+  if (type === "LINE") return 240;
+  if (type === "GROUP") return 560;
+  return 280;
+}
+
+function getDefaultFrameHeight(type: SupportedFrameType) {
+  if (type === "TEXT") return 120;
+  if (type === "LINE") return 24;
+  if (type === "GROUP") return 320;
+  return 220;
+}
+
+function getDefaultFrameContent(type: SupportedFrameType) {
+  if (type === "TEXT") {
+    return { kind: "text_frame_v1", text: "Edit this frame..." };
+  }
+  if (type === "IMAGE") {
+    return {
+      kind: "image_frame_v1",
+      caption: "",
+      placeholderLabel: "Image placeholder"
+    };
+  }
+  if (type === "FRAME") {
+    return {
+      kind: "frame_node_v1",
+      placeholderLabel: "Frame placeholder",
+      imageRef: null
+    };
+  }
+  if (type === "SHAPE") {
+    return { kind: "shape_node_v1", shapeType: "rect" };
+  }
+  if (type === "LINE") {
+    return { kind: "line_node_v1" };
+  }
+  return {
+    kind: "grid_group_v1",
+    layoutHint: "grid",
+    columns: 2,
+    rows: 2,
+    gap: 16,
+    padding: 16,
+    childrenIds: ["cell_1", "cell_2", "cell_3", "cell_4"],
+    cells: [
+      { id: "cell_1", row: 0, col: 0, rowSpan: 1, colSpan: 1 },
+      { id: "cell_2", row: 0, col: 1, rowSpan: 1, colSpan: 1 },
+      { id: "cell_3", row: 1, col: 0, rowSpan: 1, colSpan: 1 },
+      { id: "cell_4", row: 1, col: 1, rowSpan: 1, colSpan: 1 }
+    ]
+  };
 }
 
 function toFrameDto(doc: {
@@ -17,7 +80,7 @@ function toFrameDto(doc: {
   storybookId: unknown;
   pageId: unknown;
   ownerId: string;
-  type: "TEXT" | "IMAGE";
+  type: SupportedFrameType;
   x: number;
   y: number;
   w: number;
@@ -98,14 +161,22 @@ export const create = mutationGeneric({
     content: v.optional(v.any()),
     crop: v.optional(v.any())
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => {// NOSONAR
     const page = await getPageOrThrow(ctx, args.pageId);
-    const access = await assertCanAccessStorybook(ctx, page.storybookId, "OWNER", args.viewerSubject);
+    const access = await assertCanAccessStorybook(
+      ctx,
+      page.storybookId,
+      "OWNER",
+      args.viewerSubject,
+    );
     const rows = await ctx.db
       .query("frames")
       .withIndex("by_pageId_zIndex", (q) => q.eq("pageId", args.pageId))
       .collect();
-    const nextZ = typeof args.zIndex === "number" ? args.zIndex : (rows.at(-1)?.zIndex ?? 0) + 1;
+    const nextZ =
+      typeof args.zIndex === "number"
+        ? args.zIndex
+        : (rows.at(-1)?.zIndex ?? 0) + 1;
     const now = Date.now();
     const frameId = await ctx.db.insert("frames", {
       storybookId: page.storybookId,
@@ -114,20 +185,16 @@ export const create = mutationGeneric({
       type: args.type,
       x: args.x ?? 80,
       y: args.y ?? 80,
-      w: args.w ?? (args.type === "TEXT" ? 320 : 280),
-      h: args.h ?? (args.type === "TEXT" ? 120 : 220),
+      w: args.w ?? getDefaultFrameWidth(args.type),
+      h: args.h ?? getDefaultFrameHeight(args.type),
       zIndex: nextZ,
       locked: args.locked ?? false,
       style: args.style ?? {},
-      content:
-        args.content ??
-        (args.type === "TEXT"
-          ? { kind: "text_frame_v1", text: "Edit this frame…" }
-          : { kind: "image_frame_v1", caption: "", placeholderLabel: "Image placeholder" }),
+      content: args.content ?? getDefaultFrameContent(args.type),
       crop: args.crop ?? null,
       version: 1,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     });
     await ctx.db.patch(access.storybook._id as never, { updatedAt: now });
     const frame = await ctx.db.get(frameId);
@@ -222,4 +289,3 @@ export const listByStorybook = queryGeneric({
     return rows.map((row) => toFrameDto(row as never));
   }
 });
-

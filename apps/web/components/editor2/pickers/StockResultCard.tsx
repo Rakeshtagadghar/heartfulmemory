@@ -3,6 +3,7 @@
 
 import type { NormalizedStockResult } from "../../../lib/stock/types";
 import { Button } from "../../ui/button";
+import { setDraggedMediaPayload } from "../../studio/dnd/frameDropTarget";
 
 export function StockResultCard({
   result,
@@ -15,7 +16,14 @@ export function StockResultCard({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
-      <div className="relative aspect-[4/3] bg-black/20">
+      <div
+        className="relative aspect-[4/3] cursor-grab bg-black/20 active:cursor-grabbing"
+        draggable
+        onDragStart={(event) => {
+          setDraggedMediaPayload(event.dataTransfer, { kind: "stock", result });
+          event.dataTransfer.effectAllowed = "copy";
+        }}
+      >
         <img
           src={result.thumbUrl}
           alt={`${result.provider} result`}

@@ -12,6 +12,12 @@ import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/text
 import { FloatingTextToolbar } from "../studio/overlays/FloatingTextToolbar";
 import { useFloatingAnchor } from "../studio/overlays/useFloatingAnchor";
 import { TextContextMenu } from "../studio/menus/TextContextMenu";
+import { ElementContextMenu } from "../studio/menus/ElementContextMenu";
+import {
+  findTopmostFrameDropTarget,
+  getDraggedMediaPayload,
+  type DraggedMediaPayload
+} from "../studio/dnd/frameDropTarget";
 
 type InteractionState =
   | null
@@ -25,7 +31,7 @@ type InteractionState =
       startFrame: Pick<FrameDTO, "x" | "y" | "w" | "h">;
     };
 
-export function CanvasStage({
+export function CanvasStage({ // NOSONAR
   page,
   frames,
   selectedFrameId,
@@ -46,15 +52,18 @@ export function CanvasStage({
   onOpenTextFontPanel,
   onOpenTextColorPanel,
   onDuplicateSelectedTextFrame,
+  onDuplicateSelectedElementFrame,
   onDeleteSelectedTextFrame,
   onToggleSelectedFrameLock,
   onBringSelectedFrameForward,
   onSendSelectedFrameBackward,
+  onOpenSelectedElementImagePicker,
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
   onFramePatchPreview,
   onFramePatchCommit,
+  onDropMediaOnFrame,
   onClearSelection
 }: {
   page: PageDTO | null;
@@ -77,10 +86,12 @@ export function CanvasStage({
   onOpenTextFontPanel?: () => void;
   onOpenTextColorPanel?: () => void;
   onDuplicateSelectedTextFrame: () => void;
+  onDuplicateSelectedElementFrame?: () => void;
   onDeleteSelectedTextFrame: () => void;
   onToggleSelectedFrameLock: () => void;
   onBringSelectedFrameForward: () => void;
   onSendSelectedFrameBackward: () => void;
+  onOpenSelectedElementImagePicker?: () => void;
   onStartCropEdit: (frameId: string) => void;
   onEndCropEdit: (frameId: string) => void;
   onCropChange: (frameId: string, crop: { focalX: number; focalY: number; scale: number }) => void;
@@ -92,6 +103,7 @@ export function CanvasStage({
     frameId: string,
     patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>
   ) => Promise<void>;
+  onDropMediaOnFrame?: (frameId: string, payload: DraggedMediaPayload) => void | Promise<void>;
   onClearSelection?: () => void;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -99,6 +111,11 @@ export function CanvasStage({
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [interaction, setInteraction] = useState<InteractionState>(null);
   const [textContextMenu, setTextContextMenu] = useState<{
+    open: boolean;
+    left: number;
+    top: number;
+  }>({ open: false, left: 0, top: 0 });
+  const [elementContextMenu, setElementContextMenu] = useState<{
     open: boolean;
     left: number;
     top: number;
@@ -145,7 +162,7 @@ export function CanvasStage({
     const activePage = page;
     const minSize = 24;
 
-    function onPointerMove(event: PointerEvent) {
+    function onPointerMove(event: PointerEvent) {// NOSONAR
       if (event.pointerId !== activeInteraction.pointerId) return;
       const frame = frameMap.get(activeInteraction.frameId);
       if (!frame) return;
@@ -252,12 +269,18 @@ export function CanvasStage({
 
   const textContextMenuOpen =
     textContextMenu.open && Boolean(selectedTextFrame) && editingTextFrameId !== selectedTextFrame?.id;
+  const elementContextMenuOpen =
+    elementContextMenu.open &&
+    Boolean(selectedFrame && selectedFrame.type !== "TEXT") &&
+    editingTextFrameId !== selectedFrame?.id;
 
   return (
     <div ref={stageRef} className="relative flex h-full min-h-0 flex-col bg-[#d7d8dc]">
-      <div
+      <button
+        type="button"
         className="flex h-7 items-center border-b border-black/10 bg-[#eef0f3] px-3 text-[11px] text-black/55"
         onPointerDown={() => onClearSelection?.()}
+        aria-label="Canvas ruler"
       >
         <div className="grid h-full w-full grid-cols-12">
           {Array.from({ length: 24 }, (_, tick) => tick).map((tick) => (
@@ -266,7 +289,7 @@ export function CanvasStage({
             </div>
           ))}
         </div>
-      </div>
+      </button>
 
       <div
         ref={viewportRef}
@@ -295,12 +318,39 @@ export function CanvasStage({
                 transform: `scale(${zoom})`,
                 transformOrigin: "top left"
               }}
-              onPointerDown={(event) => {
-                if (event.target === event.currentTarget) {
-                  onClearSelection?.();
-                }
+              onDragOver={(event) => {
+                const payload = getDraggedMediaPayload(event.dataTransfer);
+                if (!payload) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const point = {
+                  x: (event.clientX - rect.left) / zoom,
+                  y: (event.clientY - rect.top) / zoom
+                };
+                const targetFrame = findTopmostFrameDropTarget(frames, point);
+                if (!targetFrame) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }}
+              onDrop={(event) => {
+                const payload = getDraggedMediaPayload(event.dataTransfer);
+                if (!payload || !onDropMediaOnFrame) return;
+                const rect = event.currentTarget.getBoundingClientRect();
+                const point = {
+                  x: (event.clientX - rect.left) / zoom,
+                  y: (event.clientY - rect.top) / zoom
+                };
+                const targetFrame = findTopmostFrameDropTarget(frames, point);
+                if (!targetFrame) return;
+                event.preventDefault();
+                Promise.resolve(onDropMediaOnFrame(targetFrame.id, payload)).catch(() => undefined);
               }}
             >
+              <button
+                type="button"
+                aria-label="Page canvas background"
+                className="absolute inset-0 z-0 cursor-default"
+                onPointerDown={() => onClearSelection?.()}
+              />
               <GuidesOverlay
                 page={page}
                 showGrid={showGrid}
@@ -326,6 +376,15 @@ export function CanvasStage({
                       const stageRect = stageRef.current?.getBoundingClientRect();
                       if (!stageRect) return;
                       setTextContextMenu({
+                        open: true,
+                        left: clientX - stageRect.left + 6,
+                        top: clientY - stageRect.top + 6
+                      });
+                    }}
+                    onOpenElementContextMenu={(clientX, clientY) => {
+                      const stageRect = stageRef.current?.getBoundingClientRect();
+                      if (!stageRect) return;
+                      setElementContextMenu({
                         open: true,
                         left: clientX - stageRect.left + 6,
                         top: clientY - stageRect.top + 6
@@ -397,6 +456,21 @@ export function CanvasStage({
           onBringForward={onBringSelectedFrameForward}
           onSendBackward={onSendSelectedFrameBackward}
           locked={Boolean(selectedTextFrame.locked)}
+        />
+      ) : null}
+      {selectedFrame && selectedFrame.type !== "TEXT" ? (
+        <ElementContextMenu
+          open={elementContextMenuOpen}
+          x={elementContextMenu.left}
+          y={elementContextMenu.top}
+          onClose={() => setElementContextMenu((current) => ({ ...current, open: false }))}
+          onDuplicate={onDuplicateSelectedElementFrame ?? onDuplicateSelectedTextFrame}
+          onDelete={onDeleteSelectedTextFrame}
+          onToggleLock={onToggleSelectedFrameLock}
+          onBringForward={onBringSelectedFrameForward}
+          onSendBackward={onSendSelectedFrameBackward}
+          onReplaceImage={selectedFrame.type === "FRAME" ? onOpenSelectedElementImagePicker : undefined}
+          locked={Boolean(selectedFrame.locked)}
         />
       ) : null}
     </div>

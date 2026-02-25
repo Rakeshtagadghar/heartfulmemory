@@ -12,6 +12,7 @@ import {
 import { Button } from "../../ui/button";
 import { PanelEmptyState, PanelErrorState } from "../../studio/ui/PanelStates";
 import { showStudioToast } from "../../studio/ui/toasts";
+import { setDraggedMediaPayload } from "../../studio/dnd/frameDropTarget";
 
 type UploadStatus =
   | { status: "idle" }
@@ -172,8 +173,13 @@ export function UploadTab({
               <button
                 key={asset.id}
                 type="button"
+                draggable
                 className="group cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] text-left"
                 onClick={() => onCreated(asset)}
+                onDragStart={(event) => {
+                  setDraggedMediaPayload(event.dataTransfer, { kind: "asset", assetId: asset.id });
+                  event.dataTransfer.effectAllowed = "copy";
+                }}
               >
                 <div className="aspect-square bg-black/20">
                   {thumbnailSrc ? (

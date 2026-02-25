@@ -56,6 +56,8 @@ import {
 } from "../../../../packages/editor/commands/insertText";
 import { buildUpdatedTextStyle } from "../../../../packages/editor/commands/updateTextStyle";
 import { buildDuplicatedFrameInput } from "../../../../packages/editor/commands/duplicateNode";
+import { buildFrameFillImagePatch } from "../../../../packages/editor/commands/fillFrameWithImage";
+import { toggleNodeLocked } from "../../../../packages/editor/commands/lockNode";
 import { migrateTextFrameToTextNodeV1 } from "../../../../packages/editor/serialize/migrations/textNodeV1";
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
 import {
@@ -70,6 +72,12 @@ import {
   isNodeDuplicateShortcut,
   isNodePasteShortcut
 } from "../../../../packages/editor/shortcuts/shortcuts";
+import { buildCenteredShapeFrameInput } from "../../../../packages/editor/commands/insertShape";
+import { buildCenteredLineFrameInput } from "../../../../packages/editor/commands/insertLine";
+import { buildCenteredPlaceholderFrameInput } from "../../../../packages/editor/commands/insertFrame";
+import { buildCenteredGridGroupInput, type GridPresetId } from "../../../../packages/editor/commands/insertGrid";
+import type { ElementsCatalogItemId } from "../studio/panels/elementsCatalog";
+import type { DraggedMediaPayload } from "../studio/dnd/frameDropTarget";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -95,7 +103,47 @@ function mergeFrameIntoMap(
   return next;
 }
 
-export function Editor2Shell({
+function getAssetPreviewUrl(asset: AssetDTO) {
+  return asset.storage_provider === "R2"
+    ? `/api/assets/view/${asset.id}?purpose=preview`
+    : asset.source_url ?? "";
+}
+
+function buildStockAssetCreateInput(result: NormalizedStockResult) {
+  return {
+    provider: result.provider.toUpperCase() as "UNSPLASH" | "PEXELS",
+    sourceAssetId: result.assetId,
+    sourceUrl: result.sourceUrl,
+    previewUrl: result.previewUrl,
+    fullUrl: result.fullUrl,
+    width: result.width,
+    height: result.height,
+    mimeType: "image/jpeg" as const,
+    license: {
+      provider: result.provider,
+      licenseName: result.licenseName,
+      licenseUrl: result.licenseUrl,
+      requiresAttribution: result.requiresAttribution,
+      attributionText: result.attributionText,
+      authorName: result.authorName,
+      authorUrl: result.authorUrl,
+      sourceUrl: result.sourceUrl
+    }
+  };
+}
+
+function buildStockFrameAttribution(result: NormalizedStockResult) {
+  return {
+    provider: result.provider,
+    authorName: result.authorName,
+    authorUrl: result.authorUrl,
+    assetUrl: result.sourceUrl,
+    licenseUrl: result.licenseUrl,
+    attributionText: result.attributionText
+  };
+}
+
+export function Editor2Shell({// NOSONAR
   storybook,
   initialPages,
   initialFramesByPageId,
@@ -180,6 +228,11 @@ export function Editor2Shell({
     return { pageNumberById, frameNumberById };
   }, [framesByPageId, pages]);
 
+  const allFrames = useMemo(
+    () => Object.values(framesByPageId).flat(),
+    [framesByPageId]
+  );
+
   async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
     const result = await updateFrameAction(storybook.id, frameId, patch);
     if (!result.ok) {
@@ -192,6 +245,14 @@ export function Editor2Shell({
       setSelectedFrameDraftPatch({});
     }
     return result;
+  }
+
+  function findFrameById(frameId: string) {
+    return (
+      currentFrames.find((frame) => frame.id === frameId) ??
+      allFrames.find((frame) => frame.id === frameId) ??
+      null
+    );
   }
 
   const autosave = useFrameAutosave({
@@ -328,6 +389,56 @@ export function Editor2Shell({
     if (type === "IMAGE") {
       openImagePanel();
     }
+    setMessage(null);
+  }
+
+  async function handleInsertElement(itemId: ElementsCatalogItemId) {
+    if (!selectedPage) return;
+    let input:
+      | Parameters<typeof createFrameAction>[2]
+      | null = null;
+
+    if (itemId === "rect") {
+      input = buildCenteredShapeFrameInput({
+        pageWidth: selectedPage.width_px,
+        pageHeight: selectedPage.height_px,
+        shapeType: "rect"
+      });
+    } else if (itemId === "circle") {
+      input = buildCenteredShapeFrameInput({
+        pageWidth: selectedPage.width_px,
+        pageHeight: selectedPage.height_px,
+        shapeType: "circle"
+      });
+    } else if (itemId === "line") {
+      input = buildCenteredLineFrameInput({
+        pageWidth: selectedPage.width_px,
+        pageHeight: selectedPage.height_px
+      });
+    } else if (itemId === "frame") {
+      input = buildCenteredPlaceholderFrameInput({
+        pageWidth: selectedPage.width_px,
+        pageHeight: selectedPage.height_px
+      });
+    } else if (itemId === "grid_2_col" || itemId === "grid_3_col" || itemId === "grid_2x2") {
+      input = buildCenteredGridGroupInput({
+        pageWidth: selectedPage.width_px,
+        pageHeight: selectedPage.height_px,
+        preset: itemId as GridPresetId
+      });
+    }
+
+    if (!input) return;
+    const result = await createFrameAction(storybook.id, selectedPage.id, input);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
+    setSelectedFrameId(result.data.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
     setMessage(null);
   }
 
@@ -624,7 +735,7 @@ export function Editor2Shell({
   const handlePasteClipboardFrame = useCallback(async () => {
     if (!selectedPage) return;
     const clipboard = getNodeClipboard();
-    if (!clipboard || clipboard.type !== "frame") return;
+    if (clipboard?.type !== "frame") return;
     const result = await createFrameAction(storybook.id, selectedPage.id, buildFrameInputFromClipboard(clipboard));
     if (!result.ok) {
       setMessage(result.error);
@@ -640,7 +751,7 @@ export function Editor2Shell({
 
   function handleToggleSelectedFrameLock() {
     if (!selectedFrame) return;
-    applySelectedFrameDraftPatch({ locked: !selectedFrame.locked });
+    applySelectedFrameDraftPatch(toggleNodeLocked(selectedFrame.locked));
   }
 
   async function refreshAssets() {
@@ -649,9 +760,10 @@ export function Editor2Shell({
     setAssetsLoading(false);
     if (!result.ok) {
       setMessage(result.error);
-      return;
+      return null;
     }
     setAssets(result.data);
+    return result.data;
   }
 
   function openImagePanel() {
@@ -663,7 +775,63 @@ export function Editor2Shell({
     studioShell.openPanel("photos", "mouse", true);
   }
 
+  async function fillFrameWithImageById(
+    frameId: string,
+    input: {
+      asset: AssetDTO;
+      sourceUrl: string;
+      previewUrl?: string | null;
+      attribution?: Record<string, unknown> | null;
+    }
+  ): Promise<boolean> {
+    const targetFrame = findFrameById(frameId);
+    if (targetFrame?.type !== "FRAME") return false;
+    const nextContent = {
+      ...buildFrameFillImagePatch(targetFrame.content, {
+        assetId: input.asset.id,
+        sourceUrl: input.sourceUrl,
+        previewUrl: input.previewUrl,
+        attribution: input.attribution
+      }).content
+    };
+    const result = await persistFramePatch(targetFrame.id, {
+      content: nextContent,
+      expectedVersion: targetFrame.version
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      showStudioToast({ kind: "error", title: "Frame fill failed", message: result.error });
+      return true;
+    }
+    setSelectedFrameId(targetFrame.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage(null);
+    showStudioToast({ kind: "success", title: "Frame updated", message: "Image placed in the selected frame." });
+    return true;
+  }
+
+  async function fillSelectedElementFrameWithImage(input: {
+    asset: AssetDTO;
+    sourceUrl: string;
+    previewUrl?: string | null;
+    attribution?: Record<string, unknown> | null;
+  }): Promise<boolean> {
+    if (selectedFrame?.type !== "FRAME") return false;
+    return fillFrameWithImageById(selectedFrame.id, input);
+  }
+
   async function insertUploadAssetToCanvas(asset: AssetDTO) {
+    const uploadPreviewUrl = getAssetPreviewUrl(asset);
+    const filledFrame = await fillSelectedElementFrameWithImage({
+      asset,
+      sourceUrl: uploadPreviewUrl,
+      previewUrl: uploadPreviewUrl,
+      attribution: { provider: "upload" }
+    });
+    if (filledFrame) return;
+
     const inserted = await insertFromUploadAsset({
       storybookId: storybook.id,
       page: selectedPage,
@@ -704,32 +872,21 @@ export function Editor2Shell({
   }
 
   async function handleInsertStockResult(result: NormalizedStockResult) {
-    const created = await createStockAssetAction(storybook.id, {
-      provider: result.provider.toUpperCase() as "UNSPLASH" | "PEXELS",
-      sourceAssetId: result.assetId,
-      sourceUrl: result.sourceUrl,
-      previewUrl: result.previewUrl,
-      fullUrl: result.fullUrl,
-      width: result.width,
-      height: result.height,
-      mimeType: "image/jpeg",
-      license: {
-        provider: result.provider,
-        licenseName: result.licenseName,
-        licenseUrl: result.licenseUrl,
-        requiresAttribution: result.requiresAttribution,
-        attributionText: result.attributionText,
-        authorName: result.authorName,
-        authorUrl: result.authorUrl,
-        sourceUrl: result.sourceUrl
-      }
-    });
+    const created = await createStockAssetAction(storybook.id, buildStockAssetCreateInput(result));
     if (!created.ok) {
       setMessage(created.error);
       showStudioToast({ kind: "error", title: "Photo insert failed", message: created.error });
       return;
     }
     setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
+    const frameFillSourceUrl = result.previewUrl || result.fullUrl || created.data.source_url || "";
+    const filledFrame = await fillSelectedElementFrameWithImage({
+      asset: created.data,
+      sourceUrl: frameFillSourceUrl,
+      previewUrl: result.previewUrl,
+      attribution: buildStockFrameAttribution(result)
+    });
+    if (filledFrame) return;
     const inserted = await insertFromProviderResult({
       storybookId: storybook.id,
       page: selectedPage,
@@ -751,6 +908,44 @@ export function Editor2Shell({
     setSelectedFrameDraftPatch({});
     setMessage(null);
     showStudioToast({ kind: "success", title: "Photo inserted", message: "Added to the active page." });
+  }
+
+  async function handleDropMediaOnFrame(frameId: string, payload: DraggedMediaPayload) {
+    if (payload.kind === "asset") {
+      const targetAsset =
+        assets.find((item) => item.id === payload.assetId) ??
+        (await refreshAssets())?.find((item) => item.id === payload.assetId) ??
+        null;
+      if (!targetAsset) {
+        setMessage("Dropped asset is not available.");
+        return;
+      }
+      const sourceUrl =
+        getAssetPreviewUrl(targetAsset);
+      await fillFrameWithImageById(frameId, {
+        asset: targetAsset,
+        sourceUrl,
+        previewUrl: sourceUrl,
+        attribution: { provider: "upload" }
+      });
+      return;
+    }
+
+    const result = payload.result;
+    const created = await createStockAssetAction(storybook.id, buildStockAssetCreateInput(result));
+    if (!created.ok) {
+      setMessage(created.error);
+      showStudioToast({ kind: "error", title: "Photo insert failed", message: created.error });
+      return;
+    }
+    setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
+    const frameFillSourceUrl = result.previewUrl || result.fullUrl || created.data.source_url || "";
+    await fillFrameWithImageById(frameId, {
+      asset: created.data,
+      sourceUrl: frameFillSourceUrl,
+      previewUrl: result.previewUrl,
+      attribution: buildStockFrameAttribution(result)
+    });
   }
 
   const studioPanelContents = {
@@ -780,8 +975,7 @@ export function Editor2Shell({
     ),
     elements: (
       <ElementsPanel
-        onAddText={() => void handleAddFrame("TEXT")}
-        onAddImage={() => void handleAddFrame("IMAGE")}
+        onInsertElement={(id) => void handleInsertElement(id)}
         onOpenPhotos={openPhotosPanel}
       />
     ),
@@ -798,15 +992,15 @@ export function Editor2Shell({
     tools: (
       <ToolsPanel
         selectedFrame={selectedFrame}
-        cropModeActive={Boolean(selectedImageFrame && cropModeFrameId === selectedImageFrame.id)}
-        textEditActive={Boolean(selectedTextFrame && editingTextFrameId === selectedTextFrame.id)}
+        cropModeActive={cropModeFrameId === selectedImageFrame?.id}
+        textEditActive={editingTextFrameId === selectedTextFrame?.id}
       />
     ),
     photos: <PhotosPanel onInsert={handleInsertStockResult} />
   };
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
+    function onKeyDown(event: KeyboardEvent) { // NOSONAR
       if (
         !selectedFrame ||
         editingTextFrameId === selectedFrame.id ||
@@ -975,10 +1169,14 @@ export function Editor2Shell({
                 onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
                 onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
                 onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
+                onDuplicateSelectedElementFrame={() => void handleDuplicateSelectedFrame()}
                 onDeleteSelectedTextFrame={() => void handleDeleteSelectedFrame()}
                 onToggleSelectedFrameLock={handleToggleSelectedFrameLock}
                 onBringSelectedFrameForward={handleBringToFront}
                 onSendSelectedFrameBackward={handleSendBackward}
+                onOpenSelectedElementImagePicker={
+                  selectedFrame?.type === "FRAME" ? openImagePanel : undefined
+                }
                 onStartCropEdit={handleStartCropEdit}
                 onEndCropEdit={handleEndCropEdit}
                 onCropChange={handleCropChange}
@@ -994,6 +1192,9 @@ export function Editor2Shell({
                   });
                 }}
                 onFramePatchCommit={handleCommitFramePatch}
+                onDropMediaOnFrame={(frameId, payload) => {
+                  void handleDropMediaOnFrame(frameId, payload);
+                }}
                 onClearSelection={handleClearSelection}
               />
 
@@ -1047,7 +1248,7 @@ export function Editor2Shell({
               onDeleteFrame={handleDeleteSelectedFrame}
               onBringToFront={handleBringToFront}
               onSendBackward={handleSendBackward}
-              onOpenImagePicker={selectedImageFrame ? openImagePanel : undefined}
+              onOpenImagePicker={selectedFrame && (selectedFrame.type === "IMAGE" || selectedFrame.type === "FRAME") ? openImagePanel : undefined}
               onStartCropMode={selectedImageFrame ? () => handleStartCropEdit(selectedImageFrame.id) : undefined}
               onEndCropMode={selectedImageFrame ? () => handleEndCropEdit(selectedImageFrame.id) : undefined}
               cropModeActive={selectedImageFrame ? cropModeFrameId === selectedImageFrame.id : false}

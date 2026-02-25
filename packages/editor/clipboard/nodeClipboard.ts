@@ -1,6 +1,6 @@
 type ClipboardFramePayload = {
   type: "frame";
-  frameType: "TEXT" | "IMAGE";
+  frameType: "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP";
   x: number;
   y: number;
   w: number;
@@ -26,7 +26,7 @@ export function clearNodeClipboard() {
 }
 
 export function buildClipboardFramePayload(frame: {
-  type: "TEXT" | "IMAGE";
+  type: "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP";
   x: number;
   y: number;
   w: number;

@@ -10,6 +10,10 @@ import type { ResizeHandle } from "./FrameHandles";
 import { getSanitizedPastedText, shouldEnterTextEditMode } from "../../../../packages/editor/interaction/textEditController";
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
 import { TextRenderer } from "../../../../packages/editor/renderers/TextRenderer";
+import { ShapeRenderer } from "../../../../packages/editor/renderers/ShapeRenderer";
+import { LineRenderer } from "../../../../packages/editor/renderers/LineRenderer";
+import { ElementFrameRenderer } from "../../../../packages/editor/renderers/FrameRenderer";
+import { GroupRenderer } from "../../../../packages/editor/renderers/GroupRenderer";
 
 function getTextValue(frame: FrameDTO) {
   const text = frame.content?.text;
@@ -26,6 +30,10 @@ function getImageSource(frame: FrameDTO) {
   return null;
 }
 
+function isImagePlaceholderFrame(frame: FrameDTO) {
+  return frame.type === "IMAGE" || frame.type === "FRAME";
+}
+
 export function FrameRenderer({
   frame,
   selected,
@@ -39,6 +47,7 @@ export function FrameRenderer({
   onEndCropEdit,
   onCropChange,
   onOpenTextContextMenu,
+  onOpenElementContextMenu,
   onDragStart,
   onResizeStart,
   issueMessages
@@ -55,6 +64,7 @@ export function FrameRenderer({
   onEndCropEdit?: () => void;
   onCropChange?: (crop: { focalX: number; focalY: number; scale: number }) => void;
   onOpenTextContextMenu?: (clientX: number, clientY: number) => void;
+  onOpenElementContextMenu?: (clientX: number, clientY: number) => void;
   onDragStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onResizeStart: (handle: ResizeHandle, event: React.PointerEvent<HTMLButtonElement>) => void;
   issueMessages?: string[];
@@ -104,7 +114,13 @@ export function FrameRenderer({
             : selected
               ? "border-cyan-300 ring-2 ring-cyan-300/40"
               : "border-white/20"
-        } ${frame.type === "IMAGE" ? "bg-[#f5f1e8]" : "bg-white/[0.02]"}`}
+        } ${
+          frame.type === "IMAGE" || frame.type === "FRAME"
+            ? "bg-[#f5f1e8]"
+            : frame.type === "LINE"
+              ? "bg-transparent"
+              : "bg-white/[0.02]"
+        }`}
       >
         {!frame.locked && !isTextFrame && !cropEditing ? (
           <button
@@ -115,6 +131,12 @@ export function FrameRenderer({
               onSelect();
               onDragStart(event);
             }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect();
+              onOpenElementContextMenu?.(event.clientX, event.clientY);
+            }}
           />
         ) : frame.locked ? (
           <button
@@ -122,6 +144,14 @@ export function FrameRenderer({
             aria-label={`Select ${frame.type.toLowerCase()} frame`}
             className="absolute inset-0 cursor-pointer"
             onClick={onSelect}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect();
+              if (frame.type !== "TEXT") {
+                onOpenElementContextMenu?.(event.clientX, event.clientY);
+              }
+            }}
           />
         ) : null}
 
@@ -220,6 +250,14 @@ export function FrameRenderer({
               </div>
             ) : null}
           </div>
+        ) : frame.type === "SHAPE" ? (
+          <ShapeRenderer style={frame.style} content={frame.content} />
+        ) : frame.type === "LINE" ? (
+          <LineRenderer style={frame.style} />
+        ) : frame.type === "GROUP" ? (
+          <GroupRenderer style={frame.style} content={frame.content} />
+        ) : frame.type === "FRAME" ? (
+          <ElementFrameRenderer style={frame.style} content={frame.content} />
         ) : (
           imageSrc ? (
             <div
@@ -304,13 +342,32 @@ export function FrameRenderer({
             ...
           </button>
         ) : null}
+        {frame.type !== "TEXT" && selected && !frame.locked ? (
+          <button
+            type="button"
+            className="absolute right-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenElementContextMenu?.(event.clientX, event.clientY);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenElementContextMenu?.(event.clientX, event.clientY);
+            }}
+            aria-label="Open element actions"
+            title="More"
+          >
+            ...
+          </button>
+        ) : null}
         {hasIssueHighlight ? (
           <div className="absolute bottom-2 left-2 right-2 z-20 rounded-md border border-rose-300/20 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-100">
             {issueMessages?.[0]}
             {issueMessages && issueMessages.length > 1 ? ` (+${issueMessages.length - 1} more)` : ""}
           </div>
         ) : null}
-        {frame.type === "IMAGE" && selected && !frame.locked && !cropEditing ? (
+        {isImagePlaceholderFrame(frame) && frame.type === "IMAGE" && selected && !frame.locked && !cropEditing ? (
           <button
             type="button"
             className="absolute left-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"

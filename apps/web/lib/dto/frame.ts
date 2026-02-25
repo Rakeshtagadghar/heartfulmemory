@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const frameTypeSchema = z.enum(["TEXT", "IMAGE"]);
+export const frameTypeSchema = z.enum(["TEXT", "IMAGE", "SHAPE", "LINE", "FRAME", "GROUP"]);
 
 export const frameDtoSchema = z.object({
   id: z.string().min(1),
@@ -23,4 +23,3 @@ export const frameDtoSchema = z.object({
 });
 
 export type FrameDTO = z.infer<typeof frameDtoSchema>;
-

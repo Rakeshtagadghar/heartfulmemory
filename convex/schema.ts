@@ -104,7 +104,14 @@ export default defineSchema({
     storybookId: v.id("storybooks"),
     pageId: v.id("pages"),
     ownerId: v.string(),
-    type: v.union(v.literal("TEXT"), v.literal("IMAGE")),
+    type: v.union(
+      v.literal("TEXT"),
+      v.literal("IMAGE"),
+      v.literal("SHAPE"),
+      v.literal("LINE"),
+      v.literal("FRAME"),
+      v.literal("GROUP")
+    ),
     x: v.number(),
     y: v.number(),
     w: v.number(),

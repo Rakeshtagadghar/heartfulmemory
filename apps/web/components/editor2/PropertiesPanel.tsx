@@ -1,11 +1,13 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "../ui/button";
 import type { FrameDTO } from "../../lib/dto/frame";
 import type { PageDTO } from "../../lib/dto/page";
 import { pageSizePresetSchema } from "../../lib/dto/page";
+import { ShapeProperties } from "../studio/properties/ShapeProperties";
 
-export function PropertiesPanel({
+export function PropertiesPanel({ // NOSONAR
   page,
   selectedFrame,
   snapEnabled,
@@ -40,6 +42,139 @@ export function PropertiesPanel({
   onEndCropMode?: () => void;
   cropModeActive?: boolean;
 }) {
+  const isTextFrame = selectedFrame?.type === "TEXT";
+  const isImageFrame = selectedFrame?.type === "IMAGE";
+  const isElementFrame = selectedFrame?.type === "FRAME";
+  let selectedFrameContentSection: ReactNode = null;
+
+  if (selectedFrame) {
+    if (isTextFrame) {
+      selectedFrameContentSection = (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-white/45">Text Content</p>
+          <textarea
+            className="min-h-32 w-full rounded-lg border border-white/15 bg-black/25 p-3 text-sm text-white"
+            value={typeof selectedFrame.content.text === "string" ? selectedFrame.content.text : ""}
+            onChange={(event) =>
+              onPatchFrameDraft({
+                content: { ...selectedFrame.content, kind: "text_frame_v1", text: event.target.value }
+              })
+            }
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-xs text-white/65">
+              Font size
+              <input
+                type="number"
+                value={typeof selectedFrame.style.fontSize === "number" ? selectedFrame.style.fontSize : 15}
+                onChange={(event) =>
+                  onPatchFrameDraft({
+                    style: { ...selectedFrame.style, fontSize: Number(event.target.value) }
+                  })
+                }
+                className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
+              />
+            </label>
+            <label className="block text-xs text-white/65">
+              Alignment
+              <select
+                value={typeof selectedFrame.style.align === "string" ? selectedFrame.style.align : "left"}
+                onChange={(event) =>
+                  onPatchFrameDraft({
+                    style: { ...selectedFrame.style, align: event.target.value }
+                  })
+                }
+                className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      );
+    } else if (isImageFrame) {
+      selectedFrameContentSection = (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs uppercase tracking-[0.16em] text-white/45">Image Placeholder</p>
+          {onOpenImagePicker ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onOpenImagePicker}>
+              Choose Image
+            </Button>
+          ) : null}
+          {onStartCropMode ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={cropModeActive ? "secondary" : "ghost"}
+                onClick={cropModeActive ? onEndCropMode : onStartCropMode}
+              >
+                {cropModeActive ? "Exit Crop" : "Crop Image"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  onPatchFrameDraft({
+                    crop: { focalX: 0.5, focalY: 0.5, scale: 1 }
+                  })
+                }
+              >
+                Reset Crop
+              </Button>
+            </div>
+          ) : null}
+          <label className="block text-xs text-white/65">
+            Caption
+            <input
+              type="text"
+              value={typeof selectedFrame.content.caption === "string" ? selectedFrame.content.caption : ""}
+              onChange={(event) =>
+                onPatchFrameDraft({
+                  content: { ...selectedFrame.content, kind: "image_frame_v1", caption: event.target.value }
+                })
+              }
+              className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
+            />
+          </label>
+          <label className="block text-xs text-white/65">
+            Crop scale (stub)
+            <input
+              type="range"
+              min={0.5}
+              max={2}
+              step={0.05}
+              value={typeof selectedFrame.crop?.scale === "number" ? selectedFrame.crop.scale : 1}
+              onChange={(event) =>
+                onPatchFrameDraft({
+                  crop: {
+                    ...(selectedFrame.crop ?? { x: 0, y: 0, focalX: 0.5, focalY: 0.5 }),
+                    scale: Number(event.target.value)
+                  }
+                })
+              }
+              className="mt-1 w-full cursor-pointer"
+            />
+          </label>
+        </div>
+      );
+    } else {
+      selectedFrameContentSection = (
+        <div className="mt-4 space-y-3">
+          <ShapeProperties frame={selectedFrame} onPatchFrameDraft={onPatchFrameDraft} />
+          {onOpenImagePicker && isElementFrame ? (
+            <Button type="button" size="sm" variant="secondary" onClick={onOpenImagePicker}>
+              Fill With Image
+            </Button>
+          ) : null}
+        </div>
+      );
+    }
+  }
+
   return (
     <aside className="flex h-full w-[320px] flex-col border-l border-white/10 bg-[#0d1626]">
       <div className="border-b border-white/10 px-4 py-3">
@@ -121,116 +256,7 @@ export function PropertiesPanel({
               </Button>
             </div>
 
-            {selectedFrame.type === "TEXT" ? (
-              <div className="mt-4 space-y-3">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/45">Text Content</p>
-                <textarea
-                  className="min-h-32 w-full rounded-lg border border-white/15 bg-black/25 p-3 text-sm text-white"
-                  value={typeof selectedFrame.content.text === "string" ? selectedFrame.content.text : ""}
-                  onChange={(event) =>
-                    onPatchFrameDraft({
-                      content: { ...selectedFrame.content, kind: "text_frame_v1", text: event.target.value }
-                    })
-                  }
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs text-white/65">
-                    Font size
-                    <input
-                      type="number"
-                      value={typeof selectedFrame.style.fontSize === "number" ? selectedFrame.style.fontSize : 15}
-                      onChange={(event) =>
-                        onPatchFrameDraft({
-                          style: { ...selectedFrame.style, fontSize: Number(event.target.value) }
-                        })
-                      }
-                      className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
-                    />
-                  </label>
-                  <label className="block text-xs text-white/65">
-                    Alignment
-                    <select
-                      value={typeof selectedFrame.style.align === "string" ? selectedFrame.style.align : "left"}
-                      onChange={(event) =>
-                        onPatchFrameDraft({
-                          style: { ...selectedFrame.style, align: event.target.value }
-                        })
-                      }
-                      className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
-                    >
-                      <option value="left">Left</option>
-                      <option value="center">Center</option>
-                      <option value="right">Right</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/45">Image Placeholder</p>
-                {onOpenImagePicker ? (
-                  <Button type="button" size="sm" variant="secondary" onClick={onOpenImagePicker}>
-                    Choose Image
-                  </Button>
-                ) : null}
-                {onStartCropMode ? (
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={cropModeActive ? "secondary" : "ghost"}
-                      onClick={cropModeActive ? onEndCropMode : onStartCropMode}
-                    >
-                      {cropModeActive ? "Exit Crop" : "Crop Image"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() =>
-                        onPatchFrameDraft({
-                          crop: { focalX: 0.5, focalY: 0.5, scale: 1 }
-                        })
-                      }
-                    >
-                      Reset Crop
-                    </Button>
-                  </div>
-                ) : null}
-                <label className="block text-xs text-white/65">
-                  Caption
-                  <input
-                    type="text"
-                    value={typeof selectedFrame.content.caption === "string" ? selectedFrame.content.caption : ""}
-                    onChange={(event) =>
-                      onPatchFrameDraft({
-                        content: { ...selectedFrame.content, kind: "image_frame_v1", caption: event.target.value }
-                      })
-                    }
-                    className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
-                  />
-                </label>
-                <label className="block text-xs text-white/65">
-                  Crop scale (stub)
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={2}
-                    step={0.05}
-                    value={typeof selectedFrame.crop?.scale === "number" ? selectedFrame.crop.scale : 1}
-                    onChange={(event) =>
-                      onPatchFrameDraft({
-                        crop: {
-                          ...(selectedFrame.crop ?? { x: 0, y: 0, focalX: 0.5, focalY: 0.5 }),
-                          scale: Number(event.target.value)
-                        }
-                      })
-                    }
-                    className="mt-1 w-full cursor-pointer"
-                  />
-                </label>
-              </div>
-            )}
+            {selectedFrameContentSection}
 
             <div className="mt-4">
               <Button type="button" size="sm" variant="ghost" onClick={() => void onDeleteFrame()}>

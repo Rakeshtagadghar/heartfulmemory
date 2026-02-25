@@ -1,5 +1,5 @@
 export type StudioToolSelectionContext = {
-  selectedFrameType: "TEXT" | "IMAGE" | null;
+  selectedFrameType: "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP" | null;
   cropModeActive: boolean;
   textEditActive: boolean;
 };
@@ -53,4 +53,3 @@ export const studioToolRegistry: StudioToolDefinition[] = [
 export function getAvailableStudioTools(ctx: StudioToolSelectionContext) {
   return studioToolRegistry.filter((tool) => tool.available(ctx));
 }
-
