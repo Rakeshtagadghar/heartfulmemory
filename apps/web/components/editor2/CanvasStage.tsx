@@ -44,6 +44,7 @@ export function CanvasStage({ // NOSONAR
   snapEnabled,
   editingTextFrameId,
   cropModeFrameId,
+  cropDraftByFrameId,
   onSelectFrame,
   onStartTextEdit,
   onEndTextEdit,
@@ -78,6 +79,7 @@ export function CanvasStage({ // NOSONAR
   snapEnabled: boolean;
   editingTextFrameId: string | null;
   cropModeFrameId: string | null;
+  cropDraftByFrameId?: Record<string, Record<string, unknown> | null>;
   onSelectFrame: (frameId: string) => void;
   onStartTextEdit: (frameId: string) => void;
   onEndTextEdit: (frameId: string) => void;
@@ -94,7 +96,7 @@ export function CanvasStage({ // NOSONAR
   onOpenSelectedElementImagePicker?: () => void;
   onStartCropEdit: (frameId: string) => void;
   onEndCropEdit: (frameId: string) => void;
-  onCropChange: (frameId: string, crop: { focalX: number; focalY: number; scale: number }) => void;
+  onCropChange: (frameId: string, crop: Record<string, unknown>) => void;
   onFramePatchPreview: (
     frameId: string,
     patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>
@@ -309,14 +311,22 @@ export function CanvasStage({ // NOSONAR
               height: page.height_px * zoom
             }}
           >
-            <div
+            <div // NOSONAR drag/drop canvas surface wrapper
               className="absolute inset-0 origin-top-left overflow-hidden rounded-sm border border-black/10"
+              role="button"
+              tabIndex={0}
+              aria-label="Layout canvas drop surface"
               style={{
                 width: page.width_px,
                 height: page.height_px,
                 background: page.background.fill,
                 transform: `scale(${zoom})`,
                 transformOrigin: "top left"
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  onClearSelection?.();
+                }
               }}
               onDragOver={(event) => {
                 const payload = getDraggedMediaPayload(event.dataTransfer);
@@ -368,6 +378,7 @@ export function CanvasStage({ // NOSONAR
                     selected={frame.id === selectedFrameId}
                     textEditing={frame.id === editingTextFrameId}
                     cropEditing={frame.id === cropModeFrameId}
+                    cropOverride={cropDraftByFrameId?.[frame.id] ?? null}
                     onSelect={() => onSelectFrame(frame.id)}
                     onStartTextEdit={() => onStartTextEdit(frame.id)}
                     onEndTextEdit={() => onEndTextEdit(frame.id)}

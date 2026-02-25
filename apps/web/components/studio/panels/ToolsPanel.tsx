@@ -2,6 +2,7 @@
 
 import { getAvailableStudioTools } from "../../../../../packages/editor/tools/toolRegistry";
 import type { FrameDTO } from "../../../lib/dto/frame";
+import { CropToolEntry } from "./tools/CropToolEntry";
 
 export function ToolsPanel({
   selectedFrame,
@@ -33,6 +34,9 @@ export function ToolsPanel({
       </div>
 
       <div className="space-y-2">
+        {(selectedFrame?.type === "IMAGE" || selectedFrame?.type === "FRAME") ? (
+          <CropToolEntry active={cropModeActive} />
+        ) : null}
         {tools.map((tool) => (
           <div
             key={tool.id}
@@ -51,4 +55,3 @@ export function ToolsPanel({
     </div>
   );
 }
-

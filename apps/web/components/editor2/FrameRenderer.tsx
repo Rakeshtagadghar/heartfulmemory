@@ -1,5 +1,4 @@
 "use client";
-/* eslint-disable @next/next/no-img-element */
 
 import { useEffect, useRef } from "react";
 import { estimateTextOverflow } from "../../lib/editor2/textMetrics";
@@ -14,6 +13,8 @@ import { ShapeRenderer } from "../../../../packages/editor/renderers/ShapeRender
 import { LineRenderer } from "../../../../packages/editor/renderers/LineRenderer";
 import { ElementFrameRenderer } from "../../../../packages/editor/renderers/FrameRenderer";
 import { GroupRenderer } from "../../../../packages/editor/renderers/GroupRenderer";
+import { ImageRenderer } from "../../../../packages/editor/renderers/ImageRenderer";
+import { normalizeFrameNodeContentV1 } from "../../../../packages/editor/nodes/frameNode";
 
 function getTextValue(frame: FrameDTO) {
   const text = frame.content?.text;
@@ -34,7 +35,50 @@ function isImagePlaceholderFrame(frame: FrameDTO) {
   return frame.type === "IMAGE" || frame.type === "FRAME";
 }
 
-export function FrameRenderer({
+function getFrameImageSource(frame: FrameDTO) {
+  if (frame.type === "IMAGE") {
+    return getImageSource(frame);
+  }
+  if (frame.type === "FRAME") {
+    const content = normalizeFrameNodeContentV1(frame.content);
+    return content.imageRef?.sourceUrl || content.imageRef?.previewUrl || null;
+  }
+  return null;
+}
+
+function getTextFontFamilyCss(fontFamily: string) {
+  if (fontFamily === "Inter") return "Inter, ui-sans-serif, system-ui";
+  if (fontFamily === "Georgia") return "Georgia, serif";
+  if (fontFamily === "Times New Roman") return "'Times New Roman', serif";
+  return "Arial, sans-serif";
+}
+
+function getFrameShellClasses(input: {
+  hasIssueHighlight: boolean;
+  textEditing: boolean;
+  selected: boolean;
+  type: FrameDTO["type"];
+}) {
+  let stateClass = "border-white/20";
+  if (input.hasIssueHighlight) {
+    stateClass = "border-rose-300 ring-2 ring-rose-300/40";
+  } else if (input.textEditing) {
+    stateClass = "border-violet-300 ring-2 ring-violet-300/55";
+  } else if (input.selected) {
+    stateClass = "border-cyan-300 ring-2 ring-cyan-300/40";
+  }
+
+  let bgClass = "bg-white/[0.02]";
+  if (input.type === "IMAGE" || input.type === "FRAME") {
+    bgClass = "bg-[#f5f1e8]";
+  } else if (input.type === "LINE") {
+    bgClass = "bg-transparent";
+  }
+
+  return `group relative h-full w-full overflow-hidden rounded-lg border ${stateClass} ${bgClass}`;
+}
+
+export function FrameRenderer({ // NOSONAR
   frame,
   selected,
   textEditing,
@@ -46,6 +90,7 @@ export function FrameRenderer({
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
+  cropOverride,
   onOpenTextContextMenu,
   onOpenElementContextMenu,
   onDragStart,
@@ -62,17 +107,21 @@ export function FrameRenderer({
   onTextChange?: (value: string) => void;
   onStartCropEdit?: () => void;
   onEndCropEdit?: () => void;
-  onCropChange?: (crop: { focalX: number; focalY: number; scale: number }) => void;
+  onCropChange?: (crop: Record<string, unknown>) => void;
+  cropOverride?: Record<string, unknown> | null;
   onOpenTextContextMenu?: (clientX: number, clientY: number) => void;
   onOpenElementContextMenu?: (clientX: number, clientY: number) => void;
   onDragStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onResizeStart: (handle: ResizeHandle, event: React.PointerEvent<HTMLButtonElement>) => void;
   issueMessages?: string[];
 }) {
-  const textStyle = frame.style as Record<string, unknown>;
+  const textStyle = frame.style;
   const normalizedTextStyle = normalizeTextNodeStyleV1(textStyle);
   const previewText = getTextValue(frame);
   const imageSrc = getImageSource(frame);
+  const frameFillImageSrc = frame.type === "FRAME" ? getFrameImageSource(frame) : null;
+  const renderCrop = cropOverride ?? frame.crop;
+  const cropEditableImageSrc = getFrameImageSource(frame);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isTextFrame = frame.type === "TEXT";
 
@@ -82,17 +131,174 @@ export function FrameRenderer({
     textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
   }, [textEditing]);
 
-  const overflow =
-    isTextFrame
-          ? estimateTextOverflow({
-              text: previewText,
-              widthPx: frame.w,
-              heightPx: frame.h,
-              fontSize: normalizedTextStyle.fontSize,
-              lineHeight: normalizedTextStyle.lineHeight
-            }).overflow
-      : false;
+  let overflow = false;
+  if (isTextFrame) {
+    overflow = estimateTextOverflow({
+      text: previewText,
+      widthPx: frame.w,
+      heightPx: frame.h,
+      fontSize: normalizedTextStyle.fontSize,
+      lineHeight: normalizedTextStyle.lineHeight
+    }).overflow;
+  }
   const hasIssueHighlight = Boolean(issueMessages && issueMessages.length > 0);
+  const shellClasses = getFrameShellClasses({
+    hasIssueHighlight,
+    textEditing: Boolean(textEditing),
+    selected,
+    type: frame.type
+  });
+
+  function renderFrameBody() {
+    if (isTextFrame) {
+      return (
+        <div
+          className="relative h-full overflow-hidden p-3 text-[#1f2633]"
+          style={{
+            fontFamily: getTextFontFamilyCss(normalizedTextStyle.fontFamily),
+            fontSize: normalizedTextStyle.fontSize,
+            lineHeight: normalizedTextStyle.lineHeight,
+            fontWeight: normalizedTextStyle.fontWeight,
+            fontStyle: normalizedTextStyle.fontStyle,
+            textDecoration: normalizedTextStyle.textDecoration,
+            letterSpacing: `${normalizedTextStyle.letterSpacing}px`,
+            textAlign: normalizedTextStyle.textAlign,
+            color: normalizedTextStyle.color,
+            opacity: normalizedTextStyle.opacity
+          }}
+        >
+          {textEditing ? (
+            <textarea
+              ref={textareaRef}
+              value={previewText}
+              onChange={(event) => onTextChange?.(event.target.value)}
+              onBlur={() => onEndTextEdit?.()}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  onEndTextEdit?.();
+                }
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  onEndTextEdit?.();
+                }
+              }}
+              onPaste={(event) => {
+                event.preventDefault();
+                const pasted = getSanitizedPastedText(event.nativeEvent);
+                const target = event.currentTarget;
+                const start = target.selectionStart ?? target.value.length;
+                const end = target.selectionEnd ?? target.value.length;
+                const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
+                onTextChange?.(next);
+                globalThis.requestAnimationFrame(() => {
+                  const caret = start + pasted.length;
+                  target.setSelectionRange(caret, caret);
+                });
+              }}
+              onPointerDown={(event) => event.stopPropagation()}
+              className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
+              style={{
+                fontFamily: "inherit",
+                fontSize: "inherit",
+                lineHeight: "inherit",
+                fontWeight: "inherit",
+                textAlign: "inherit",
+                color: "inherit"
+              }}
+            />
+          ) : previewText ? (
+            <TextRenderer text={previewText} style={normalizedTextStyle} />
+          ) : (
+            <span className="text-black/35">Empty text frame</span>
+          )}
+          {overflow && !textEditing ? (
+            <div className="absolute inset-x-2 bottom-2 rounded border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200">
+              Text overflow
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    if (frame.type === "SHAPE") {
+      return <ShapeRenderer style={frame.style} content={frame.content} />;
+    }
+    if (frame.type === "LINE") {
+      return <LineRenderer style={frame.style} />;
+    }
+    if (frame.type === "GROUP") {
+      return <GroupRenderer style={frame.style} content={frame.content} />;
+    }
+    if (frame.type === "FRAME") {
+      if (cropEditing && frameFillImageSrc) {
+        return (
+          <div className="relative h-full w-full bg-black/[0.02]">
+            <CropMode
+              src={frameFillImageSrc}
+              frameWidth={frame.w}
+              frameHeight={frame.h}
+              crop={renderCrop ?? null}
+              caption={typeof frame.content?.caption === "string" ? frame.content.caption : null}
+              onCropChange={(next) => onCropChange?.(next)}
+              onDone={() => onEndCropEdit?.()}
+              showHeader={false}
+            />
+          </div>
+        );
+      }
+      return (
+        <div className="relative h-full w-full">
+          <ElementFrameRenderer style={frame.style} content={frame.content} crop={renderCrop ?? null} />
+        </div>
+      );
+    }
+
+    if (imageSrc) {
+      return (
+        <div className="relative h-full w-full bg-black/[0.02]">
+          {cropEditing ? (
+            <CropMode
+              src={imageSrc}
+              frameWidth={frame.w}
+              frameHeight={frame.h}
+              crop={renderCrop ?? null}
+              caption={typeof frame.content?.caption === "string" ? frame.content.caption : null}
+              onCropChange={(next) => onCropChange?.(next)}
+              onDone={() => onEndCropEdit?.()}
+              showHeader={false}
+            />
+          ) : (
+            <ImageRenderer
+              src={imageSrc}
+              alt={typeof frame.content?.caption === "string" ? frame.content.caption : "Story image"}
+              crop={renderCrop ?? null}
+            />
+          )}
+          {typeof frame.content?.caption === "string" && frame.content.caption ? (
+            <div className="absolute inset-x-2 bottom-2 rounded bg-black/45 px-2 py-1 text-xs text-white/90">
+              {frame.content.caption}
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    return (
+      <div className="relative flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#f6efe0_0%,#e8dcc1_100%)] p-3">
+        <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(to_right,#1f2633_1px,transparent_1px),linear-gradient(to_bottom,#1f2633_1px,transparent_1px)] [background-size:14px_14px]" />
+        <div className="relative text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5a4f36]">Image Frame</p>
+          <p className="mt-2 text-sm text-[#4b4333]">
+            {typeof frame.content?.placeholderLabel === "string" ? frame.content.placeholderLabel : "Placeholder"}
+          </p>
+          {typeof frame.content?.caption === "string" && frame.content.caption ? (
+            <p className="mt-2 text-xs text-[#5f5748]">{frame.content.caption}</p>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -104,32 +310,22 @@ export function FrameRenderer({
         height: frame.h
       }}
     >
-      <div
-        className={`group relative h-full w-full overflow-hidden rounded-lg border ${
-          hasIssueHighlight
-            ? "border-rose-300 ring-2 ring-rose-300/40"
-            :
-          textEditing
-            ? "border-violet-300 ring-2 ring-violet-300/55"
-            : selected
-              ? "border-cyan-300 ring-2 ring-cyan-300/40"
-              : "border-white/20"
-        } ${
-          frame.type === "IMAGE" || frame.type === "FRAME"
-            ? "bg-[#f5f1e8]"
-            : frame.type === "LINE"
-              ? "bg-transparent"
-              : "bg-white/[0.02]"
-        }`}
-      >
+      <div className={shellClasses}>
         {!frame.locked && !isTextFrame && !cropEditing ? (
           <button
             type="button"
             aria-label={`Select and move ${frame.type.toLowerCase()} frame`}
-            className="absolute inset-0 cursor-move"
+            className="absolute inset-0 z-10 cursor-move"
             onPointerDown={(event) => {
               onSelect();
               onDragStart(event);
+            }}
+            onDoubleClick={(event) => {
+              if (!cropEditableImageSrc) return;
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect();
+              onStartCropEdit?.();
             }}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -142,7 +338,7 @@ export function FrameRenderer({
           <button
             type="button"
             aria-label={`Select ${frame.type.toLowerCase()} frame`}
-            className="absolute inset-0 cursor-pointer"
+            className="absolute inset-0 z-10 cursor-pointer"
             onClick={onSelect}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -176,147 +372,7 @@ export function FrameRenderer({
           />
         ) : null}
 
-        {isTextFrame ? (
-          <div
-            className="relative h-full overflow-hidden p-3 text-[#1f2633]"
-            style={{
-              fontFamily:
-                normalizedTextStyle.fontFamily === "Inter"
-                  ? "Inter, ui-sans-serif, system-ui"
-                  : normalizedTextStyle.fontFamily === "Georgia"
-                    ? "Georgia, serif"
-                    : normalizedTextStyle.fontFamily === "Times New Roman"
-                      ? "'Times New Roman', serif"
-                      : "Arial, sans-serif",
-              fontSize: normalizedTextStyle.fontSize,
-              lineHeight: normalizedTextStyle.lineHeight,
-              fontWeight: normalizedTextStyle.fontWeight,
-              fontStyle: normalizedTextStyle.fontStyle,
-              textDecoration: normalizedTextStyle.textDecoration,
-              letterSpacing: `${normalizedTextStyle.letterSpacing}px`,
-              textAlign: normalizedTextStyle.textAlign,
-              color: normalizedTextStyle.color,
-              opacity: normalizedTextStyle.opacity
-            }}
-          >
-            {textEditing ? (
-              <textarea
-                ref={textareaRef}
-                value={previewText}
-                onChange={(event) => onTextChange?.(event.target.value)}
-                onBlur={() => onEndTextEdit?.()}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    onEndTextEdit?.();
-                  }
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    onEndTextEdit?.();
-                  }
-                }}
-                onPaste={(event) => {
-                  event.preventDefault();
-                  const pasted = getSanitizedPastedText(event.nativeEvent);
-                  const target = event.currentTarget;
-                  const start = target.selectionStart ?? target.value.length;
-                  const end = target.selectionEnd ?? target.value.length;
-                  const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
-                  onTextChange?.(next);
-                  globalThis.requestAnimationFrame(() => {
-                    const caret = start + pasted.length;
-                    target.setSelectionRange(caret, caret);
-                  });
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-                className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
-                style={{
-                  fontFamily: "inherit",
-                  fontSize: "inherit",
-                  lineHeight: "inherit",
-                  fontWeight: "inherit",
-                  textAlign: "inherit",
-                  color: "inherit"
-                }}
-              />
-            ) : previewText ? (
-              <TextRenderer text={previewText} style={normalizedTextStyle} />
-            ) : (
-              <span className="text-black/35">Empty text frame</span>
-            )}
-            {overflow && !textEditing ? (
-              <div className="absolute inset-x-2 bottom-2 rounded border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200">
-                Text overflow
-              </div>
-            ) : null}
-          </div>
-        ) : frame.type === "SHAPE" ? (
-          <ShapeRenderer style={frame.style} content={frame.content} />
-        ) : frame.type === "LINE" ? (
-          <LineRenderer style={frame.style} />
-        ) : frame.type === "GROUP" ? (
-          <GroupRenderer style={frame.style} content={frame.content} />
-        ) : frame.type === "FRAME" ? (
-          <ElementFrameRenderer style={frame.style} content={frame.content} />
-        ) : (
-          imageSrc ? (
-            <div
-              className="relative h-full w-full bg-black/[0.02]"
-              onDoubleClick={(event) => {
-                event.stopPropagation();
-                onSelect();
-                onStartCropEdit?.();
-              }}
-            >
-              {cropEditing ? (
-                <CropMode
-                  src={imageSrc}
-                  frameWidth={frame.w}
-                  frameHeight={frame.h}
-                  crop={frame.crop}
-                  caption={typeof frame.content?.caption === "string" ? frame.content.caption : null}
-                  onCropChange={(next) => onCropChange?.(next)}
-                  onDone={() => onEndCropEdit?.()}
-                />
-              ) : (
-                <img
-                  src={imageSrc}
-                  alt={typeof frame.content?.caption === "string" ? frame.content.caption : "Story image"}
-                  className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-                  style={{
-                    objectPosition: `${Math.round(
-                      (typeof frame.crop?.focalX === "number" ? frame.crop.focalX : 0.5) * 100
-                    )}% ${Math.round(
-                      (typeof frame.crop?.focalY === "number" ? frame.crop.focalY : 0.5) * 100
-                    )}%`,
-                    transform: `scale(${typeof frame.crop?.scale === "number" ? frame.crop.scale : 1})`,
-                    transformOrigin: "center"
-                  }}
-                />
-              )}
-              {typeof frame.content?.caption === "string" && frame.content.caption ? (
-                <div className="absolute inset-x-2 bottom-2 rounded bg-black/45 px-2 py-1 text-xs text-white/90">
-                  {frame.content.caption}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="relative flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#f6efe0_0%,#e8dcc1_100%)] p-3">
-              <div className="absolute inset-0 opacity-[0.15] [background-image:linear-gradient(to_right,#1f2633_1px,transparent_1px),linear-gradient(to_bottom,#1f2633_1px,transparent_1px)] [background-size:14px_14px]" />
-              <div className="relative text-center">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#5a4f36]">
-                  Image Frame
-                </p>
-                <p className="mt-2 text-sm text-[#4b4333]">
-                  {typeof frame.content?.placeholderLabel === "string" ? frame.content.placeholderLabel : "Placeholder"}
-                </p>
-                {typeof frame.content?.caption === "string" && frame.content.caption ? (
-                  <p className="mt-2 text-xs text-[#5f5748]">{frame.content.caption}</p>
-                ) : null}
-              </div>
-            </div>
-          )
-        )}
+        {renderFrameBody()}
 
         {frame.locked ? (
           <span className="absolute right-2 top-2 rounded bg-black/45 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/75">
@@ -367,7 +423,7 @@ export function FrameRenderer({
             {issueMessages && issueMessages.length > 1 ? ` (+${issueMessages.length - 1} more)` : ""}
           </div>
         ) : null}
-        {isImagePlaceholderFrame(frame) && frame.type === "IMAGE" && selected && !frame.locked && !cropEditing ? (
+        {isImagePlaceholderFrame(frame) && selected && !frame.locked && !cropEditing && cropEditableImageSrc ? (
           <button
             type="button"
             className="absolute left-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"

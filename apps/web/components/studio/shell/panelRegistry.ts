@@ -36,6 +36,11 @@ export const studioPanelRegistry: Record<StudioShellPanelId, StudioPanelDefiniti
     id: "photos",
     title: "Photos",
     description: "Search and insert stock images."
+  },
+  crop: {
+    id: "crop",
+    title: "Crop",
+    description: "Adjust crop, zoom, and rotation for the selected image."
   }
 };
 
@@ -43,4 +48,3 @@ export function getStudioPanelDefinition(panelId: StudioShellPanelId | null) {
   if (!panelId) return null;
   return studioPanelRegistry[panelId] ?? null;
 }
-

@@ -44,11 +44,13 @@ import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
 import { showStudioToast } from "../studio/ui/toasts";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
+import type { StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
 import { TextPanel } from "../studio/panels/TextPanel";
 import { ElementsPanel } from "../studio/panels/ElementsPanel";
 import { UploadsPanel } from "../studio/panels/UploadsPanel";
 import { PhotosPanel } from "../studio/panels/PhotosPanel";
 import { ToolsPanel } from "../studio/panels/ToolsPanel";
+import { CropPanel } from "../studio/panels/CropPanel";
 import {
   buildCenteredTextFrameInput,
   getTextInsertPreset,
@@ -76,8 +78,17 @@ import { buildCenteredShapeFrameInput } from "../../../../packages/editor/comman
 import { buildCenteredLineFrameInput } from "../../../../packages/editor/commands/insertLine";
 import { buildCenteredPlaceholderFrameInput } from "../../../../packages/editor/commands/insertFrame";
 import { buildCenteredGridGroupInput, type GridPresetId } from "../../../../packages/editor/commands/insertGrid";
+import { buildApplyCropPatch } from "../../../../packages/editor/commands/applyCrop";
+import { buildCropRotationPatch } from "../../../../packages/editor/commands/updateCropRotation";
 import type { ElementsCatalogItemId } from "../studio/panels/elementsCatalog";
 import type { DraggedMediaPayload } from "../studio/dnd/frameDropTarget";
+import {
+  normalizeCropModelV1,
+  resetCropModelV1,
+  serializeCropModelV1,
+  type CropModelV1
+} from "../../../../packages/editor/models/cropModel";
+import { updateCropZoomConstrained } from "../../../../packages/editor/interaction/cropPanZoom";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -143,6 +154,17 @@ function buildStockFrameAttribution(result: NormalizedStockResult) {
   };
 }
 
+function isCropEditableFrame(frame: FrameDTO | null): frame is FrameDTO & { type: "IMAGE" | "FRAME" } {
+  if (!frame) return false;
+  if (frame.type === "IMAGE") return true;
+  if (frame.type !== "FRAME") return false;
+  const imageRef = frame.content?.imageRef;
+  if (!imageRef || typeof imageRef !== "object" || Array.isArray(imageRef)) return false;
+  const src = (imageRef as Record<string, unknown>).sourceUrl;
+  const preview = (imageRef as Record<string, unknown>).previewUrl;
+  return (typeof src === "string" && src.length > 0) || (typeof preview === "string" && preview.length > 0);
+}
+
 export function Editor2Shell({// NOSONAR
   storybook,
   initialPages,
@@ -161,6 +183,13 @@ export function Editor2Shell({// NOSONAR
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);
   const [cropModeFrameId, setCropModeFrameId] = useState<string | null>(null);
+  const [cropDraft, setCropDraft] = useState<{
+    frameId: string;
+    value: CropModelV1;
+    originalCrop: Record<string, unknown> | null;
+    previousPanelId: StudioShellPanelId | null;
+    previousPinnedPanelId: StudioShellPanelId | null;
+  } | null>(null);
   const [textPanelView, setTextPanelView] = useState<"presets" | "fonts" | "colors">("presets");
   const [assets, setAssets] = useState<AssetDTO[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
@@ -204,7 +233,6 @@ export function Editor2Shell({// NOSONAR
     [currentFrames, selectedFrameId]
   );
   const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
-  const selectedImageFrame = selectedFrame?.type === "IMAGE" ? selectedFrame : null;
   const selectedTextStyle = useMemo(
     () => (selectedTextFrame ? normalizeTextNodeStyleV1(selectedTextFrame.style) : null),
     [selectedTextFrame]
@@ -232,6 +260,16 @@ export function Editor2Shell({// NOSONAR
     () => Object.values(framesByPageId).flat(),
     [framesByPageId]
   );
+  const selectedCropTargetFrame = useMemo(
+    () => (isCropEditableFrame(selectedFrame) ? selectedFrame : null),
+    [selectedFrame]
+  );
+  const cropDraftByFrameId = useMemo(() => {
+    if (!cropDraft) return {};
+    return {
+      [cropDraft.frameId]: serializeCropModelV1(cropDraft.value)
+    } as Record<string, Record<string, unknown>>;
+  }, [cropDraft]);
 
   async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
     const result = await updateFrameAction(storybook.id, frameId, patch);
@@ -642,22 +680,78 @@ export function Editor2Shell({// NOSONAR
   }
 
   function handleStartCropEdit(frameId: string) {
+    const frame = findFrameById(frameId);
+    if (!isCropEditableFrame(frame)) return;
     setSelectedFrameId(frameId);
     setCropModeFrameId(frameId);
     setEditingTextFrameId((current) => (current === frameId ? null : current));
+    const mode = frame.type === "FRAME" ? "frame" : "free";
+    const objectFit = frame.type === "FRAME" ? "cover" : "contain";
+    setCropDraft({
+      frameId,
+      value: normalizeCropModelV1(frame.crop, { mode, objectFit }),
+      originalCrop: frame.crop ?? null,
+      previousPanelId: studioShell.openPanelId,
+      previousPinnedPanelId: studioShell.pinnedPanelId
+    });
+    studioShell.openPanel("crop", "mouse", true);
   }
 
-  function handleEndCropEdit(frameId: string) {
-    setCropModeFrameId((current) => (current === frameId ? null : current));
+  function handleCropChange(frameId: string, crop: Record<string, unknown>) {
+    setCropDraft((current) => {
+      if (current?.frameId !== frameId) return current;
+      const frame = findFrameById(frameId);
+      const mode = frame?.type === "FRAME" ? "frame" : "free";
+      const objectFit = frame?.type === "FRAME" ? "cover" : "contain";
+      return {
+        ...current,
+        value: normalizeCropModelV1(crop, { mode, objectFit })
+      };
+    });
   }
 
-  function handleCropChange(frameId: string, crop: { focalX: number; focalY: number; scale: number }) {
-    const frame = currentFrames.find((item) => item.id === frameId);
-    if (frame?.type !== "IMAGE") return;
-    setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, crop }));
-    if (selectedFrameId === frameId) {
-      setSelectedFrameDraftPatch((current) => ({ ...current, crop }));
+  function restorePanelAfterCropExit(session: {
+    previousPanelId: StudioShellPanelId | null;
+    previousPinnedPanelId: StudioShellPanelId | null;
+  }) {
+    if (!session.previousPanelId || session.previousPanelId === "crop") {
+      studioShell.closePanel("mouse");
+      return;
     }
+    studioShell.openPanel(
+      session.previousPanelId,
+      "mouse",
+      session.previousPinnedPanelId === session.previousPanelId
+    );
+  }
+
+  async function handleApplyCropEdit(frameId: string) {
+    const session = cropDraft;
+    if (session?.frameId !== frameId) return;
+    const frame = findFrameById(frameId);
+    if (!frame) return;
+    const result = await persistFramePatch(frameId, buildApplyCropPatch({
+      cropDraft: session.value,
+      expectedVersion: frame.version
+    }));
+    if (!result.ok) {
+      setMessage(result.error);
+      showStudioToast({ kind: "error", title: "Crop apply failed", message: result.error });
+      return;
+    }
+    setCropModeFrameId((current) => (current === frameId ? null : current));
+    setCropDraft(null);
+    restorePanelAfterCropExit(session);
+    showStudioToast({ kind: "success", title: "Crop applied", message: "Image crop was saved." });
+  }
+
+  function handleCancelCropEdit(frameId: string) {
+    setCropModeFrameId((current) => (current === frameId ? null : current));
+    setCropDraft((current) => {
+      if (current?.frameId !== frameId) return current;
+      restorePanelAfterCropExit(current);
+      return null;
+    });
   }
 
   function handleTextContentChange(frameId: string, text: string) {
@@ -688,9 +782,13 @@ export function Editor2Shell({// NOSONAR
   }
 
   function handleClearSelection() {
+    if (cropDraft?.frameId === cropModeFrameId) {
+      restorePanelAfterCropExit(cropDraft);
+    }
     setSelectedFrameId(null);
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
+    setCropDraft(null);
     setSelectedFrameDraftPatch({});
   }
 
@@ -992,12 +1090,73 @@ export function Editor2Shell({// NOSONAR
     tools: (
       <ToolsPanel
         selectedFrame={selectedFrame}
-        cropModeActive={cropModeFrameId === selectedImageFrame?.id}
+        cropModeActive={cropModeFrameId === selectedCropTargetFrame?.id}
         textEditActive={editingTextFrameId === selectedTextFrame?.id}
       />
     ),
-    photos: <PhotosPanel onInsert={handleInsertStockResult} />
+    photos: <PhotosPanel onInsert={handleInsertStockResult} />,
+    crop:
+      selectedCropTargetFrame && cropDraft?.frameId === selectedCropTargetFrame.id ? (
+        <CropPanel
+          frameType={selectedCropTargetFrame.type}
+          crop={cropDraft.value}
+          onZoomChange={(nextZoom) =>
+            setCropDraft((current) =>
+              current?.frameId === selectedCropTargetFrame.id
+                ? { ...current, value: updateCropZoomConstrained(current.value, nextZoom) }
+                : current
+            )
+          }
+          onRotateStep={(deltaDeg) =>
+            setCropDraft((current) =>
+              current?.frameId === selectedCropTargetFrame.id
+                ? {
+                    ...current,
+                    value: buildCropRotationPatch(current.value, deltaDeg)
+                  }
+                : current
+            )
+          }
+          onReset={() =>
+            setCropDraft((current) =>
+              current?.frameId === selectedCropTargetFrame.id
+                ? {
+                    ...current,
+                    value: resetCropModelV1(current.originalCrop, selectedCropTargetFrame.type === "FRAME" ? "frame" : "free")
+                  }
+                : current
+            )
+          }
+          onCancel={() => handleCancelCropEdit(selectedCropTargetFrame.id)}
+          onApply={() => void handleApplyCropEdit(selectedCropTargetFrame.id)}
+        />
+      ) : null
   };
+
+  useEffect(() => {
+    function onCropEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      if (!cropModeFrameId || !cropDraft) return;
+      event.preventDefault();
+      event.stopImmediatePropagation?.();
+      setCropModeFrameId((current) => (current === cropModeFrameId ? null : current));
+      setCropDraft((current) => {
+        if (current?.frameId !== cropModeFrameId) return current;
+        if (!current.previousPanelId || current.previousPanelId === "crop") {
+          studioShell.closePanel("mouse");
+        } else {
+          studioShell.openPanel(
+            current.previousPanelId,
+            "mouse",
+            current.previousPinnedPanelId === current.previousPanelId
+          );
+        }
+        return null;
+      });
+    }
+    globalThis.addEventListener("keydown", onCropEscape);
+    return () => globalThis.removeEventListener("keydown", onCropEscape);
+  }, [cropDraft, cropModeFrameId, studioShell]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) { // NOSONAR
@@ -1161,6 +1320,7 @@ export function Editor2Shell({// NOSONAR
                 snapEnabled={snapEnabled}
                 editingTextFrameId={editingTextFrameId}
                 cropModeFrameId={cropModeFrameId}
+                cropDraftByFrameId={cropDraftByFrameId}
                 onSelectFrame={handleSelectFrame}
                 onStartTextEdit={handleStartTextEdit}
                 onEndTextEdit={handleEndTextEdit}
@@ -1178,7 +1338,7 @@ export function Editor2Shell({// NOSONAR
                   selectedFrame?.type === "FRAME" ? openImagePanel : undefined
                 }
                 onStartCropEdit={handleStartCropEdit}
-                onEndCropEdit={handleEndCropEdit}
+                onEndCropEdit={handleApplyCropEdit}
                 onCropChange={handleCropChange}
                 onFramePatchPreview={(frameId, patch) => {
                   const active = currentFrames.find((frame) => frame.id === frameId);
@@ -1249,9 +1409,9 @@ export function Editor2Shell({// NOSONAR
               onBringToFront={handleBringToFront}
               onSendBackward={handleSendBackward}
               onOpenImagePicker={selectedFrame && (selectedFrame.type === "IMAGE" || selectedFrame.type === "FRAME") ? openImagePanel : undefined}
-              onStartCropMode={selectedImageFrame ? () => handleStartCropEdit(selectedImageFrame.id) : undefined}
-              onEndCropMode={selectedImageFrame ? () => handleEndCropEdit(selectedImageFrame.id) : undefined}
-              cropModeActive={selectedImageFrame ? cropModeFrameId === selectedImageFrame.id : false}
+              onStartCropMode={selectedCropTargetFrame ? () => handleStartCropEdit(selectedCropTargetFrame.id) : undefined}
+              onEndCropMode={selectedCropTargetFrame ? () => handleCancelCropEdit(selectedCropTargetFrame.id) : undefined}
+              cropModeActive={selectedCropTargetFrame ? cropModeFrameId === selectedCropTargetFrame.id : false}
             />
           </div>
         </StudioShellV2>

@@ -6,7 +6,8 @@ export type StudioShellPanelId =
   | "elements"
   | "uploads"
   | "tools"
-  | "photos";
+  | "photos"
+  | "crop";
 
 export type MiniSidebarItem = {
   id: StudioShellPanelId;

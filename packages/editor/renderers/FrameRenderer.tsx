@@ -1,17 +1,21 @@
 import { normalizeFrameNodeContentV1, normalizeFrameNodeStyleV1 } from "../nodes/frameNode";
+import { getCropImagePresentation } from "../utils/cropMath";
 
 export function ElementFrameRenderer({
   style,
-  content
+  content,
+  crop
 }: {
   style: Record<string, unknown>;
   content: Record<string, unknown>;
+  crop?: Record<string, unknown> | null;
 }) {
   const nodeStyle = normalizeFrameNodeStyleV1(style);
   const nodeContent = normalizeFrameNodeContentV1(content);
   const imageSrc = nodeContent.imageRef?.sourceUrl || nodeContent.imageRef?.previewUrl || null;
 
   if (imageSrc) {
+    const presentation = getCropImagePresentation(crop, { objectFit: "cover" });
     return (
       <div
         className="relative h-full w-full overflow-hidden"
@@ -23,7 +27,15 @@ export function ElementFrameRenderer({
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageSrc} alt="Frame content" className="h-full w-full object-cover" />
+        <img
+          src={imageSrc}
+          alt="Frame content"
+          className="h-full w-full"
+          style={{
+            objectFit: presentation.objectFit,
+            ...presentation.style
+          }}
+        />
       </div>
     );
   }

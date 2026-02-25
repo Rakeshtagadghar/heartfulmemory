@@ -6,6 +6,7 @@ import type { FrameDTO } from "../../lib/dto/frame";
 import type { PageDTO } from "../../lib/dto/page";
 import { pageSizePresetSchema } from "../../lib/dto/page";
 import { ShapeProperties } from "../studio/properties/ShapeProperties";
+import { resetCropModelV1 } from "../../../../packages/editor/models/cropModel";
 
 export function PropertiesPanel({ // NOSONAR
   page,
@@ -119,7 +120,7 @@ export function PropertiesPanel({ // NOSONAR
                 variant="ghost"
                 onClick={() =>
                   onPatchFrameDraft({
-                    crop: { focalX: 0.5, focalY: 0.5, scale: 1 }
+                    crop: resetCropModelV1(selectedFrame.crop as Record<string, unknown> | null, "free")
                   })
                 }
               >
@@ -140,31 +141,27 @@ export function PropertiesPanel({ // NOSONAR
               className="mt-1 h-9 w-full rounded-lg border border-white/15 bg-black/25 px-2 text-sm text-white"
             />
           </label>
-          <label className="block text-xs text-white/65">
-            Crop scale (stub)
-            <input
-              type="range"
-              min={0.5}
-              max={2}
-              step={0.05}
-              value={typeof selectedFrame.crop?.scale === "number" ? selectedFrame.crop.scale : 1}
-              onChange={(event) =>
-                onPatchFrameDraft({
-                  crop: {
-                    ...(selectedFrame.crop ?? { x: 0, y: 0, focalX: 0.5, focalY: 0.5 }),
-                    scale: Number(event.target.value)
-                  }
-                })
-              }
-              className="mt-1 w-full cursor-pointer"
-            />
-          </label>
+          <div className="rounded-lg border border-white/10 bg-black/15 p-2 text-xs text-white/65">
+            Use the Crop panel for zoom, rotate, and crop rectangle adjustments.
+          </div>
         </div>
       );
     } else {
       selectedFrameContentSection = (
         <div className="mt-4 space-y-3">
           <ShapeProperties frame={selectedFrame} onPatchFrameDraft={onPatchFrameDraft} />
+          {onStartCropMode ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={cropModeActive ? "secondary" : "ghost"}
+                onClick={cropModeActive ? onEndCropMode : onStartCropMode}
+              >
+                {cropModeActive ? "Exit Crop" : "Crop Image"}
+              </Button>
+            </div>
+          ) : null}
           {onOpenImagePicker && isElementFrame ? (
             <Button type="button" size="sm" variant="secondary" onClick={onOpenImagePicker}>
               Fill With Image
