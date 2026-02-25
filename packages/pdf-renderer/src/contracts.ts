@@ -4,7 +4,9 @@ export type PdfWarningCode =
   | "TEXT_OVERFLOW"
   | "LOW_RES_IMAGE"
   | "FRAME_OUTSIDE_SAFE_AREA"
-  | "IMAGE_MISSING";
+  | "IMAGE_MISSING"
+  | "LICENSE_MISSING"
+  | "ATTRIBUTION_REQUIRED";
 
 export type PdfRenderWarning = {
   code: PdfWarningCode;
@@ -72,10 +74,14 @@ export type PdfRenderContract = {
   frames: PdfRenderFrame[];
   assets: Array<{
     id: string;
+    source?: string | null;
     sourceUrl?: string | null;
+    storageProvider?: string | null;
+    storageKey?: string | null;
     width?: number | null;
     height?: number | null;
     mimeType?: string | null;
+    license?: Record<string, unknown> | null;
   }>;
 };
 
@@ -89,4 +95,3 @@ export type PdfRenderOutput = {
   pdf: Buffer;
   meta: PdfRenderOutputMeta;
 };
-

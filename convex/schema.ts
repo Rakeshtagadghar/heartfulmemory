@@ -28,6 +28,14 @@ export default defineSchema({
   })
     .index("by_email_lower", ["email_lower"])
     .index("by_createdAt", ["createdAt"]),
+  r2UsageMonthly: defineTable({
+    monthKey: v.string(),
+    reservedStorageBytes: v.number(),
+    classAOps: v.number(),
+    classBOps: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_monthKey", ["monthKey"]),
   storybooks: defineTable({
     ownerId: v.string(),
     title: v.string(),

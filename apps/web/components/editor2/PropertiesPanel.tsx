@@ -15,7 +15,11 @@ export function PropertiesPanel({
   onPatchFrameDraft,
   onDeleteFrame,
   onBringToFront,
-  onSendBackward
+  onSendBackward,
+  onOpenImagePicker,
+  onStartCropMode,
+  onEndCropMode,
+  cropModeActive = false
 }: {
   page: PageDTO | null;
   selectedFrame: FrameDTO | null;
@@ -31,6 +35,10 @@ export function PropertiesPanel({
   onDeleteFrame: () => Promise<void>;
   onBringToFront: () => void;
   onSendBackward: () => void;
+  onOpenImagePicker?: () => void;
+  onStartCropMode?: () => void;
+  onEndCropMode?: () => void;
+  cropModeActive?: boolean;
 }) {
   return (
     <aside className="flex h-full w-[320px] flex-col border-l border-white/10 bg-[#0d1626]">
@@ -160,6 +168,35 @@ export function PropertiesPanel({
             ) : (
               <div className="mt-4 space-y-3">
                 <p className="text-xs uppercase tracking-[0.16em] text-white/45">Image Placeholder</p>
+                {onOpenImagePicker ? (
+                  <Button type="button" size="sm" variant="secondary" onClick={onOpenImagePicker}>
+                    Choose Image
+                  </Button>
+                ) : null}
+                {onStartCropMode ? (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={cropModeActive ? "secondary" : "ghost"}
+                      onClick={cropModeActive ? onEndCropMode : onStartCropMode}
+                    >
+                      {cropModeActive ? "Exit Crop" : "Crop Image"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        onPatchFrameDraft({
+                          crop: { focalX: 0.5, focalY: 0.5, scale: 1 }
+                        })
+                      }
+                    >
+                      Reset Crop
+                    </Button>
+                  </div>
+                ) : null}
                 <label className="block text-xs text-white/65">
                   Caption
                   <input
@@ -210,4 +247,3 @@ export function PropertiesPanel({
     </aside>
   );
 }
-

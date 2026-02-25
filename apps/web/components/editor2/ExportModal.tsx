@@ -15,7 +15,7 @@ type ExportState =
 export function ExportModal({
   storybookId,
   open,
-  onClose
+  onClose,
 }: {
   storybookId: string;
   open: boolean;
@@ -28,7 +28,11 @@ export function ExportModal({
 
   async function runExport(preview: boolean) {
     setState({ status: "generating" });
-    const result = await requestPdfExport({ storybookId, exportTarget: target, preview });
+    const result = await requestPdfExport({
+      storybookId,
+      exportTarget: target,
+      preview,
+    });
     if (!result.ok) {
       setState({ status: "failed", error: result.error });
       return;
@@ -47,8 +51,12 @@ export function ExportModal({
       <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#0b1320] p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-white/45">Export PDF</p>
-            <h3 className="mt-1 text-lg font-semibold text-parchment">Render from layout canvas</h3>
+            <p className="text-xs uppercase tracking-[0.16em] text-white/45">
+              Export PDF
+            </p>
+            <h3 className="mt-1 text-lg font-semibold text-parchment">
+              Render from layout canvas
+            </h3>
           </div>
           <Button type="button" size="sm" variant="ghost" onClick={onClose}>
             Close
@@ -57,7 +65,9 @@ export function ExportModal({
 
         <div className="mt-4 space-y-4">
           <fieldset className="space-y-2">
-            <legend className="text-sm font-semibold text-white/85">Target</legend>
+            <legend className="text-sm font-semibold text-white/85">
+              Target
+            </legend>
             <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-white/80">
               <input
                 type="radio"
@@ -106,12 +116,16 @@ export function ExportModal({
             <div className="space-y-2 rounded-lg border border-emerald-300/15 bg-emerald-500/5 p-3">
               <p className="text-sm text-emerald-100">
                 Ready: {state.meta.pageCount} pages · hash{" "}
-                <code className="font-mono text-xs">{state.meta.exportHash}</code>
+                <code className="font-mono text-xs">
+                  {state.meta.exportHash}
+                </code>
               </p>
               {state.meta.warnings.length > 0 ? (
                 <ul className="space-y-1 text-xs text-amber-100">
                   {state.meta.warnings.map((warning) => (
-                    <li key={`${warning.code}-${warning.pageId}-${warning.frameId ?? "none"}-${warning.message}`}>
+                    <li
+                      key={`${warning.code}-${warning.pageId}-${warning.frameId ?? "none"}-${warning.message}`}
+                    >
                       {warning.code}: {warning.message}
                     </li>
                   ))}

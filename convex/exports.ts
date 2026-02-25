@@ -70,12 +70,18 @@ export const getPdfExportPayload = queryGeneric({
       })),
       assets: assets.map((asset) => ({
         id: String(asset._id),
+        source: asset.source,
         sourceUrl: asset.sourceUrl ?? null,
+        storageProvider: asset.storageProvider ?? null,
+        storageKey: asset.storageKey ?? null,
         width: asset.width ?? null,
         height: asset.height ?? null,
-        mimeType: asset.mimeType ?? null
+        mimeType: asset.mimeType ?? null,
+        license:
+          asset.license && typeof asset.license === "object" && !Array.isArray(asset.license)
+            ? (asset.license as Record<string, unknown>)
+            : null
       }))
     };
   }
 });
-

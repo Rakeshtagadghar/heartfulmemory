@@ -1,14 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { StorybookDTO } from "../../lib/dto/storybook";
 import type { PageDTO } from "../../lib/dto/page";
 import type { FrameDTO } from "../../lib/dto/frame";
+import type { AssetDTO } from "../../lib/dto/asset";
+import type { NormalizedStockResult } from "../../lib/stock/types";
 import {
   createFrameAction,
   createPageAction,
+  createStockAssetAction,
+  createUploadAssetAction,
   ensureLayoutCanvasAction,
+  listEditorAssetsAction,
   removeFrameAction,
   reorderPagesAction,
   updateFrameAction,
@@ -23,6 +28,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { Editor2SaveStatus } from "./SaveStatus";
 import { TemplatePicker } from "./TemplatePicker";
 import { ExportButton } from "./ExportButton";
+import { ImagePicker } from "./ImagePicker";
 import { Button } from "../ui/button";
 
 function sortPages(pages: PageDTO[]) {
@@ -65,6 +71,11 @@ export function Editor2Shell({
     useState<Record<string, FrameDTO[]>>(initialFramesByPageId);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(initialPages[0]?.id ?? null);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
+  const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);
+  const [cropModeFrameId, setCropModeFrameId] = useState<string | null>(null);
+  const [leftPanelMode, setLeftPanelMode] = useState<"pages" | "images">("pages");
+  const [assets, setAssets] = useState<AssetDTO[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const [zoom, setZoom] = useState(0.85);
   const [showGridOverlay, setShowGridOverlay] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
@@ -91,6 +102,8 @@ export function Editor2Shell({
     () => currentFrames.find((frame) => frame.id === selectedFrameId) ?? null,
     [currentFrames, selectedFrameId]
   );
+  const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
+  const selectedImageFrame = selectedFrame?.type === "IMAGE" ? selectedFrame : null;
 
   async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
     const result = await updateFrameAction(storybook.id, frameId, patch);
@@ -169,6 +182,11 @@ export function Editor2Shell({
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
     setSelectedFrameId(result.data.id);
+    setCropModeFrameId(null);
+    if (type === "IMAGE") {
+      setLeftPanelMode("images");
+      void refreshAssets();
+    }
     setMessage(null);
   }
 
@@ -196,13 +214,13 @@ export function Editor2Shell({
     }
   }
 
-  function applySelectedFrameDraftPatch(
+  const applySelectedFrameDraftPatch = useCallback((
     patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h" | "z_index" | "locked">> & {
       style?: Record<string, unknown>;
       content?: Record<string, unknown>;
       crop?: Record<string, unknown> | null;
     }
-  ) {
+  ) => {
     if (!selectedFrame) return;
     setFramesByPageId((current) => {
       const next = { ...current };
@@ -215,7 +233,7 @@ export function Editor2Shell({
       return next;
     });
     setSelectedFrameDraftPatch((current) => ({ ...current, ...patch }));
-  }
+  }, [selectedFrame]);
 
   async function handleCommitFramePatch(frameId: string, patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>) {
     const frame = currentFrames.find((item) => item.id === frameId);
@@ -226,7 +244,7 @@ export function Editor2Shell({
     });
   }
 
-  async function handleDeleteSelectedFrame() {
+  const handleDeleteSelectedFrame = useCallback(async () => {
     if (!selectedFrameId || !selectedPageId) return;
     const result = await removeFrameAction(storybook.id, selectedFrameId);
     if (!result.ok) {
@@ -239,8 +257,10 @@ export function Editor2Shell({
       return next;
     });
     setSelectedFrameId(null);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
-  }
+  }, [selectedFrameId, selectedPageId, storybook.id]);
 
   async function handlePageSizeChange(preset: PageDTO["size_preset"]) {
     if (!selectedPage) return;
@@ -283,13 +303,174 @@ export function Editor2Shell({
   function handleSelectPage(pageId: string) {
     setSelectedPageId(pageId);
     setSelectedFrameId(null);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
+  }
+
+  function handleSelectFrame(frameId: string) {
+    const frame = currentFrames.find((item) => item.id === frameId);
+    setSelectedFrameId((current) => {
+      if (current !== frameId) {
+        setSelectedFrameDraftPatch({});
+      }
+      return frameId;
+    });
+    setEditingTextFrameId((current) => (current === frameId ? current : null));
+    setCropModeFrameId((current) => (current === frameId ? current : null));
+    if (frame?.type === "IMAGE") {
+      setLeftPanelMode("images");
+      void refreshAssets();
+    }
+  }
+
+  function handleStartTextEdit(frameId: string) {
+    setSelectedFrameId(frameId);
+    setEditingTextFrameId(frameId);
+    setCropModeFrameId((current) => (current === frameId ? null : current));
+  }
+
+  function handleEndTextEdit(frameId: string) {
+    setEditingTextFrameId((current) => (current === frameId ? null : current));
+  }
+
+  function handleStartCropEdit(frameId: string) {
+    setSelectedFrameId(frameId);
+    setCropModeFrameId(frameId);
+    setEditingTextFrameId((current) => (current === frameId ? null : current));
+  }
+
+  function handleEndCropEdit(frameId: string) {
+    setCropModeFrameId((current) => (current === frameId ? null : current));
+  }
+
+  function handleCropChange(frameId: string, crop: { focalX: number; focalY: number; scale: number }) {
+    const frame = currentFrames.find((item) => item.id === frameId);
+    if (!frame || frame.type !== "IMAGE") return;
+    setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, crop }));
+    if (selectedFrameId === frameId) {
+      setSelectedFrameDraftPatch((current) => ({ ...current, crop }));
+    }
+  }
+
+  function handleTextContentChange(frameId: string, text: string) {
+    const frame = currentFrames.find((item) => item.id === frameId);
+    if (!frame || frame.type !== "TEXT") return;
+    const nextContent = { ...frame.content, kind: "text_frame_v1", text };
+    setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, content: nextContent }));
+    if (selectedFrameId === frameId) {
+      setSelectedFrameDraftPatch((current) => ({ ...current, content: nextContent }));
+    }
+  }
+
+  function patchSelectedTextStyle(patch: Record<string, unknown>) {
+    if (!selectedTextFrame) return;
+    applySelectedFrameDraftPatch({
+      style: {
+        ...selectedTextFrame.style,
+        ...patch
+      }
+    });
+  }
+
+  async function refreshAssets() {
+    setAssetsLoading(true);
+    const result = await listEditorAssetsAction(storybook.id, 60);
+    setAssetsLoading(false);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setAssets(result.data);
+  }
+
+  function openImagePanel() {
+    setLeftPanelMode("images");
+    void refreshAssets();
+  }
+
+  function applyImageAssetToSelectedFrame(asset: AssetDTO, previewUrlOverride?: string | null) {
+    if (!selectedImageFrame) return;
+    const resolvedSourceUrl =
+      previewUrlOverride ||
+      (asset.storage_provider === "R2" ? `/api/assets/view/${asset.id}?purpose=preview` : asset.source_url || "");
+    const nextContent = {
+      ...selectedImageFrame.content,
+      kind: "image_frame_v1",
+      assetId: asset.id,
+      sourceUrl: resolvedSourceUrl,
+      caption:
+        typeof selectedImageFrame.content.caption === "string"
+          ? selectedImageFrame.content.caption
+          : "",
+      placeholderLabel: undefined
+    };
+    applySelectedFrameDraftPatch({
+      content: nextContent,
+      crop:
+        selectedImageFrame.crop && typeof selectedImageFrame.crop === "object"
+          ? selectedImageFrame.crop
+          : { focalX: 0.5, focalY: 0.5, scale: 1 }
+    });
+    setMessage(null);
+  }
+
+  async function handleCreateUploadAsset(input: {
+    sourceUrl: string;
+    storageKey?: string | null;
+    mimeType: string;
+    width?: number | null;
+    height?: number | null;
+    sizeBytes: number;
+  }) {
+    const result = await createUploadAssetAction(storybook.id, input);
+    if (!result.ok) {
+      setMessage(result.error);
+      return { ok: false as const, error: result.error };
+    }
+    setAssets((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
+    return { ok: true as const, asset: result.data };
+  }
+
+  async function handleInsertStockResult(result: NormalizedStockResult) {
+    if (!selectedImageFrame) {
+      setMessage("Select an image frame first.");
+      return;
+    }
+    const created = await createStockAssetAction(storybook.id, {
+      provider: result.provider.toUpperCase() as "UNSPLASH" | "PEXELS",
+      sourceAssetId: result.assetId,
+      sourceUrl: result.sourceUrl,
+      previewUrl: result.previewUrl,
+      fullUrl: result.fullUrl,
+      width: result.width,
+      height: result.height,
+      mimeType: "image/jpeg",
+      license: {
+        provider: result.provider,
+        licenseName: result.licenseName,
+        licenseUrl: result.licenseUrl,
+        requiresAttribution: result.requiresAttribution,
+        attributionText: result.attributionText,
+        authorName: result.authorName,
+        authorUrl: result.authorUrl,
+        sourceUrl: result.sourceUrl
+      }
+    });
+    if (!created.ok) {
+      setMessage(created.error);
+      return;
+    }
+    setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
+    applyImageAssetToSelectedFrame(created.data, result.previewUrl);
   }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (
         !selectedFrame ||
+        editingTextFrameId === selectedFrame.id ||
+        cropModeFrameId === selectedFrame.id ||
         (event.target instanceof HTMLElement &&
           ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName))
       ) {
@@ -321,7 +502,7 @@ export function Editor2Shell({
 
     globalThis.addEventListener("keydown", onKeyDown);
     return () => globalThis.removeEventListener("keydown", onKeyDown);
-  }, [applySelectedFrameDraftPatch, handleDeleteSelectedFrame, selectedFrame, startTransition]);
+  }, [applySelectedFrameDraftPatch, cropModeFrameId, editingTextFrameId, handleDeleteSelectedFrame, selectedFrame, startTransition]);
 
   return (
     <div
@@ -344,6 +525,55 @@ export function Editor2Shell({
         <div className="flex items-center gap-2">
           <TemplatePicker onApplyTemplate={handleApplyTemplate} />
           <Editor2SaveStatus status={autosave.status} error={autosave.error} />
+          {selectedTextFrame ? (
+            <div className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2 py-1 backdrop-blur">
+              <input
+                type="number"
+                min={8}
+                max={120}
+                value={typeof selectedTextFrame.style.fontSize === "number" ? selectedTextFrame.style.fontSize : 15}
+                onChange={(event) => patchSelectedTextStyle({ fontSize: Number(event.target.value) })}
+                className="h-8 w-16 rounded-md border border-white/15 bg-black/20 px-2 text-xs text-white outline-none"
+                aria-label="Font size"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTextFrame.style.fontWeight === 700 ? "secondary" : "ghost"}
+                onClick={() =>
+                  patchSelectedTextStyle({
+                    fontWeight: selectedTextFrame.style.fontWeight === 700 ? 400 : 700
+                  })
+                }
+              >
+                B
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={selectedTextFrame.style.fontStyle === "italic" ? "secondary" : "ghost"}
+                onClick={() =>
+                  patchSelectedTextStyle({
+                    fontStyle: selectedTextFrame.style.fontStyle === "italic" ? "normal" : "italic"
+                  })
+                }
+              >
+                I
+              </Button>
+              <div className="mx-1 h-5 w-px bg-white/15" />
+              {(["left", "center", "right"] as const).map((align) => (
+                <Button
+                  key={align}
+                  type="button"
+                  size="sm"
+                  variant={(selectedTextFrame.style.align as string | undefined) === align ? "secondary" : "ghost"}
+                  onClick={() => patchSelectedTextStyle({ align })}
+                >
+                  {align === "left" ? "L" : align === "center" ? "C" : "R"}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           <ExportButton storybookId={storybook.id} />
           <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddFrame("TEXT")}>
             Add Text
@@ -367,21 +597,46 @@ export function Editor2Shell({
             <button
               key={label}
               type="button"
-              className="h-9 w-9 cursor-pointer rounded-lg border border-white/10 bg-white/[0.02] text-[11px] font-semibold text-white/80 hover:bg-white/[0.06]"
+              className={`h-9 w-9 cursor-pointer rounded-lg border text-[11px] font-semibold transition ${
+                (label === "Img" && leftPanelMode === "images") || (label === "Pg" && leftPanelMode === "pages")
+                  ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
+                  : "border-white/10 bg-white/[0.02] text-white/80 hover:bg-white/[0.06]"
+              }`}
+              onClick={() => {
+                if (label === "Img") openImagePanel();
+                if (label === "Pg") setLeftPanelMode("pages");
+                if (label === "Grid") setShowGridOverlay((value) => !value);
+                if (label === "T") void handleAddFrame("TEXT");
+              }}
             >
               {label}
             </button>
           ))}
         </div>
 
-        <PagesPanel
-          pages={pages}
-          selectedPageId={effectiveSelectedPageId}
-          framesByPageId={framesByPageId}
-          onSelectPage={handleSelectPage}
-          onAddPage={handleAddPage}
-          onMovePage={handleMovePage}
-        />
+        {leftPanelMode === "images" ? (
+          <ImagePicker
+            storybookId={storybook.id}
+            open
+            recentAssets={assets}
+            selectedFrameLabel={
+              selectedImageFrame ? `image frame on page ${(selectedPage?.order_index ?? 0) + 1}` : undefined
+            }
+            onClose={() => setLeftPanelMode("pages")}
+            onInsertUploadAsset={(asset) => applyImageAssetToSelectedFrame(asset)}
+            onCreateUploadAsset={handleCreateUploadAsset}
+            onInsertStockResult={handleInsertStockResult}
+          />
+        ) : (
+          <PagesPanel
+            pages={pages}
+            selectedPageId={effectiveSelectedPageId}
+            framesByPageId={framesByPageId}
+            onSelectPage={handleSelectPage}
+            onAddPage={handleAddPage}
+            onMovePage={handleMovePage}
+          />
+        )}
 
         <div className="relative min-w-0 flex-1">
           <CanvasStage
@@ -391,7 +646,15 @@ export function Editor2Shell({
             zoom={zoom}
             showGrid={showGridOverlay}
             snapEnabled={snapEnabled}
-            onSelectFrame={setSelectedFrameId}
+            editingTextFrameId={editingTextFrameId}
+            cropModeFrameId={cropModeFrameId}
+            onSelectFrame={handleSelectFrame}
+            onStartTextEdit={handleStartTextEdit}
+            onEndTextEdit={handleEndTextEdit}
+            onTextContentChange={handleTextContentChange}
+            onStartCropEdit={handleStartCropEdit}
+            onEndCropEdit={handleEndCropEdit}
+            onCropChange={handleCropChange}
             onFramePatchPreview={(frameId, patch) => {
               const active = currentFrames.find((frame) => frame.id === frameId);
               if (!active) return;
@@ -450,12 +713,19 @@ export function Editor2Shell({
           onDeleteFrame={handleDeleteSelectedFrame}
           onBringToFront={handleBringToFront}
           onSendBackward={handleSendBackward}
+          onOpenImagePicker={selectedImageFrame ? openImagePanel : undefined}
+          onStartCropMode={selectedImageFrame ? () => handleStartCropEdit(selectedImageFrame.id) : undefined}
+          onEndCropMode={selectedImageFrame ? () => handleEndCropEdit(selectedImageFrame.id) : undefined}
+          cropModeActive={selectedImageFrame ? cropModeFrameId === selectedImageFrame.id : false}
         />
       </div>
 
       <div className="flex items-center justify-between border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
         <p>WYSIWYG canvas v1 · Pages + frames are the canonical model for Sprint 7 PDF rendering.</p>
-        <p>{pages.length} pages · {Object.values(framesByPageId).reduce((sum, frames) => sum + frames.length, 0)} frames</p>
+        <p>
+          {pages.length} pages · {Object.values(framesByPageId).reduce((sum, frames) => sum + frames.length, 0)} frames
+          {leftPanelMode === "images" ? ` · ${assetsLoading ? "loading assets…" : `${assets.length} assets`}` : ""}
+        </p>
       </div>
 
       {isPending ? (

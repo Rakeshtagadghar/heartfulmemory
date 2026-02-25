@@ -1,0 +1,346 @@
+{
+  "meta": {
+    "project": "Memorioso / Storybook (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 9,
+      "title": "Digital + Hardcopy Export Modes v1 (Same book, two outputs)",
+      "duration": "1 week",
+      "goal": "Support exporting the same storybook into two high-quality outputs: a Digital PDF (screen-friendly) and a Hardcopy Print PDF (print-ready constraints). Add validation, presets, and a clear export workflow so users can confidently order printing later.",
+      "definitionOfDone": [
+        "Two export targets available in UI: DIGITAL_PDF and HARDCOPY_PRINT_PDF (can generate both)",
+        "Print-safe constraints enforced (margins/safe zone, no edge text, higher image quality)",
+        "Export presets and page sizing finalized (A4/Letter/6x9 etc.)",
+        "Warnings and blocking errors are surfaced clearly (overflow, low-res, outside safe area)",
+        "Export history recorded (who exported what, when, hash)",
+        "PDF renderer uses target-specific settings (compression, image quality, margins)"
+      ]
+    },
+    "assumptions": {
+      "editor": "Sprint 6 WYSIWYG pages/frames model",
+      "renderer": "Sprint 7 Playwright PDF pipeline",
+      "images": "Sprint 8 R2 + stock integration"
+    }
+  },
+  "scope": {
+    "inScope": [
+      "Export target presets (digital vs print)",
+      "Target-specific validation rules and warnings",
+      "Export UX improvements + batch export",
+      "Export history/versioning",
+      "Hardcopy print-ready constraints v1 (safe area, higher quality settings)"
+    ],
+    "outOfScope": [
+      "Integrating with a printing vendor/fulfillment",
+      "Full bleed/spine/cover generator (can be Sprint 11+)",
+      "Collaborative approvals workflow"
+    ]
+  },
+  "backlog": [
+    {
+      "id": "S9-T01",
+      "title": "Define export target presets (Digital vs Hardcopy) + schema in storybook settings",
+      "skill": ["Product", "Architecture", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "settingsSchema": {
+          "exportTargets": {
+            "digitalPdf": true,
+            "hardcopyPdf": true
+          },
+          "pageSize": "A4|LETTER|6x9|8.5x11",
+          "margins": {
+            "top": "number",
+            "right": "number",
+            "bottom": "number",
+            "left": "number"
+          },
+          "printPreset": {
+            "safeAreaPadding": "number",
+            "minImageWidthPx": "number",
+            "imageQuality": "high|medium",
+            "disableLinksStyling": true
+          },
+          "digitalPreset": {
+            "imageQuality": "medium",
+            "enableLinksStyling": false
+          }
+        },
+        "constraints": [
+          "Allow both targets enabled simultaneously",
+          "Defaults must be sensible and work without user configuration"
+        ]
+      },
+      "acceptanceTests": [
+        "Storybook settings persist exportTargets + pageSize/margins",
+        "Defaults are applied for new books",
+        "UI reflects both toggles correctly"
+      ],
+      "deliverables": [
+        "packages/shared-schema/storybookSettings.types.ts updated",
+        "convex/storybooks.ts (settings mutations updated)",
+        "docs/export_presets_v1.md"
+      ]
+    },
+    {
+      "id": "S9-T02",
+      "title": "Target-specific validation rules (blocking vs warnings) integrated with rules engine",
+      "skill": ["TypeScript", "Validation", "Print QA"],
+      "priority": "P0",
+      "requirements": {
+        "digitalRules": [
+          "Allow tighter margins (still safe)",
+          "Warn on text overflow",
+          "Warn on low-res images (lower threshold)"
+        ],
+        "hardcopyRules": [
+          "Enforce safe area padding (blocking if text outside safe area)",
+          "Higher minimum image resolution (warning/blocking depending on severity)",
+          "Warn on frames too close to trim edges",
+          "No transparent backgrounds if you want print consistency (optional warning)"
+        ],
+        "errorCodes": [
+          "PRINT_TEXT_OUTSIDE_SAFE_AREA",
+          "PRINT_FRAME_OUTSIDE_PAGE",
+          "PRINT_LOW_RES_IMAGE",
+          "TEXT_OVERFLOW",
+          "FRAME_OVERLAP (optional)"
+        ],
+        "constraints": [
+          "Validation must return structured issues with exact frame/page paths",
+          "Hardcopy should have stricter blocking rules than digital"
+        ]
+      },
+      "acceptanceTests": [
+        "Hardcopy export is blocked if text frame violates safe area",
+        "Digital export still proceeds with warnings where appropriate",
+        "Issues panel shows the correct page/frame location"
+      ],
+      "deliverables": [
+        "packages/rules-engine/src/targets/digital.ts",
+        "packages/rules-engine/src/targets/hardcopy.ts",
+        "packages/rules-engine/tests/exportTargetRules.test.ts"
+      ]
+    },
+    {
+      "id": "S9-T03",
+      "title": "Renderer target tuning: image quality, font embedding, and print-friendly output",
+      "skill": ["Backend", "Playwright", "Print Production"],
+      "priority": "P0",
+      "requirements": {
+        "digitalRendererSettings": [
+          "Optimize PDF for screen (smaller file size)",
+          "Medium image quality",
+          "Standard margins"
+        ],
+        "hardcopyRendererSettings": [
+          "Higher image quality / less compression",
+          "Print-safe margins and optional bleed guide layer (visual only, optional)",
+          "Ensure text remains vector (avoid rasterizing fonts)"
+        ],
+        "constraints": [
+          "Same HTML template, different target config",
+          "Output must remain crisp when zoomed/printed"
+        ]
+      },
+      "acceptanceTests": [
+        "Hardcopy output is noticeably clearer for images than digital (where possible)",
+        "Fonts remain embedded and consistent",
+        "Page sizes and margins match presets"
+      ],
+      "deliverables": [
+        "packages/pdf-renderer/src/targets/digital.ts updated",
+        "packages/pdf-renderer/src/targets/hardcopy.ts updated",
+        "docs/pdf_target_tuning.md"
+      ]
+    },
+    {
+      "id": "S9-T04",
+      "title": "Export workflow UX: batch export both targets + progress + results panel",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Export modal supports: Digital only / Hardcopy only / Both",
+          "Shows validation issues before generation (with links to fix)",
+          "Shows generation progress per target",
+          "Results panel: download links + file size + timestamp"
+        ],
+        "constraints": [
+          "Do not start render if blocking issues exist (hardcopy)",
+          "Allow digital render even if hardcopy is blocked"
+        ]
+      },
+      "acceptanceTests": [
+        "User can generate both PDFs in one action",
+        "Blocking issues prevent only the blocked target, not the other",
+        "UX clearly explains what's wrong and how to fix"
+      ],
+      "deliverables": [
+        "components/editor2/ExportModal.tsx updated",
+        "components/editor2/ExportResultsPanel.tsx",
+        "components/editor2/ExportIssuesPanel.tsx"
+      ]
+    },
+    {
+      "id": "S9-T05",
+      "title": "Export history + versioning (export hash) stored in Convex",
+      "skill": ["Convex", "Architecture"],
+      "priority": "P1",
+      "requirements": {
+        "collection": "exports",
+        "fields": [
+          "storybookId",
+          "ownerId",
+          "exportTarget",
+          "exportHash",
+          "createdAt",
+          "pageCount",
+          "warningsCount",
+          "status (SUCCESS|FAILED)",
+          "fileKey (optional if stored), fileUrl (short-lived optional)",
+          "runtimeMs",
+          "errorSummary (if failed)"
+        ],
+        "constraints": [
+          "Store hashes even if you don't store PDF files yet (for caching)",
+          "Access control: only owner can read"
+        ]
+      },
+      "acceptanceTests": [
+        "Each export attempt is logged",
+        "User can see a list of recent exports in UI",
+        "Same exportHash can be used to skip regeneration (if caching enabled)"
+      ],
+      "deliverables": [
+        "convex/exports.ts",
+        "convex/schema.ts (exports table)",
+        "components/editor2/ExportHistory.tsx"
+      ]
+    },
+    {
+      "id": "S9-T06",
+      "title": "Optional: store generated PDFs in R2 (keyed by exportHash) to enable quick re-download",
+      "skill": ["Storage", "Backend", "Cloudflare R2"],
+      "priority": "P1",
+      "requirements": {
+        "storage": [
+          "Save PDF buffer to R2: exports/{storybookId}/{exportTarget}/{exportHash}.pdf",
+          "Return signed download URL to client"
+        ],
+        "constraints": [
+          "Short-lived signed URL only",
+          "Do not store unbounded exports forever (retention policy later)"
+        ]
+      },
+      "acceptanceTests": [
+        "After export, user can re-download without rerendering",
+        "Signed URLs expire",
+        "Non-owner cannot access stored exports"
+      ],
+      "deliverables": [
+        "app/api/export/pdf (store-to-r2 optional path)",
+        "lib/r2/putExportPdf.ts",
+        "docs/export_storage_policy_v1.md"
+      ]
+    },
+    {
+      "id": "S9-T07",
+      "title": "Preflight checks in editor: safe area overlays + issue navigation (click issue → jump to frame)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P1",
+      "requirements": {
+        "features": [
+          "Issue list grouped by page",
+          "Click issue focuses canvas on page + selects the frame",
+          "Frames violating safe area are highlighted",
+          "Toggle overlays: safe area, margins, grid"
+        ],
+        "constraints": [
+          "Must work for both digital and hardcopy targets",
+          "No performance drop in canvas interactions"
+        ]
+      },
+      "acceptanceTests": [
+        "Clicking an issue navigates to the correct page/frame",
+        "Highlighted frames show clear outlines and tooltips",
+        "Overlays toggle without affecting content"
+      ],
+      "deliverables": [
+        "components/editor2/IssuesNavigator.tsx",
+        "components/editor2/CanvasFocus.ts"
+      ]
+    },
+    {
+      "id": "S9-T08",
+      "title": "Print QA checklist + sample print run guidance (v1)",
+      "skill": ["QA", "Print Production"],
+      "priority": "P1",
+      "requirements": {
+        "checklist": [
+          "Verify margins/safe area on multiple page sizes",
+          "Inspect text sharpness at 200% zoom",
+          "Inspect image clarity on hardcopy output",
+          "Confirm no frames overlap or clip",
+          "Check page numbers/footers if present"
+        ],
+        "guidanceDoc": [
+          "How to print-test at home",
+          "How to validate PDF in common viewers",
+          "Known limitations (v1)"
+        ]
+      },
+      "acceptanceTests": [
+        "Checklist is executable and catches common issues",
+        "At least 1 real PDF produced and reviewed using this checklist"
+      ],
+      "deliverables": [
+        "docs/print_qa_checklist_s9.md",
+        "docs/print_test_guidance.md"
+      ]
+    },
+    {
+      "id": "S9-T09",
+      "title": "Release Sprint 9: deploy dual-target export and verify end-to-end",
+      "skill": ["Release", "QA", "DevOps-lite"],
+      "priority": "P0",
+      "requirements": {
+        "releaseChecklist": [
+          "Enable both export targets in settings",
+          "Run preflight: fix at least one safe-area issue",
+          "Generate DIGITAL_PDF and HARDCOPY_PRINT_PDF",
+          "Verify export history records entries",
+          "Verify stored export (if enabled) can be re-downloaded"
+        ]
+      },
+      "acceptanceTests": [
+        "Both export targets work reliably in production",
+        "Hardcopy rules prevent obvious print mistakes",
+        "No security regressions"
+      ],
+      "deliverables": ["docs/release_checklist_s9.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S9-T01",
+      "S9-T02",
+      "S9-T03",
+      "S9-T04",
+      "S9-T07",
+      "S9-T05",
+      "S9-T06",
+      "S9-T08",
+      "S9-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1.5,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "Hardcopy print readiness is mostly about constraints + clarity warnings; you can add true bleed/cover/spine later.",
+      "If you store PDFs in R2, add a retention policy later to control storage costs."
+    ]
+  }
+}

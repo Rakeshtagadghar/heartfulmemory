@@ -53,6 +53,33 @@ export function resolveFrameImage(
     };
   }
 
+  const assetSource = typeof asset.source === "string" ? asset.source : null;
+  const assetLicense =
+    asset.license && typeof asset.license === "object" && !Array.isArray(asset.license)
+      ? (asset.license as Record<string, unknown>)
+      : null;
+  const isUpload = assetSource === "UPLOAD";
+  if (!isUpload && !assetLicense) {
+    warnings.push({
+      code: "LICENSE_MISSING",
+      pageId: frame.pageId,
+      frameId: frame.id,
+      message: "Stock image license metadata is missing. Export should be blocked.",
+      severity: "warning"
+    });
+  } else if (!isUpload && assetLicense) {
+    const requiresAttribution = assetLicense.requiresAttribution === true;
+    if (requiresAttribution) {
+      warnings.push({
+        code: "ATTRIBUTION_REQUIRED",
+        pageId: frame.pageId,
+        frameId: frame.id,
+        message: "Stock image requires attribution. Include credits before distribution.",
+        severity: "info"
+      });
+    }
+  }
+
   const pixelCount = (asset.width ?? 0) * (asset.height ?? 0);
   if (pixelCount > 0 && pixelCount < targetMinPixels[contract.exportTarget]) {
     warnings.push({
@@ -74,4 +101,3 @@ export function resolveFrameImage(
     warnings
   };
 }
-

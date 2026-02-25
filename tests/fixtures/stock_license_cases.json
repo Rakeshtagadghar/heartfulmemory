@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "id": "upload_asset_no_license_ok",
+      "source": "UPLOAD",
+      "license": null,
+      "expected": {
+        "exportBlocked": false,
+        "warnings": []
+      }
+    },
+    {
+      "id": "stock_asset_missing_license_block",
+      "source": "UNSPLASH",
+      "license": null,
+      "expected": {
+        "exportBlocked": true,
+        "warnings": ["LICENSE_MISSING"]
+      }
+    },
+    {
+      "id": "stock_asset_with_attribution_info",
+      "source": "PEXELS",
+      "license": {
+        "licenseName": "Pexels License",
+        "requiresAttribution": true,
+        "attributionText": "Photo by Example on Pexels"
+      },
+      "expected": {
+        "exportBlocked": false,
+        "warnings": ["ATTRIBUTION_REQUIRED"]
+      }
+    }
+  ]
+}

@@ -6,11 +6,13 @@ import type { FrameDTO } from "../../lib/dto/frame";
 import { snapFrame } from "../../lib/editor2/snap";
 import { GuidesOverlay } from "./GuidesOverlay";
 import { FrameRenderer } from "./FrameRenderer";
+import type { ResizeHandle } from "./FrameHandles";
 
 type InteractionState =
   | null
   | {
       mode: "drag" | "resize";
+      resizeHandle?: ResizeHandle;
       frameId: string;
       pointerId: number;
       startClientX: number;
@@ -25,7 +27,15 @@ export function CanvasStage({
   zoom,
   showGrid,
   snapEnabled,
+  editingTextFrameId,
+  cropModeFrameId,
   onSelectFrame,
+  onStartTextEdit,
+  onEndTextEdit,
+  onTextContentChange,
+  onStartCropEdit,
+  onEndCropEdit,
+  onCropChange,
   onFramePatchPreview,
   onFramePatchCommit
 }: {
@@ -35,7 +45,15 @@ export function CanvasStage({
   zoom: number;
   showGrid: boolean;
   snapEnabled: boolean;
+  editingTextFrameId: string | null;
+  cropModeFrameId: string | null;
   onSelectFrame: (frameId: string) => void;
+  onStartTextEdit: (frameId: string) => void;
+  onEndTextEdit: (frameId: string) => void;
+  onTextContentChange: (frameId: string, text: string) => void;
+  onStartCropEdit: (frameId: string) => void;
+  onEndCropEdit: (frameId: string) => void;
+  onCropChange: (frameId: string, crop: { focalX: number; focalY: number; scale: number }) => void;
   onFramePatchPreview: (
     frameId: string,
     patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>
@@ -54,6 +72,7 @@ export function CanvasStage({
     if (!interaction || !page) return;
     const activeInteraction = interaction;
     const activePage = page;
+    const minSize = 24;
 
     function onPointerMove(event: PointerEvent) {
       if (event.pointerId !== activeInteraction.pointerId) return;
@@ -62,20 +81,44 @@ export function CanvasStage({
       const dx = (event.clientX - activeInteraction.startClientX) / zoom;
       const dy = (event.clientY - activeInteraction.startClientY) / zoom;
 
-      const proposed =
-        activeInteraction.mode === "drag"
-          ? {
-              x: activeInteraction.startFrame.x + dx,
-              y: activeInteraction.startFrame.y + dy,
-              w: frame.w,
-              h: frame.h
-            }
-          : {
-              x: frame.x,
-              y: frame.y,
-              w: activeInteraction.startFrame.w + dx,
-              h: activeInteraction.startFrame.h + dy
-            };
+      let proposed: { x: number; y: number; w: number; h: number };
+      if (activeInteraction.mode === "drag") {
+        proposed = {
+          x: activeInteraction.startFrame.x + dx,
+          y: activeInteraction.startFrame.y + dy,
+          w: frame.w,
+          h: frame.h
+        };
+      } else {
+        const handle = activeInteraction.resizeHandle ?? "se";
+        const startX = activeInteraction.startFrame.x;
+        const startY = activeInteraction.startFrame.y;
+        const startW = activeInteraction.startFrame.w;
+        const startH = activeInteraction.startFrame.h;
+        let nextX = startX;
+        let nextY = startY;
+        let nextW = startW;
+        let nextH = startH;
+
+        if (handle.includes("e")) {
+          nextW = Math.max(minSize, startW + dx);
+        }
+        if (handle.includes("s")) {
+          nextH = Math.max(minSize, startH + dy);
+        }
+        if (handle.includes("w")) {
+          const rawW = startW - dx;
+          nextW = Math.max(minSize, rawW);
+          nextX = startX + (startW - nextW);
+        }
+        if (handle.includes("n")) {
+          const rawH = startH - dy;
+          nextH = Math.max(minSize, rawH);
+          nextY = startY + (startH - nextH);
+        }
+
+        proposed = { x: nextX, y: nextY, w: nextW, h: nextH };
+      }
 
       const snapped = snapFrame({
         ...proposed,
@@ -165,7 +208,15 @@ export function CanvasStage({
                     key={frame.id}
                     frame={frame}
                     selected={frame.id === selectedFrameId}
+                    textEditing={frame.id === editingTextFrameId}
+                    cropEditing={frame.id === cropModeFrameId}
                     onSelect={() => onSelectFrame(frame.id)}
+                    onStartTextEdit={() => onStartTextEdit(frame.id)}
+                    onEndTextEdit={() => onEndTextEdit(frame.id)}
+                    onTextChange={(value) => onTextContentChange(frame.id, value)}
+                    onStartCropEdit={() => onStartCropEdit(frame.id)}
+                    onEndCropEdit={() => onEndCropEdit(frame.id)}
+                    onCropChange={(crop) => onCropChange(frame.id, crop)}
                     onDragStart={(event) => {
                       if (frame.locked) return;
                       event.preventDefault();
@@ -178,13 +229,14 @@ export function CanvasStage({
                         startFrame: { x: frame.x, y: frame.y, w: frame.w, h: frame.h }
                       });
                     }}
-                    onResizeStart={(event) => {
+                    onResizeStart={(handle, event) => {
                       if (frame.locked) return;
                       event.preventDefault();
                       event.stopPropagation();
                       onSelectFrame(frame.id);
                       setInteraction({
                         mode: "resize",
+                        resizeHandle: handle,
                         frameId: frame.id,
                         pointerId: event.pointerId,
                         startClientX: event.clientX,

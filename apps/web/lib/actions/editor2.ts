@@ -5,10 +5,12 @@ import { requireAuthenticatedUser } from "../auth/server";
 import { type DataResult } from "../data/_shared";
 import { createDefaultCanvasForUser, createPageForUser, listPagesByStorybookForUser, reorderPagesForUser, updatePageForUser } from "../data/pages";
 import { createFrameForUser, listFramesByPageForUser, listFramesByStorybookForUser, removeFrameForUser, updateFrameForUser } from "../data/frames";
+import { createAssetMetadataForUser, listAssetsForUser } from "../data/assets";
 import { updateStorybookSettingsForUser } from "../data/storybooks";
 import type { PageDTO } from "../dto/page";
 import type { FrameDTO } from "../dto/frame";
 import type { StorybookDTO } from "../dto/storybook";
+import type { AssetDTO } from "../dto/asset";
 
 function storybookPath(storybookId: string) {
   return `/app/storybooks/${storybookId}`;
@@ -113,5 +115,71 @@ export async function updateLayoutStorybookSettingsAction(
   const result = await updateStorybookSettingsForUser(user.id, storybookId, settingsPatch);
   revalidatePath(layoutPath(storybookId));
   revalidatePath(storybookPath(storybookId));
+  return result;
+}
+
+export async function listEditorAssetsAction(storybookId: string, limit = 40): Promise<DataResult<AssetDTO[]>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  return listAssetsForUser(user.id, limit);
+}
+
+export async function createUploadAssetAction(
+  storybookId: string,
+  input: {
+    storageKey?: string | null;
+    sourceUrl: string;
+    mimeType: string;
+    width?: number | null;
+    height?: number | null;
+    sizeBytes: number;
+    checksum?: string | null;
+  }
+): Promise<DataResult<AssetDTO>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await createAssetMetadataForUser(user.id, {
+    source: "UPLOAD",
+    source_url: input.sourceUrl,
+    storage_provider: input.storageKey ? "R2" : "LOCAL_DEV",
+    storage_bucket: process.env.R2_BUCKET ?? (input.storageKey ? null : "local-dev"),
+    storage_key: input.storageKey ?? null,
+    mime_type: input.mimeType,
+    width: input.width ?? null,
+    height: input.height ?? null,
+    size_bytes: input.sizeBytes,
+    checksum: input.checksum ?? null
+  });
+  if (result.ok) {
+    revalidatePath(layoutPath(storybookId));
+  }
+  return result;
+}
+
+export async function createStockAssetAction(
+  storybookId: string,
+  input: {
+    provider: "UNSPLASH" | "PEXELS";
+    sourceAssetId: string;
+    sourceUrl: string | null;
+    previewUrl: string;
+    fullUrl?: string | null;
+    mimeType?: string | null;
+    width?: number | null;
+    height?: number | null;
+    license: Record<string, unknown>;
+  }
+): Promise<DataResult<AssetDTO>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await createAssetMetadataForUser(user.id, {
+    source: input.provider,
+    source_asset_id: input.sourceAssetId,
+    source_url: input.fullUrl || input.previewUrl || input.sourceUrl || null,
+    mime_type: input.mimeType ?? "image/jpeg",
+    width: input.width ?? null,
+    height: input.height ?? null,
+    license: input.license
+  });
+  if (result.ok) {
+    revalidatePath(layoutPath(storybookId));
+  }
   return result;
 }

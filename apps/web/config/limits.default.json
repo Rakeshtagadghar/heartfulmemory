@@ -1,0 +1,12 @@
+{
+  "uploads": {
+    "imageMaxBytes": 10485760,
+    "allowedMimePrefixes": ["image/"]
+  },
+  "r2FreeTier": {
+    "hardStopEnabled": true,
+    "monthlyStorageBytesCap": 10737418240,
+    "monthlyClassAOpsCap": 1000000,
+    "monthlyClassBOpsCap": 10000000
+  }
+}
