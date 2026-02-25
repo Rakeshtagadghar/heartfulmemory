@@ -1,0 +1,321 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 14,
+      "title": "Image Editing v1: Crop Mode + Crop Sidebar",
+      "duration": "1 week",
+      "goal": "Make image editing feel Canva-like: double-click an image (or frame-filled image) to enter Crop Mode, open a contextual Crop sidebar, and support non-destructive crop/position/zoom/rotate with persistence.",
+      "definitionOfDone": [
+        "Double-clicking an image enters Crop Mode and opens the Crop sidebar in the left panel",
+        "Crop sidebar is NOT part of top navbar; it uses the Studio Shell v2 panel system",
+        "User can crop by dragging crop handles (non-destructive) and pan/zoom within the crop area",
+        "User can rotate image in crop mode (MVP: slider or step buttons)",
+        "Crop data persists in page JSON/model and survives refresh",
+        "Crop mode works for both Image nodes and Frame nodes (image fills frame with crop data)",
+        "Escape exits crop mode (and returns to normal selection); Done/Apply commits",
+        "No regression to insert/move/resize flows for images and frames"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Studio Shell v2 panels + overlay primitives",
+      "editor": "Existing image/frame nodes, selection system, and renderers",
+      "rendering": "DOM/SVG/canvas-based; implement crop as transform + clip (deterministic for PDF later)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S14-T01",
+      "title": "Define non-destructive Crop model (shared by ImageNode and FrameNode)",
+      "skill": ["Editor Engineering", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "cropModel": {
+          "goal": "Represent crop deterministically and independent of device pixel ratio.",
+          "fields": [
+            "crop.enabled:boolean",
+            "crop.mode: 'free' | 'frame' (frame uses node bounds)",
+            "crop.rectNorm: { x, y, w, h } (0..1 normalized in source image space)",
+            "crop.panNorm: { x, y } (0..1 optional, for internal offset)",
+            "crop.zoom:number (>=1)",
+            "crop.rotationDeg:number (can be 0/90/180/270 or continuous)",
+            "crop.objectFit: 'cover'|'contain' (default cover for frames)"
+          ]
+        },
+        "constraints": [
+          "Backwards compatible: nodes without crop default to enabled=false",
+          "Model must be renderable by PDF renderer later (no DOM-only hacks)"
+        ]
+      },
+      "acceptanceTests": [
+        "Crop model serializes/deserializes for both ImageNode and FrameNode",
+        "Defaults produce identical rendering to pre-crop behavior"
+      ],
+      "deliverables": [
+        "packages/editor/models/cropModel.ts",
+        "packages/editor/serialize/migrations/cropV1.ts"
+      ]
+    },
+    {
+      "id": "S14-T02",
+      "title": "Implement Crop Mode state machine (enter/exit + event routing)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "entryPoints": [
+          "Double-click on Image node enters crop mode",
+          "Double-click on Frame node enters crop mode for its imageRef"
+        ],
+        "exitPoints": [
+          "Escape exits crop mode (discard if not applied, or apply if auto-apply chosen)",
+          "Done/Apply button commits crop and exits",
+          "Clicking outside can exit (optional; prefer explicit Done for elders)"
+        ],
+        "interactionRules": [
+          "While in crop mode: disable normal move/resize on the node; route drag to crop interactions",
+          "Show crop overlay/handles above the image bounds",
+          "Maintain selection on the cropped node"
+        ],
+        "constraints": [
+          "Do not break multi-select behavior; crop mode only for single selection",
+          "Avoid conflicts with double-click text edit"
+        ]
+      },
+      "acceptanceTests": [
+        "Double-click image enters crop mode reliably (no accidental triggers)",
+        "Escape and Done exit crop mode consistently",
+        "Normal selection interactions resume after exit"
+      ],
+      "deliverables": [
+        "packages/editor/modes/cropMode.ts",
+        "packages/editor/modes/modeController.ts updated"
+      ]
+    },
+    {
+      "id": "S14-T03",
+      "title": "Crop sidebar panel UI (Tools -> Crop OR direct Crop panel) in Shell v2",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Panel title: Crop",
+          "Buttons: Done / Cancel (or Apply/Reset)",
+          "Controls: Zoom slider, Rotate controls, Reset crop",
+          "Optional: Flip horizontal/vertical (P1)"
+        ],
+        "behavior": [
+          "Opening crop mode auto-opens Crop panel",
+          "Closing crop mode returns to previous panel state",
+          "Panel shows selected image metadata (optional: size)"
+        ],
+        "constraints": [
+          "Must not be in top navbar",
+          "Designed for elders: large buttons, clear 'Done'"
+        ]
+      },
+      "acceptanceTests": [
+        "Crop panel opens when entering crop mode",
+        "Done applies crop and closes panel/mode",
+        "Reset returns crop to defaults"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/panels/CropPanel.tsx",
+        "apps/web/components/studio/panels/tools/CropToolEntry.tsx (if using Tools registry)"
+      ]
+    },
+    {
+      "id": "S14-T04",
+      "title": "On-canvas crop overlay + handles (drag-to-crop rect)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "overlay": [
+          "Dim outside crop area",
+          "Crop rect with draggable corners/edges",
+          "Cursor changes for handles",
+          "Optional rule-of-thirds grid overlay (P1)"
+        ],
+        "dragBehaviors": [
+          "Dragging handles updates crop.rectNorm",
+          "Minimum crop size enforced",
+          "Crop rect constrained within image bounds"
+        ],
+        "constraints": [
+          "Handle hit targets must be large (touch-friendly)",
+          "Throttle updates to animation frame to avoid jank"
+        ]
+      },
+      "acceptanceTests": [
+        "User can adjust crop rectangle by dragging handles",
+        "Crop cannot extend beyond the image boundaries",
+        "Overlay remains stable while zooming/panning canvas"
+      ],
+      "deliverables": [
+        "packages/editor/overlays/CropOverlay.tsx",
+        "packages/editor/interaction/cropDragHandles.ts"
+      ]
+    },
+    {
+      "id": "S14-T05",
+      "title": "Pan + zoom within crop area (image repositioning)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "behaviors": [
+          "Drag inside crop area pans image (updates crop.panNorm)",
+          "Zoom slider or mouse wheel updates crop.zoom",
+          "Constrain pan so crop area always covered (for cover mode)"
+        ],
+        "controls": [
+          "Zoom: 1.0–5.0 (configurable)",
+          "Optional: zoom step buttons +/-"
+        ],
+        "constraints": [
+          "If image is smaller than crop area, enforce minimum zoom to cover (for frames)",
+          "Avoid pointer conflict with canvas panning; crop mode should capture drag within bounds"
+        ]
+      },
+      "acceptanceTests": [
+        "User can reposition image inside crop",
+        "Zoom changes are smooth and do not blur excessively",
+        "Pan constraints prevent blank space inside crop"
+      ],
+      "deliverables": [
+        "packages/editor/interaction/cropPanZoom.ts",
+        "apps/web/components/studio/panels/CropPanel.tsx wired"
+      ]
+    },
+    {
+      "id": "S14-T06",
+      "title": "Rotate controls in crop mode (MVP)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "options": [
+          "Step rotate: -90 / +90",
+          "Or slider: -180..180 (choose one)"
+        ],
+        "constraints": [
+          "Rotation must be part of crop model and render deterministically",
+          "Update pan/rect constraints after rotation"
+        ]
+      },
+      "acceptanceTests": [
+        "Rotate updates rendering immediately in crop mode",
+        "Crop remains valid after rotate (no blank crop area)"
+      ],
+      "deliverables": [
+        "packages/editor/commands/updateCropRotation.ts",
+        "apps/web/components/studio/panels/CropPanel.tsx updated"
+      ]
+    },
+    {
+      "id": "S14-T07",
+      "title": "Renderer updates: apply crop (clip + transform) for ImageNode and FrameNode",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "renderingApproach": [
+          "Compute visible region based on crop.rectNorm + panNorm + zoom + rotation",
+          "Clip to node bounds (image node bounds or frame bounds)",
+          "Ensure pixel-perfect repeatable output for PDF later"
+        ],
+        "constraints": [
+          "No reliance on CSS-only object-position hacks without storing parameters",
+          "Avoid expensive re-renders; memoize computed transform matrix"
+        ]
+      },
+      "acceptanceTests": [
+        "Cropped images render correctly during and after crop mode",
+        "Frame-filled images respect crop and do not leak outside frame bounds",
+        "Refresh restores identical crop rendering"
+      ],
+      "deliverables": [
+        "packages/editor/renderers/ImageRenderer.tsx updated",
+        "packages/editor/renderers/FrameRenderer.tsx updated",
+        "packages/editor/utils/cropMath.ts"
+      ]
+    },
+    {
+      "id": "S14-T08",
+      "title": "Persistence + undo/redo integration for crop edits",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "persistence": [
+          "Crop changes update node state and are saved with the page",
+          "Cancel discards staged crop edits (prefer local draft state until Done)"
+        ],
+        "undoRedo": [
+          "Entering crop mode does not create history entry",
+          "Applying crop creates one history entry",
+          "Subsequent crop operations can be grouped (optional)"
+        ],
+        "constraints": [
+          "If no undo/redo exists, ensure at least Apply/Cancel behavior is correct"
+        ]
+      },
+      "acceptanceTests": [
+        "Apply persists crop after refresh",
+        "Cancel leaves image unchanged",
+        "Undo reverts crop to previous state (if available)"
+      ],
+      "deliverables": [
+        "packages/editor/history/cropTransactions.ts",
+        "packages/editor/commands/applyCrop.ts"
+      ]
+    },
+    {
+      "id": "S14-T09",
+      "title": "QA checklist + tests for Crop Mode",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Insert provider photo and upload image",
+          "Double-click image -> crop mode opens crop panel",
+          "Drag crop handles, pan, zoom, rotate (if implemented)",
+          "Apply and refresh: crop persists",
+          "Cancel: no changes saved",
+          "Crop on frame-filled image works",
+          "Escape exits crop mode safely",
+          "Ensure normal selection/move/resize still works after exit"
+        ],
+        "automation": [
+          "Unit: cropMath constraints prevent blank space (cover mode)",
+          "Integration: applyCrop persists crop model on node",
+          "E2E (optional): crop then refresh and compare node model"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues in checklist",
+        "At least 2 automated tests added (math + persistence)"
+      ],
+      "deliverables": ["docs/qa_sprint14_crop.md", "tests/cropMode/*"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S14-T01",
+      "S14-T02",
+      "S14-T03",
+      "S14-T07",
+      "S14-T04",
+      "S14-T05",
+      "S14-T08",
+      "S14-T06",
+      "S14-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "For elders, prefer explicit Apply/Cancel and a clear crop panel. Avoid hidden gestures.",
+      "If crop math becomes heavy, ship without rotation first (keep it P1) and stabilize crop rect + pan/zoom."
+    ]
+  }
+}

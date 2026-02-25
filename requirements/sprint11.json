@@ -1,0 +1,310 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 11,
+      "title": "Studio Shell v2: Mini-sidebar + Hover Panels",
+      "duration": "1 week",
+      "goal": "Upgrade the Studio layout to a Canva-like shell: an icon-only mini-sidebar that reveals the full sidebar on hover (or pin), keeping the canvas dominant and reducing cognitive load for elders.",
+      "definitionOfDone": [
+        "Mini-sidebar (icons only) replaces/augments current left navigation in Studio",
+        "Hovering an icon opens the corresponding panel (Text/Elements/Uploads/Tools/Photos)",
+        "Panels can be pinned/unpinned (optional but recommended) and close on outside click/Escape",
+        "Only one panel is open at a time (unless explicitly pinned behavior is enabled)",
+        "Panel switching is instant and does not cause canvas re-layout thrash",
+        "Keyboard/focus handling works (Escape closes, Tab cycles inside panel, focus returns to canvas)",
+        "All panels render in the new shell without breaking existing editor behaviors"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Current Studio UI system (match existing patterns)",
+      "state": "Existing state manager (Zustand/Redux/React Context) + local UI state",
+      "editor": "Existing canvas/editor from Sprint 9+",
+      "a11y": "ARIA roles + focus management required for hover-driven UI"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S11-T01",
+      "title": "Define Studio Shell v2 layout spec (panel zones, z-index, interaction rules)",
+      "skill": ["Architecture", "Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "studioShellV2.json (interaction rules + dimensions)",
+          "Panel contract: header, close, scroll region, footer (optional)",
+          "Z-index rules for panels, floating toolbars, modals"
+        ],
+        "interactionRules": [
+          "Mini-sidebar is always visible",
+          "Hover icon opens panel with small delay (e.g., 150ms) to prevent flicker",
+          "Panel closes on mouse-leave with grace period unless pinned",
+          "Clicking icon pins/unpins (recommended)",
+          "Only one panel open at a time unless pinned mode explicitly allows stack (default: single)",
+          "Escape closes panel and returns focus to canvas"
+        ],
+        "constraints": [
+          "Do not shrink the canvas width when panel opens; overlay panel instead (Canva-like)",
+          "No breaking changes to existing editor canvas layout or event handling"
+        ]
+      },
+      "acceptanceTests": [
+        "Spec exists and is used by components (no magic numbers spread everywhere)",
+        "Canvas remains stable when panel opens/closes (no layout jump)"
+      ],
+      "deliverables": [
+        "docs/studioShellV2.json",
+        "docs/studioShellV2_interactions.md"
+      ]
+    },
+    {
+      "id": "S11-T02",
+      "title": "Build MiniSidebar component (icons-only) with active/hover states",
+      "skill": ["Frontend", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Icon rail with tooltips",
+          "Icons: Templates (optional), Text, Elements, Uploads, Tools, Photos",
+          "Active highlight and hover highlight",
+          "Collapsed width target: ~56-72px"
+        ],
+        "behavior": [
+          "Hover triggers openPanel(panelId)",
+          "Click toggles pin (if enabled) or toggles open state",
+          "Tooltip on hover with label (important for elders)"
+        ],
+        "constraints": [
+          "Touch-friendly fallback: click opens panel (hover not available)",
+          "Must not steal pointer events from canvas outside its bounds"
+        ]
+      },
+      "acceptanceTests": [
+        "Icons render and are clickable/hoverable",
+        "Tooltips appear within 300ms and do not obstruct canvas interactions",
+        "On touch devices: click opens panel (no hover dependency)"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/shell/MiniSidebar.tsx",
+        "apps/web/components/studio/shell/miniSidebarConfig.ts"
+      ]
+    },
+    {
+      "id": "S11-T03",
+      "title": "Implement HoverPanelContainer (overlay panel) with close/pin mechanics",
+      "skill": ["Frontend", "UX", "A11y"],
+      "priority": "P0",
+      "requirements": {
+        "features": [
+          "Overlay panel that slides/fades in next to mini-sidebar",
+          "Header with title + close button + pin toggle (optional)",
+          "Scroll body region (virtualize later; not required now)",
+          "Outside click closes when not pinned",
+          "Escape closes always",
+          "Mouse-leave close with grace period when not pinned"
+        ],
+        "a11y": [
+          "ARIA role=dialog or region with labelledby",
+          "Focus trap only if pinned (optional) otherwise allow canvas interactions",
+          "Return focus to last active canvas element on close"
+        ],
+        "constraints": [
+          "Panel must not reflow the canvas",
+          "Z-index below modals but above canvas"
+        ]
+      },
+      "acceptanceTests": [
+        "Panel opens/closes without canvas resizing",
+        "Outside click and Escape behave correctly",
+        "Pinned panel stays open while interacting with canvas"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/shell/HoverPanelContainer.tsx",
+        "apps/web/components/studio/shell/useHoverPanelController.ts"
+      ]
+    },
+    {
+      "id": "S11-T04",
+      "title": "Wire panel routing: Text/Elements/Uploads/Tools/Photos render inside HoverPanel",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "panelMap": [
+          "text -> TextPanel",
+          "elements -> ElementsPanel",
+          "uploads -> UploadsPanel",
+          "tools -> ToolsPanel",
+          "photos -> PhotosPanel"
+        ],
+        "constraints": [
+          "Panels must be mount/unmount safe (no leaking subscriptions)",
+          "Preserve existing panel internal state where useful (search term, scroll) using cached state store"
+        ]
+      },
+      "acceptanceTests": [
+        "Each panel renders in new container",
+        "Switching panels is instant and does not cause React error boundary",
+        "Panel state (e.g., Photos search query) can be preserved across close/open (if enabled)"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/shell/panelRegistry.ts",
+        "apps/web/components/studio/shell/StudioShellV2.tsx"
+      ]
+    },
+    {
+      "id": "S11-T05",
+      "title": "Add touch + keyboard fallback behavior (non-hover environments)",
+      "skill": ["Frontend", "A11y"],
+      "priority": "P0",
+      "requirements": {
+        "fallbacks": [
+          "If hover is not supported: click toggles panel open/close",
+          "Long-press optional (skip if time)",
+          "Keyboard: arrow keys navigate icons (optional), Enter opens panel"
+        ],
+        "focus": [
+          "Tab can reach mini-sidebar icons",
+          "Visible focus ring and tooltip on focus",
+          "Escape closes panel"
+        ]
+      },
+      "acceptanceTests": [
+        "On mobile/tablet: user can open any panel via tap",
+        "Keyboard-only user can open/close panels",
+        "No focus gets lost behind overlay"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/shell/a11y.ts",
+        "apps/web/components/studio/shell/MiniSidebar.tsx updated"
+      ]
+    },
+    {
+      "id": "S11-T06",
+      "title": "Prevent hover flicker + accidental opens (intent detection)",
+      "skill": ["Frontend", "UX Polish"],
+      "priority": "P1",
+      "requirements": {
+        "intentLogic": [
+          "Open delay (100–200ms)",
+          "Close delay (150–250ms)",
+          "If moving from icon rail into panel, keep open",
+          "If user moves away quickly, cancel open"
+        ],
+        "constraints": [
+          "No heavy timers that cause jank; use requestAnimationFrame where needed"
+        ]
+      },
+      "acceptanceTests": [
+        "Fast mouse movement across icons does not spam open/close",
+        "Moving pointer from icon to panel does not close panel unexpectedly"
+      ],
+      "deliverables": ["apps/web/components/studio/shell/useHoverIntent.ts"]
+    },
+    {
+      "id": "S11-T07",
+      "title": "Introduce Tools panel registry (global vs contextual tools) — shell-level plumbing",
+      "skill": ["Editor Engineering", "Architecture"],
+      "priority": "P1",
+      "requirements": {
+        "goal": "Prepare for future tool sidebars like Crop. In this sprint, create the infrastructure; tools content can be minimal.",
+        "toolRegistry": [
+          "Tool definitions with id, title, icon, availability predicate (based on selection), and renderer component"
+        ],
+        "constraints": [
+          "Do not build Crop sidebar yet (Sprint 14)",
+          "Selection predicates must be cheap and memoized"
+        ]
+      },
+      "acceptanceTests": [
+        "Tools panel renders a list of tools",
+        "Contextual tool availability changes when selection changes",
+        "No performance regressions when moving selection"
+      ],
+      "deliverables": [
+        "packages/editor/tools/toolRegistry.ts",
+        "apps/web/components/studio/panels/ToolsPanel.tsx"
+      ]
+    },
+    {
+      "id": "S11-T08",
+      "title": "Instrumentation: panel open/close and usage events (editor UX funnel)",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "studio_panel_open",
+          "studio_panel_close",
+          "studio_panel_pin_toggle",
+          "mini_sidebar_icon_hover",
+          "mini_sidebar_icon_click"
+        ],
+        "properties": [
+          "panel_id",
+          "input_type(mouse|touch|keyboard)",
+          "pinned(boolean)"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per interaction",
+        "No duplicate events on re-render",
+        "Panel_id is consistent with registry ids"
+      ],
+      "deliverables": [
+        "lib/analytics/studio.ts",
+        "apps/web/components/studio/shell/* instrumented"
+      ]
+    },
+    {
+      "id": "S11-T09",
+      "title": "Regression QA pass for editor interactions (canvas stays primary)",
+      "skill": ["QA", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Open/close each panel while selecting/moving objects",
+          "Drag on canvas while panel is open (should still work if panel not pinned or does not capture pointer outside panel)",
+          "Zoom/pan (if exists) unaffected",
+          "Keyboard shortcuts unaffected",
+          "Escape behavior consistent",
+          "Mobile/touch open/close works"
+        ],
+        "automation": [
+          "Basic integration test: open panel -> close -> ensure canvas still clickable",
+          "Unit tests for hover intent timing (optional)"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical regressions found in checklist",
+        "At least one automated test added to prevent panel overlay regressions"
+      ],
+      "deliverables": [
+        "docs/qa_sprint11_studio_shell.md",
+        "tests/studioShell/*"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S11-T01",
+      "S11-T02",
+      "S11-T03",
+      "S11-T04",
+      "S11-T05",
+      "S11-T06",
+      "S11-T07",
+      "S11-T08",
+      "S11-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "This sprint intentionally focuses on Studio shell mechanics. Text toolbar and per-element menus are in later sprints.",
+      "If you already have a left sidebar, implement Shell v2 as a new layout component and migrate panels one-by-one to reduce risk."
+    ]
+  }
+}

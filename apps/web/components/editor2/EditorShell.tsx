@@ -1536,12 +1536,6 @@ export function Editor2Shell({// NOSONAR
             onIssueNavigate={handleNavigateToExportIssue}
             onIssuesUpdate={setPreflightIssues}
           />
-          <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddFrame("TEXT")}>
-            Add Text
-          </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddFrame("IMAGE")}>
-            Add Image
-          </Button>
           <Button type="button" size="sm" onClick={() => void ensureCanvas()}>
             Ensure Canvas
           </Button>

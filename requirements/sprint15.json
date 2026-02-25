@@ -1,0 +1,350 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 15,
+      "title": "Selection, Layers & Alignment v1 (Canva-like Object Control)",
+      "duration": "1 week",
+      "goal": "Make object manipulation feel professional and predictable: multi-select, consistent selection box behavior, layer ordering, align/distribute actions, and a reliable context menu for all nodes (text/images/elements/frames).",
+      "definitionOfDone": [
+        "Selection system supports single select + multi-select (Shift/Ctrl) with stable bounding boxes",
+        "Right-click context menu is consistent across node types (text/image/shape/frame/group)",
+        "Layer ordering works (bring forward/back, send to front/back) and persists per page",
+        "Align to page and align to selection works for X/Y (left/center/right and top/middle/bottom)",
+        "Distribute actions available for multi-select (horizontal/vertical)",
+        "Lock/unlock prevents move/resize/edit across all nodes",
+        "Keyboard shortcuts work (delete, duplicate, copy/paste, layer shortcuts if desired)",
+        "No regressions to crop mode, text toolbar, and insert flows"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Studio Shell v2 panels + overlay primitives",
+      "editor": "Existing node model, move/resize, and history/undo (if present)",
+      "state": "Existing editor state store (Zustand/Redux/Context)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S15-T01",
+      "title": "Normalize selection model (single, multi, group) + stable bounding box math",
+      "skill": ["Editor Engineering", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "selectionState": [
+          "selectedIds: string[]",
+          "primaryId: string | null",
+          "selectionType: 'single'|'multi'|'group'",
+          "bounds: { x, y, w, h } (computed)"
+        ],
+        "behaviors": [
+          "Click selects single node",
+          "Shift+click toggles node in selection",
+          "Drag selection marquee selects nodes (optional P1)",
+          "Primary selection defines toolbar/context anchoring"
+        ],
+        "constraints": [
+          "Selection bounds must account for rotation (MVP: axis-aligned bounding box; upgrade later)",
+          "Works with crop mode: crop mode forces single selection"
+        ]
+      },
+      "acceptanceTests": [
+        "Selection state is deterministic and stable across rerenders",
+        "Multi-select bounds compute correctly for mixed node types"
+      ],
+      "deliverables": [
+        "packages/editor/selection/selectionState.ts",
+        "packages/editor/selection/computeBounds.ts"
+      ]
+    },
+    {
+      "id": "S15-T02",
+      "title": "Implement consistent context menu across node types (Text/Image/Shape/Frame/Group)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "menuItemsP0": [
+          "Copy",
+          "Paste (if clipboard has node)",
+          "Duplicate",
+          "Delete",
+          "Lock/Unlock",
+          "Bring forward",
+          "Send backward",
+          "Send to front",
+          "Send to back",
+          "Align to page (submenu)",
+          "Align to selection (submenu)"
+        ],
+        "menuItemsP1": [
+          "Copy style / Paste style",
+          "Link",
+          "Alt text (for images)",
+          "Comment",
+          "Translate"
+        ],
+        "constraints": [
+          "Context menu must not break native text selection inside text edit mode (show node menu only when not editing)",
+          "Menu supports multi-select (actions apply to all selected)"
+        ]
+      },
+      "acceptanceTests": [
+        "Right-click shows the menu for any node type",
+        "Multi-select + right-click applies duplicate/delete/lock to all selected",
+        "Text edit mode keeps native context menu for copy/paste text"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/menus/NodeContextMenu.tsx",
+        "apps/web/components/studio/menus/menuActions.ts"
+      ]
+    },
+    {
+      "id": "S15-T03",
+      "title": "Layer ordering data model + commands (z-index / draw order) with persistence",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "model": [
+          "Page maintains ordered list of node ids (drawOrder) OR nodes carry zIndex number (choose one; drawOrder recommended)",
+          "Group nodes maintain child ordering within group"
+        ],
+        "commands": [
+          "bringForward(ids)",
+          "sendBackward(ids)",
+          "bringToFront(ids)",
+          "sendToBack(ids)"
+        ],
+        "constraints": [
+          "Order changes must be stable across refresh",
+          "Order changes must be undoable (if history exists)",
+          "Multi-select ordering should preserve relative order within selection"
+        ]
+      },
+      "acceptanceTests": [
+        "Changing layer order updates render stacking immediately",
+        "Order persists after refresh",
+        "Undo restores previous order"
+      ],
+      "deliverables": [
+        "packages/editor/layers/layerModel.ts",
+        "packages/editor/commands/layerCommands.ts",
+        "packages/editor/serialize/migrations/layerOrderV1.ts"
+      ]
+    },
+    {
+      "id": "S15-T04",
+      "title": "Lock/Unlock enforcement across interactions (move/resize/edit/crop)",
+      "skill": ["Editor Engineering", "QA"],
+      "priority": "P0",
+      "requirements": {
+        "lockingRules": [
+          "Locked nodes cannot be moved/resized",
+          "Text nodes: locked nodes cannot enter edit mode",
+          "Image nodes: locked nodes cannot enter crop mode",
+          "Context menu shows Unlock when locked"
+        ],
+        "constraints": [
+          "Lock state persists with node",
+          "Multi-select ignores locked nodes for transforms (or blocks transform with message—choose one; ignore recommended)"
+        ]
+      },
+      "acceptanceTests": [
+        "Locked nodes do not respond to drag/resize",
+        "Locked image ignores double-click crop",
+        "Unlock restores behavior"
+      ],
+      "deliverables": [
+        "packages/editor/interaction/lockGuards.ts",
+        "packages/editor/commands/toggleLock.ts"
+      ]
+    },
+    {
+      "id": "S15-T05",
+      "title": "Align to page actions (left/center/right, top/middle/bottom)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "alignTargets": ["page"],
+        "actions": [
+          "alignLeftToPage",
+          "alignCenterXToPage",
+          "alignRightToPage",
+          "alignTopToPage",
+          "alignCenterYToPage",
+          "alignBottomToPage"
+        ],
+        "constraints": [
+          "Apply to single or multi-select",
+          "Respect locked nodes (skip locked)"
+        ]
+      },
+      "acceptanceTests": [
+        "Selected nodes align correctly to page bounds",
+        "Multi-select aligns each node to the page consistently",
+        "Undo restores previous positions"
+      ],
+      "deliverables": [
+        "packages/editor/commands/alignToPage.ts",
+        "packages/editor/utils/geometry.ts"
+      ]
+    },
+    {
+      "id": "S15-T06",
+      "title": "Align to selection actions (relative alignment within selection set)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "alignTargets": ["selection"],
+        "actions": [
+          "alignLeft",
+          "alignCenterX",
+          "alignRight",
+          "alignTop",
+          "alignCenterY",
+          "alignBottom"
+        ],
+        "rules": [
+          "Align to primary node (primaryId) OR selection bounds (choose one; default to selection bounds for Canva-like)",
+          "Exclude locked nodes from being moved"
+        ],
+        "constraints": ["Works only when selection has 2+ nodes"]
+      },
+      "acceptanceTests": [
+        "Align-left lines all nodes up to selection left edge",
+        "Align-center aligns to selection center",
+        "Locked nodes remain unmoved"
+      ],
+      "deliverables": [
+        "packages/editor/commands/alignToSelection.ts",
+        "packages/editor/selection/selectionHelpers.ts"
+      ]
+    },
+    {
+      "id": "S15-T07",
+      "title": "Distribute actions for multi-select (horizontal/vertical)",
+      "skill": ["Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "actions": ["distributeHorizontalGaps", "distributeVerticalGaps"],
+        "rules": [
+          "Requires 3+ selected nodes",
+          "Sort by x or y before distributing",
+          "Respect locked nodes (exclude from moved set)"
+        ]
+      },
+      "acceptanceTests": [
+        "Nodes distribute evenly based on gaps",
+        "Locked nodes are excluded from distribution"
+      ],
+      "deliverables": ["packages/editor/commands/distribute.ts"]
+    },
+    {
+      "id": "S15-T08",
+      "title": "Clipboard for nodes (copy/paste) with offset placement",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "clipboard": [
+          "Copy selected node(s) into internal clipboard JSON",
+          "Paste creates new node ids and offsets position (e.g., +20,+20)",
+          "Paste maintains relative positions for multi-select"
+        ],
+        "constraints": [
+          "When in text edit mode, Cmd+C/Cmd+V should copy/paste text not nodes",
+          "Do not include huge binary payloads; images reference URLs"
+        ]
+      },
+      "acceptanceTests": [
+        "Copy/paste duplicates nodes correctly",
+        "Multi-select paste preserves layout",
+        "Paste works after page refresh only if clipboard is in-memory (OK for MVP)"
+      ],
+      "deliverables": [
+        "packages/editor/clipboard/nodeClipboard.ts",
+        "packages/editor/commands/pasteNodes.ts"
+      ]
+    },
+    {
+      "id": "S15-T09",
+      "title": "Keyboard shortcuts pass (delete, duplicate, layer ordering, lock)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "shortcuts": [
+          "Delete/Backspace: delete selected nodes (skip locked)",
+          "Ctrl/Cmd+D: duplicate selection",
+          "Ctrl/Cmd+L: lock/unlock (optional)",
+          "Ctrl/Cmd+]: bring forward (optional)",
+          "Ctrl/Cmd+[: send backward (optional)"
+        ],
+        "constraints": [
+          "Do not override browser shortcuts in input fields/text edit mode"
+        ]
+      },
+      "acceptanceTests": [
+        "Shortcuts work when canvas has focus",
+        "Shortcuts do not trigger while typing in inputs"
+      ],
+      "deliverables": [
+        "packages/editor/shortcuts/shortcuts.ts updated",
+        "docs/shortcuts.md"
+      ]
+    },
+    {
+      "id": "S15-T10",
+      "title": "QA checklist + tests for Selection/Layers/Alignment",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Single select each node type",
+          "Multi-select across node types (text + image + shape)",
+          "Context menu actions for multi-select",
+          "Bring to front/back and verify stacking",
+          "Align to page and align to selection",
+          "Lock a node and confirm it cannot be moved/edited/cropped",
+          "Clipboard copy/paste and duplicate behaviors",
+          "Undo/redo for layer and align ops (if available)",
+          "Regression: crop mode still works and forces single selection"
+        ],
+        "automation": [
+          "Unit: layerCommands preserve relative order for multi-select",
+          "Unit: alignToPage computes correct positions",
+          "Integration: lock guard prevents crop/edit/move"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues in checklist",
+        "At least 3 automated tests added (layers + align + lock)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint15_selection_layers.md",
+        "tests/selectionLayers/*"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S15-T01",
+      "S15-T03",
+      "S15-T04",
+      "S15-T02",
+      "S15-T05",
+      "S15-T06",
+      "S15-T07",
+      "S15-T08",
+      "S15-T09",
+      "S15-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "If rotation-aware bounds are hard, ship axis-aligned bounds now and document it; upgrade later.",
+      "Prefer drawOrder array per page over zIndex numbers to keep ordering deterministic and easy for PDF export."
+    ]
+  }
+}

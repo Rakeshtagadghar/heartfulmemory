@@ -1,0 +1,393 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 16,
+      "title": "Layout→PDF Renderer v1 (Pixel-perfect export matching editor)",
+      "duration": "1 week",
+      "goal": "Export storybooks as PDFs that match the Studio canvas (WYSIWYG): correct page size, margins, node positions, layering, text styles, images (including crop), shapes/frames/lines, with deterministic output for Digital and Hardcopy modes.",
+      "definitionOfDone": [
+        "Server-side PDF export endpoint produces a multi-page PDF from the Storybook document",
+        "Rendered PDF matches canvas layout within agreed tolerance (position/size/line breaks)",
+        "Supports Text, Image (with crop), Shape, Line, Frame (filled images), Group/Grid (as children)",
+        "Respects layer ordering using page.drawOrder (or equivalent ordering model)",
+        "Print-safe settings supported: margins/safe area + bleed (if enabled)",
+        "Embedded fonts configured and deterministic across environments",
+        "Export errors are actionable (node unsupported, missing assets, font missing)",
+        "Golden path smoke test passes: create a 3-page book with text+images+shapes and export successfully"
+      ]
+    },
+    "stackAssumptions": {
+      "runtime": "Next.js (App Router) server route handlers",
+      "pdfEngine": "pdf-lib (preferred) or Puppeteer/Playwright HTML->PDF (choose and lock in-task)",
+      "storage": "Supabase Storage or Cloudflare R2 for images",
+      "fonts": "Use bundled fonts (e.g., Inter) embedded in PDF for consistency",
+      "docModel": "Existing storybook schema with pages and nodes + drawOrder"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S16-T01",
+      "title": "Lock PDF render contract (supported nodes + style subset + validation)",
+      "skill": ["Architecture", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "supportedNodes": [
+          "text",
+          "image",
+          "shape(rect,circle)",
+          "line",
+          "frame(with imageRef)",
+          "group(grid as children)"
+        ],
+        "styleSupport": {
+          "text": [
+            "fontFamily(mapped)",
+            "fontSize",
+            "fontWeight",
+            "fontStyle",
+            "textDecoration",
+            "lineHeight",
+            "letterSpacing",
+            "textAlign",
+            "color",
+            "opacity"
+          ],
+          "shape": ["fill", "stroke", "strokeWidth", "cornerRadius", "opacity"],
+          "image": ["opacity", "cropModel(v1)"],
+          "frame": [
+            "cornerRadius",
+            "stroke",
+            "strokeWidth",
+            "imageRef + cropModel"
+          ]
+        },
+        "orderingRule": "Use page.drawOrder array as the canonical render order (back->front).",
+        "validationOutputs": [
+          "errors: blocking issues (unsupported node type, missing asset src, invalid crop)",
+          "warnings: non-blocking downgrades (unsupported text decoration fallback)"
+        ],
+        "constraints": [
+          "Validation must run before PDF generation and fail fast on errors",
+          "Contract versioned: renderVersion: 1"
+        ]
+      },
+      "acceptanceTests": [
+        "validateRenderable(doc) returns deterministic error list for unsupported inputs",
+        "Contract docs exist and are referenced by renderer"
+      ],
+      "deliverables": [
+        "packages/pdf/contract/renderContractV1.ts",
+        "packages/pdf/contract/validateRenderable.ts",
+        "docs/pdf_render_contract_v1.md"
+      ]
+    },
+    {
+      "id": "S16-T02",
+      "title": "Choose and scaffold PDF engine (pdf-lib vs HTML->PDF) + baseline multi-page generation",
+      "skill": ["Backend-lite", "Platform"],
+      "priority": "P0",
+      "requirements": {
+        "decision": [
+          "Option A: pdf-lib (vector draw primitives, embed images/fonts, deterministic)",
+          "Option B: Puppeteer/Playwright (render HTML/CSS snapshot, easier typography parity, heavier infra)"
+        ],
+        "baseline": [
+          "Create PDF with N pages",
+          "Set correct page size for book template",
+          "Export a downloadable PDF buffer"
+        ],
+        "constraints": [
+          "Must work in Vercel/serverless constraints (memory/time); document limits",
+          "Avoid headless browser unless needed for text parity"
+        ]
+      },
+      "acceptanceTests": [
+        "A sample doc renders into a multi-page PDF",
+        "PDF bytes are returned with correct headers"
+      ],
+      "deliverables": [
+        "packages/pdf/engine/index.ts",
+        "packages/pdf/engine/createDocument.ts"
+      ]
+    },
+    {
+      "id": "S16-T03",
+      "title": "Implement /api/export/pdf endpoint (auth + input + output)",
+      "skill": ["Backend-lite (Next.js)", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "endpoint": "POST /api/export/pdf",
+        "inputs": [
+          "storybookId OR full doc payload (choose one; prefer storybookId)",
+          "exportMode: 'digital'|'hardcopy'",
+          "templateId"
+        ],
+        "behavior": [
+          "Auth required (owner or collaborator)",
+          "Fetch doc + assets metadata",
+          "Run validateRenderable",
+          "Generate PDF",
+          "Return PDF bytes (or store and return URL if too large)"
+        ],
+        "constraints": [
+          "No PII logging",
+          "Rate limit exports per user (config-driven)"
+        ]
+      },
+      "acceptanceTests": [
+        "Unauthorized user cannot export",
+        "Owner can export and receives valid PDF",
+        "Validation errors returned as structured JSON with 400"
+      ],
+      "deliverables": [
+        "app/api/export/pdf/route.ts",
+        "lib/export/authz.ts",
+        "lib/export/rateLimit.ts"
+      ]
+    },
+    {
+      "id": "S16-T04",
+      "title": "Page mapping: template size, margins, safe area, bleed (digital vs hardcopy)",
+      "skill": ["Architecture", "Rendering"],
+      "priority": "P0",
+      "requirements": {
+        "pagePresets": [
+          "Define px->pt mapping and DPI assumption (e.g., 96dpi or template-defined)",
+          "Digital preset: no bleed, standard margins",
+          "Hardcopy preset: bleed + safe area guides"
+        ],
+        "outputs": [
+          "Page box model: trimBox, bleedBox, safeBox",
+          "Optional overlay guides for debug export"
+        ],
+        "constraints": [
+          "All coordinates must be deterministic and based on template definitions"
+        ]
+      },
+      "acceptanceTests": [
+        "Rendered PDF page size matches preset exactly",
+        "Content respects safe area constraints (warnings if outside)"
+      ],
+      "deliverables": [
+        "packages/pdf/layout/pagePresets.ts",
+        "packages/pdf/layout/coordinateSystem.ts"
+      ]
+    },
+    {
+      "id": "S16-T05",
+      "title": "Font embedding + font mapping (Inter baseline) for deterministic text rendering",
+      "skill": ["Rendering", "Frontend/Platform"],
+      "priority": "P0",
+      "requirements": {
+        "fonts": [
+          "Bundle Inter Regular/Medium/Bold (or your chosen family)",
+          "Map editor fontFamily to embedded fonts (fallbacks)",
+          "Support fontWeight mapping 400/600/700"
+        ],
+        "constraints": [
+          "No remote font fetching at render time",
+          "If unknown font: fallback + warning"
+        ]
+      },
+      "acceptanceTests": [
+        "PDF renders same text widths across machines",
+        "Unknown fonts do not crash export"
+      ],
+      "deliverables": [
+        "packages/pdf/fonts/fontRegistry.ts",
+        "packages/pdf/fonts/embedFonts.ts",
+        "assets/fonts/*"
+      ]
+    },
+    {
+      "id": "S16-T06",
+      "title": "Render Text nodes: positioning, wrapping, align, lineHeight, letterSpacing (MVP parity)",
+      "skill": ["Rendering", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "textLayout": [
+          "Render within bounding box w/h",
+          "Word wrap with deterministic measurement",
+          "TextAlign left/center/right",
+          "LineHeight",
+          "LetterSpacing (approx supported; if not exact, warn)"
+        ],
+        "constraints": [
+          "Match Studio rendering rules; document any differences",
+          "Avoid overflows (clip or shrink-to-fit; choose one and document)"
+        ]
+      },
+      "acceptanceTests": [
+        "Text line breaks match Studio for baseline cases",
+        "Alignment matches Studio visually",
+        "Long text either clips or wraps consistently (per rule)"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/renderText.ts",
+        "packages/pdf/layout/textMeasure.ts",
+        "docs/pdf_text_parity_notes.md"
+      ]
+    },
+    {
+      "id": "S16-T07",
+      "title": "Render Image nodes with crop model v1 (clip + transform) + opacity",
+      "skill": ["Rendering", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "imagePipeline": [
+          "Fetch image bytes from storage/provider URLs (signed where needed)",
+          "Embed image into PDF (png/jpg/webp support as possible)",
+          "Apply crop rect/pan/zoom/rotation deterministically",
+          "Clip to node bounds / frame bounds"
+        ],
+        "constraints": [
+          "If image fetch fails: surface error with asset id/url",
+          "Cache repeated images during a single export to save time"
+        ]
+      },
+      "acceptanceTests": [
+        "Cropped images in PDF match Studio crop",
+        "Frames with images render correctly with corner radius (if supported) or approximate with clipping"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/renderImage.ts",
+        "packages/pdf/pipeline/imageFetch.ts",
+        "packages/pdf/utils/imageCache.ts"
+      ]
+    },
+    {
+      "id": "S16-T08",
+      "title": "Render Shapes/Lines/Frames (vector primitives) + corner radius",
+      "skill": ["Rendering"],
+      "priority": "P0",
+      "requirements": {
+        "primitives": [
+          "Rect with fill/stroke/strokeWidth + cornerRadius",
+          "Circle with fill/stroke",
+          "Line with stroke/strokeWidth (+ dash optional P1)",
+          "Frame: rect primitive + image inside (uses renderImage with clip)"
+        ],
+        "constraints": [
+          "All colors must map from editor color format to PDF color",
+          "Opacity supported where possible"
+        ]
+      },
+      "acceptanceTests": [
+        "Shapes appear at correct positions and sizes",
+        "Stroke widths match expected scale",
+        "Frames render as expected with border + image fill"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/renderShape.ts",
+        "packages/pdf/renderers/renderLine.ts",
+        "packages/pdf/renderers/renderFrame.ts"
+      ]
+    },
+    {
+      "id": "S16-T09",
+      "title": "Layer ordering implementation using drawOrder (back->front) across all renderers",
+      "skill": ["Rendering", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "Render nodes in drawOrder order",
+          "Groups render their children in their own internal order (or flatten into page order with stable rule)",
+          "Selected/highlight overlays are NOT rendered into PDF"
+        ],
+        "constraints": ["Order must match Studio stacking"]
+      },
+      "acceptanceTests": [
+        "Two overlapping objects render with correct stacking in PDF",
+        "Bring-to-front operations in Studio reflect in export"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/renderPage.ts",
+        "packages/pdf/layout/flattenNodes.ts"
+      ]
+    },
+    {
+      "id": "S16-T10",
+      "title": "Export diagnostics: debug mode overlays + structured error reporting",
+      "skill": ["DX", "Backend-lite"],
+      "priority": "P1",
+      "requirements": {
+        "debugMode": [
+          "Optional flag to draw safe area/bleed boxes",
+          "Optional node bounding box outlines with ids"
+        ],
+        "errors": [
+          "Return structured error payload with code, message, nodeId, pageId",
+          "Log a minimal trace id for troubleshooting (no PII)"
+        ]
+      },
+      "acceptanceTests": [
+        "Debug export shows boxes and node ids",
+        "Validation/render failures return actionable errors"
+      ],
+      "deliverables": [
+        "packages/pdf/debug/debugOverlays.ts",
+        "packages/pdf/errors/exportErrors.ts",
+        "docs/pdf_debugging.md"
+      ]
+    },
+    {
+      "id": "S16-T11",
+      "title": "Golden path fixtures + regression tests (snapshot-like model tests)",
+      "skill": ["Testing", "QA"],
+      "priority": "P0",
+      "requirements": {
+        "fixtures": [
+          "Fixture A: 1-page text heavy",
+          "Fixture B: images with crop + frame",
+          "Fixture C: overlapping layers + shapes + lines",
+          "Fixture D: 3-page mixed content"
+        ],
+        "tests": [
+          "Contract validation tests",
+          "Renderer unit tests for coordinate mapping",
+          "Integration test that produces a PDF buffer (size > 0) and stable metadata"
+        ],
+        "manualQA": [
+          "Visual compare PDF vs Studio screenshots (at least 3 docs)",
+          "Verify margins/safe area warnings"
+        ]
+      },
+      "acceptanceTests": [
+        "All fixtures export without errors",
+        "At least one automated integration test runs in CI"
+      ],
+      "deliverables": [
+        "tests/pdf/fixtures/*",
+        "tests/pdf/export.integration.test.ts",
+        "docs/qa_sprint16_pdf.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S16-T01",
+      "S16-T02",
+      "S16-T04",
+      "S16-T05",
+      "S16-T06",
+      "S16-T07",
+      "S16-T08",
+      "S16-T09",
+      "S16-T03",
+      "S16-T10",
+      "S16-T11"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "If perfect text parity is hard with pdf-lib (especially letterSpacing), you can switch to HTML->PDF for v1, but document infra cost and ensure it works on Vercel.",
+      "Corner radius image clipping can be approximated if the chosen PDF engine has limitations; document the limitation and add a TODO for v2.",
+      "Export can return bytes directly for small PDFs; for large books, store in R2/Supabase and return a signed URL (can be a follow-up sprint if needed)."
+    ]
+  }
+}

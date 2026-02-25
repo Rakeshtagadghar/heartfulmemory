@@ -1,0 +1,351 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 12,
+      "title": "Text System v1: Presets + Floating Text Toolbar",
+      "duration": "1 week",
+      "goal": "Make text editing feel Canva-like: users can add preset text blocks and edit them via a floating toolbar that appears on text selection (not in the navbar), plus per-textbox quick actions.",
+      "definitionOfDone": [
+        "Text panel offers presets (Heading/Subheading/Body) + Add text box",
+        "Clicking a preset inserts a text node onto the active page and selects it",
+        "Selecting a text box shows a floating toolbar near the selection",
+        "Toolbar supports font family, size, weight, color, alignment, line height, letter spacing (MVP set)",
+        "Text edits update immediately and persist in page JSON/model",
+        "Toolbar is not part of navbar and does not reflow layout",
+        "Each text box supports basic quick actions (duplicate, delete, lock) via on-canvas affordance or context menu",
+        "Keyboard shortcuts: delete, duplicate, copy/paste work for text nodes",
+        "No regressions in non-text selection behavior"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Current Studio UI system + floating overlay primitives from Sprint 11",
+      "editor": "Existing canvas node model + selection system",
+      "textEngine": "Current text rendering approach (contenteditable or canvas text). Keep it; extend only.",
+      "fonts": "Use web-safe defaults now; optional font loading pipeline later"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S12-T01",
+      "title": "Define Text node schema v1 (style model + serialization) and migration rules",
+      "skill": ["Editor Engineering", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "TextNode schema with style fields",
+          "Serialize/deserialize support",
+          "Migration for older text nodes (if any)"
+        ],
+        "textNodeSchema": {
+          "required": ["id", "type", "x", "y", "w", "h", "content"],
+          "style": [
+            "fontFamily",
+            "fontSize",
+            "fontWeight",
+            "fontStyle",
+            "textDecoration",
+            "lineHeight",
+            "letterSpacing",
+            "textAlign",
+            "color",
+            "backgroundColor(optional)",
+            "opacity(optional)"
+          ]
+        },
+        "constraints": [
+          "No breaking changes to page schema; add defaults if missing",
+          "Style model should be stable for PDF renderer later",
+          "Keep content as plain text for MVP (rich text later if needed)"
+        ]
+      },
+      "acceptanceTests": [
+        "TextNode can be persisted and restored with identical style values",
+        "Missing style fields default correctly without crashing"
+      ],
+      "deliverables": [
+        "packages/editor/nodes/textNode.ts",
+        "packages/editor/serialize/migrations/textNodeV1.ts"
+      ]
+    },
+    {
+      "id": "S12-T02",
+      "title": "Implement Text presets in Text panel (Heading/Subheading/Body + Add text box)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "presets": [
+          {
+            "id": "heading",
+            "label": "Add a heading",
+            "defaults": { "fontSize": 48, "fontWeight": 700, "lineHeight": 1.1 }
+          },
+          {
+            "id": "subheading",
+            "label": "Add a subheading",
+            "defaults": { "fontSize": 28, "fontWeight": 600, "lineHeight": 1.2 }
+          },
+          {
+            "id": "body",
+            "label": "Add a little bit of body text",
+            "defaults": { "fontSize": 16, "fontWeight": 400, "lineHeight": 1.4 }
+          }
+        ],
+        "insertRules": [
+          "Insert at viewport center",
+          "Auto-size bounding box to fit default text (reasonable min width)",
+          "Auto-select inserted text node and enter edit mode"
+        ],
+        "constraints": [
+          "Use existing Text panel entry from Sprint 11 shell",
+          "No font library UI yet beyond a small dropdown (toolbar handles that)"
+        ]
+      },
+      "acceptanceTests": [
+        "Clicking each preset inserts a text node with expected default styles",
+        "New text node is selected and ready to type",
+        "Undo/redo (if exists) records insertion"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/panels/TextPanel.tsx",
+        "packages/editor/commands/insertText.ts"
+      ]
+    },
+    {
+      "id": "S12-T03",
+      "title": "Create FloatingTextToolbar overlay (positioning + show/hide rules)",
+      "skill": ["Frontend", "UX", "A11y"],
+      "priority": "P0",
+      "requirements": {
+        "showRules": [
+          "Visible when selection is a single Text node",
+          "Hidden for multi-select or non-text selection",
+          "Hidden while user is dragging/resizing (optional)",
+          "Repositions on zoom/pan/scroll"
+        ],
+        "positioning": [
+          "Anchor near top of selection bounding box with offset",
+          "Clamp within viewport (avoid offscreen)",
+          "Use portal overlay with proper z-index below modals"
+        ],
+        "a11y": [
+          "Toolbar buttons reachable by keyboard",
+          "Escape closes toolbar only if focus is inside it; otherwise Escape should close panels first (consistent priority rules)",
+          "Tooltip labels for icons"
+        ],
+        "constraints": [
+          "Toolbar must not be part of navbar",
+          "Must not cause layout reflow"
+        ]
+      },
+      "acceptanceTests": [
+        "Selecting text shows toolbar near selection",
+        "Selecting an image hides toolbar",
+        "Toolbar stays on-screen when text is near edges"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/overlays/FloatingTextToolbar.tsx",
+        "apps/web/components/studio/overlays/useFloatingAnchor.ts"
+      ]
+    },
+    {
+      "id": "S12-T04",
+      "title": "Implement core toolbar controls (font, size, weight, color, align, spacing)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "controls": [
+          "Font family dropdown (MVP list: Inter/Arial/Georgia/Times)",
+          "Font size input + stepper (+/-)",
+          "Bold toggle (fontWeight 700/400)",
+          "Italic toggle (fontStyle)",
+          "Underline toggle (textDecoration)",
+          "Text color picker (simple swatches + hex input optional)",
+          "Align left/center/right",
+          "Line height dropdown (1.0, 1.1, 1.2, 1.4, 1.6)",
+          "Letter spacing (0, 0.5, 1, 1.5, 2)"
+        ],
+        "behavior": [
+          "All changes update text node style immediately",
+          "Edits are undoable (if undo stack exists)",
+          "Debounce continuous inputs (font size typing)"
+        ],
+        "constraints": [
+          "No rich text spans yet—style applies to whole text box",
+          "Do not introduce heavy color picker dependency unless already present"
+        ]
+      },
+      "acceptanceTests": [
+        "Changing size/weight/color reflects instantly on canvas",
+        "Undo restores previous style values",
+        "Toolbar controls reflect current node style when reselecting"
+      ],
+      "deliverables": [
+        "packages/editor/commands/updateTextStyle.ts",
+        "apps/web/components/studio/overlays/TextToolbarControls.tsx"
+      ]
+    },
+    {
+      "id": "S12-T05",
+      "title": "Text editing mode polish (enter/exit edit, click-out behavior, caret stability)",
+      "skill": ["Editor Engineering", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Double click (or Enter) enters text edit mode",
+          "Click outside commits and exits edit mode",
+          "Dragging canvas while editing exits edit mode gracefully",
+          "Prevent selection jitter during typing"
+        ],
+        "constraints": [
+          "Avoid breaking existing selection/move interactions",
+          "If using contenteditable, sanitize pasted content to plain text"
+        ]
+      },
+      "acceptanceTests": [
+        "Typing does not move the text box unexpectedly",
+        "Paste inserts plain text (no formatting)",
+        "Exiting edit mode preserves content and style"
+      ],
+      "deliverables": [
+        "packages/editor/interaction/textEditController.ts",
+        "packages/editor/utils/sanitizePlainText.ts"
+      ]
+    },
+    {
+      "id": "S12-T06",
+      "title": "Per-textbox quick actions (context menu + minimal on-canvas affordance)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "actions": [
+          "Duplicate",
+          "Delete",
+          "Lock/Unlock",
+          "Bring forward / Send backward (if layer system exists; otherwise stub calls)"
+        ],
+        "ui": [
+          "Right-click context menu for text nodes",
+          "Optional small inline handle (3-dots) appears on hover"
+        ],
+        "constraints": [
+          "Do not implement full layer panel yet (Sprint 15)",
+          "Must not conflict with browser context menu inside contenteditable (handle carefully)"
+        ]
+      },
+      "acceptanceTests": [
+        "Right-click on text node shows menu with actions",
+        "Duplicate creates a copy offset by small delta",
+        "Locked text cannot be edited or moved"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/menus/TextContextMenu.tsx",
+        "packages/editor/commands/duplicateNode.ts"
+      ]
+    },
+    {
+      "id": "S12-T07",
+      "title": "Keyboard shortcuts for text nodes (copy/paste/duplicate/delete)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "shortcuts": [
+          "Delete/Backspace: delete selected node (if not locked)",
+          "Ctrl/Cmd+C: copy node",
+          "Ctrl/Cmd+V: paste node",
+          "Ctrl/Cmd+D: duplicate node",
+          "Ctrl/Cmd+Z / Shift+Cmd+Z: undo/redo (if exists)"
+        ],
+        "constraints": [
+          "When in text edit mode, normal typing shortcuts should behave correctly (e.g., Cmd+C copies selected text, not node)",
+          "Shortcut scope must respect focus (canvas vs input)"
+        ]
+      },
+      "acceptanceTests": [
+        "Shortcuts work on selected text node when not editing",
+        "Cmd+C inside text edit copies text selection, not node",
+        "Locked nodes ignore delete/move commands"
+      ],
+      "deliverables": [
+        "packages/editor/shortcuts/shortcuts.ts",
+        "packages/editor/clipboard/nodeClipboard.ts"
+      ]
+    },
+    {
+      "id": "S12-T08",
+      "title": "Performance + rendering pass (text re-render minimization)",
+      "skill": ["Performance", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "tactics": [
+          "Memoize text renderer by node id + style hash",
+          "Avoid layout thrash on toolbar reposition (throttle to animation frame)",
+          "Batch style updates where possible"
+        ],
+        "constraints": [
+          "Do not prematurely optimize with complex virtualization"
+        ]
+      },
+      "acceptanceTests": [
+        "Typing stays responsive for long paragraphs",
+        "Style changes do not cause whole-canvas re-render",
+        "Toolbar positioning is smooth while zoom/pan"
+      ],
+      "deliverables": [
+        "packages/editor/renderers/TextRenderer.tsx updates",
+        "apps/web/components/studio/overlays/useFloatingAnchor.ts optimized"
+      ]
+    },
+    {
+      "id": "S12-T09",
+      "title": "QA checklist + minimal automated tests for Text System v1",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Insert Heading/Subheading/Body",
+          "Enter edit mode, type, paste, exit",
+          "Change font size, weight, color, align, spacing",
+          "Undo/redo styles and content changes (if available)",
+          "Context menu actions (duplicate/delete/lock)",
+          "Toolbar hides on image selection and multi-select",
+          "Refresh page: text content + styles persist"
+        ],
+        "automation": [
+          "Unit: style update command merges correctly",
+          "Integration: insert preset -> persisted -> rehydrate equals",
+          "E2E (optional): select text -> toolbar visible -> change size -> reflected"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues found in checklist",
+        "At least 2 automated tests added covering insertion + style update"
+      ],
+      "deliverables": ["docs/qa_sprint12_text.md", "tests/textSystem/*"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S12-T01",
+      "S12-T02",
+      "S12-T03",
+      "S12-T04",
+      "S12-T05",
+      "S12-T07",
+      "S12-T06",
+      "S12-T08",
+      "S12-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Keep text as single-style per box for MVP; rich text spans can be a later sprint once core editor UX is stable.",
+      "If you already use a text library (TipTap/Slate/Quill), do not introduce a new one here—extend current approach only."
+    ]
+  }
+}

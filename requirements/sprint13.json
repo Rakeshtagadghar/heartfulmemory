@@ -1,0 +1,357 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 13,
+      "title": "Elements v1: Shapes, Frames, Grids",
+      "duration": "1 week",
+      "goal": "Enable Canva-like building blocks: users can add Shapes, Frames, and basic Grids from the Elements panel and manipulate them as first-class canvas nodes with selection/resize and persistence.",
+      "definitionOfDone": [
+        "Elements panel exists with categories and quick insert chips",
+        "Shapes (rectangle, circle, line) insert onto canvas and persist",
+        "Frames (image placeholders) insert and can accept images via drop/replace",
+        "Basic grids (2-col, 3-col, 2x2) insert as grouped layout helpers",
+        "All element nodes support select/move/resize (line uses endpoints or bounding box MVP)",
+        "Right-click/context menu includes duplicate/delete/lock for elements",
+        "No regressions to text and image flows from S10–S12"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Studio Shell v2 panels + overlay primitives",
+      "editor": "Existing node model + selection/transform/serialization",
+      "assets": "No new external providers required for Elements v1"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S13-T01",
+      "title": "Define Elements node schemas v1 (ShapeNode, LineNode, FrameNode, GridGroup)",
+      "skill": ["Editor Engineering", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Node schemas + defaults",
+          "Serialization/deserialization support",
+          "Migration strategy for future versions"
+        ],
+        "nodeSchemas": {
+          "ShapeNode": {
+            "type": "shape",
+            "shapeType": ["rect", "circle"],
+            "props": [
+              "x",
+              "y",
+              "w",
+              "h",
+              "fill",
+              "stroke",
+              "strokeWidth",
+              "radius(optional)",
+              "opacity",
+              "lock"
+            ]
+          },
+          "LineNode": {
+            "type": "line",
+            "props": [
+              "x1",
+              "y1",
+              "x2",
+              "y2",
+              "stroke",
+              "strokeWidth",
+              "dash(optional)",
+              "opacity",
+              "lock"
+            ]
+          },
+          "FrameNode": {
+            "type": "frame",
+            "props": [
+              "x",
+              "y",
+              "w",
+              "h",
+              "cornerRadius",
+              "stroke",
+              "strokeWidth",
+              "fill(optional)",
+              "imageRef(optional)",
+              "lock"
+            ]
+          },
+          "GridGroup": {
+            "type": "group",
+            "props": [
+              "childrenIds",
+              "layoutHint=grid",
+              "columns",
+              "rows",
+              "gap",
+              "padding"
+            ]
+          }
+        },
+        "constraints": [
+          "Node model must remain compatible with future PDF renderer (deterministic styles)",
+          "Frames must be non-destructive containers (image stored as reference)"
+        ]
+      },
+      "acceptanceTests": [
+        "Schemas compile and can be persisted + restored",
+        "Default values produce visible elements on canvas"
+      ],
+      "deliverables": [
+        "packages/editor/nodes/shapeNode.ts",
+        "packages/editor/nodes/lineNode.ts",
+        "packages/editor/nodes/frameNode.ts",
+        "packages/editor/nodes/groupNode.ts"
+      ]
+    },
+    {
+      "id": "S13-T02",
+      "title": "Build Elements panel UI (categories + quick insert chips)",
+      "skill": ["Frontend", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Panel title: Elements",
+          "Search input (optional stub: filters local list)",
+          "Quick chips row: Rectangle, Circle, Line, Frame, Grid 2-col, Grid 3-col",
+          "Category sections (MVP): Shapes, Frames, Grids"
+        ],
+        "behavior": [
+          "Click chip inserts corresponding node(s) to active page and selects it",
+          "Panel scroll does not affect canvas"
+        ],
+        "constraints": [
+          "Keep UI aligned with Canva-like simple layout",
+          "Do not implement complex categories (charts/tables/3D) yet"
+        ]
+      },
+      "acceptanceTests": [
+        "Elements panel renders inside Shell v2",
+        "Each chip inserts expected element(s)"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/panels/ElementsPanel.tsx",
+        "apps/web/components/studio/panels/elementsCatalog.ts"
+      ]
+    },
+    {
+      "id": "S13-T03",
+      "title": "Implement insert commands for shapes/lines/frames/grids",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "insertRules": [
+          "Insert at viewport center",
+          "Default sizes: rect/frame 300x200, circle 220x220, line 240px width, grids fit within 70% page width",
+          "Auto-select inserted node/group",
+          "Prevent double-insert on rapid clicks"
+        ],
+        "gridInsert": [
+          "Create group with child shape/frame nodes representing cells",
+          "Cells sized evenly with gap/padding defaults",
+          "Group can be moved as a unit (ungroup later sprint)"
+        ],
+        "constraints": [
+          "Do not require new snapping rules this sprint",
+          "Must work with existing undo/redo if present"
+        ]
+      },
+      "acceptanceTests": [
+        "Insert commands produce correct nodes and selection",
+        "Inserts are persisted and rehydrate correctly after refresh"
+      ],
+      "deliverables": [
+        "packages/editor/commands/insertShape.ts",
+        "packages/editor/commands/insertLine.ts",
+        "packages/editor/commands/insertFrame.ts",
+        "packages/editor/commands/insertGrid.ts"
+      ]
+    },
+    {
+      "id": "S13-T04",
+      "title": "Renderers for Shape/Line/Frame nodes (canvas/SVG/DOM as per your engine)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "rendering": [
+          "Shapes: fill + stroke + corner radius",
+          "Line: stroke + strokeWidth (MVP: bounding box selection if endpoints too complex)",
+          "Frame: placeholder appearance + optional image fill"
+        ],
+        "constraints": [
+          "Rendering must be deterministic (for PDF later)",
+          "Avoid heavy SVG filters this sprint"
+        ]
+      },
+      "acceptanceTests": [
+        "All inserted elements are visible and correctly styled",
+        "Frames show placeholder state when empty"
+      ],
+      "deliverables": [
+        "packages/editor/renderers/ShapeRenderer.tsx",
+        "packages/editor/renderers/LineRenderer.tsx",
+        "packages/editor/renderers/FrameRenderer.tsx"
+      ]
+    },
+    {
+      "id": "S13-T05",
+      "title": "Selection + resize behavior for elements (shape/frame/line/group)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Shape/frame: standard resize handles; maintain aspect ratio optionally with Shift",
+          "Line: MVP selection/resize via bounding box (advanced endpoints later)",
+          "Group(grid): resize scales children proportionally (MVP) or keeps cell structure (preferred if feasible)"
+        ],
+        "constraints": [
+          "Locked nodes cannot be resized or moved",
+          "No crop/edit modes in this sprint"
+        ]
+      },
+      "acceptanceTests": [
+        "User can move/resize shapes and frames smoothly",
+        "Group/grid can be moved and resized without breaking rendering",
+        "Lock prevents movement/resizing"
+      ],
+      "deliverables": [
+        "packages/editor/interaction/resizeShape.ts",
+        "packages/editor/interaction/resizeFrame.ts",
+        "packages/editor/interaction/resizeGroup.ts",
+        "packages/editor/interaction/selectLine.ts"
+      ]
+    },
+    {
+      "id": "S13-T06",
+      "title": "Frame can accept an image (drop/replace) using existing media assets",
+      "skill": ["Editor Engineering", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "sources": [
+          "Drag image node onto frame to 'fill' it",
+          "Or: context menu -> Replace image -> choose from Uploads/Photos (can open picker modal or reuse panels)"
+        ],
+        "dataModel": [
+          "FrameNode.imageRef points to an asset URL + attribution metadata",
+          "Non-destructive: original image asset remains in library"
+        ],
+        "constraints": [
+          "No crop sidebar yet; frame fill uses center-crop default (object-fit: cover)"
+        ]
+      },
+      "acceptanceTests": [
+        "Dropping an image onto a frame fills it",
+        "Replacing frame image updates immediately and persists",
+        "Frame placeholder returns when image removed (optional)"
+      ],
+      "deliverables": [
+        "packages/editor/commands/fillFrameWithImage.ts",
+        "apps/web/components/studio/dnd/frameDropTarget.ts"
+      ]
+    },
+    {
+      "id": "S13-T07",
+      "title": "Context menu for elements (duplicate/delete/lock + basic layer ops stubs)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "menuItems": [
+          "Duplicate",
+          "Delete",
+          "Lock/Unlock",
+          "Bring forward (stub if layer system not finished)",
+          "Send backward (stub if layer system not finished)"
+        ],
+        "constraints": [
+          "Menu must not interfere with text edit context menu logic"
+        ]
+      },
+      "acceptanceTests": [
+        "Right-click on shape/frame shows context menu",
+        "Duplicate creates offset copy",
+        "Locked element cannot be moved/resized"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/menus/ElementContextMenu.tsx",
+        "packages/editor/commands/lockNode.ts"
+      ]
+    },
+    {
+      "id": "S13-T08",
+      "title": "Elements style controls (minimal): fill/stroke/strokeWidth for shapes and frames",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "ui": [
+          "If you have a generic 'Properties' panel, add these there; otherwise add a small contextual toolbar for shapes (optional)",
+          "Fill color swatches + hex input optional",
+          "Stroke color and width",
+          "Corner radius for rect/frame"
+        ],
+        "constraints": ["Keep UI simple; advanced effects later"]
+      },
+      "acceptanceTests": [
+        "User can change fill and stroke and see it immediately",
+        "Styles persist after refresh"
+      ],
+      "deliverables": [
+        "packages/editor/commands/updateShapeStyle.ts",
+        "apps/web/components/studio/properties/ShapeProperties.tsx"
+      ]
+    },
+    {
+      "id": "S13-T09",
+      "title": "QA checklist + tests for Elements v1",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Insert rectangle/circle/line/frame/grid",
+          "Move/resize each element type",
+          "Fill frame with upload image and provider photo",
+          "Duplicate/delete/lock behavior",
+          "Refresh and confirm persistence",
+          "Stress: insert 30+ elements and verify editor remains responsive"
+        ],
+        "automation": [
+          "Unit: insertGrid creates expected child nodes",
+          "Integration: fillFrameWithImage persists imageRef",
+          "E2E (optional): insert shape -> resize -> persist"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues in checklist",
+        "At least 2 automated tests added"
+      ],
+      "deliverables": ["docs/qa_sprint13_elements.md", "tests/elements/*"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S13-T01",
+      "S13-T02",
+      "S13-T03",
+      "S13-T04",
+      "S13-T05",
+      "S13-T06",
+      "S13-T07",
+      "S13-T08",
+      "S13-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Keep line endpoints simple this sprint; upgrade to true endpoint editing only after selection/layers are stable.",
+      "Frames are key for elders: they reduce layout complexity (drop image into a nice placeholder)."
+    ]
+  }
+}

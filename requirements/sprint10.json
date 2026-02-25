@@ -1,0 +1,394 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 10,
+      "title": "Media v1: Uploads Library + Photos Provider + Insert-to-Canvas",
+      "duration": "1 week",
+      "goal": "Let users reliably add images onto a page from Uploads and Photos (Unsplash/Pexels). Inserted images must become canvas elements with correct sizing, selection, move/resize, and persisted metadata.",
+      "definitionOfDone": [
+        "Uploads panel exists with file upload + gallery",
+        "Photos panel exists with search + trending grid (Unsplash and/or Pexels) via server proxy",
+        "Clicking an Upload or Photo inserts an Image element onto the active page immediately",
+        "Inserted images render consistently across refresh (persisted in page JSON/model)",
+        "Basic selection/resize works for inserted images (no crop mode yet)",
+        "Attribution metadata is captured on insert (lightweight, element-level)",
+        "No duplicate inserts on double-click / fast click",
+        "Error states and loading states are present for uploads and provider calls"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "ui": "Current Studio UI system (match existing patterns)",
+      "storage": "Supabase Storage or Cloudflare R2 (use existing choice; implement adapter)",
+      "db": "Supabase Postgres + RLS",
+      "editor": "Current Studio canvas model (page JSON / nodes) + selection/transform system already present from Sprint 9"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S10-T01",
+      "title": "Define Media domain types + normalize provider assets",
+      "skill": ["Frontend", "Backend-lite", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "TypeScript types for UploadAsset, ProviderAsset, and CanvasImageNode",
+          "Normalized provider asset shape used by UI",
+          "Attribution schema for image nodes"
+        ],
+        "types": {
+          "UploadAsset": [
+            "id",
+            "ownerId",
+            "fileName",
+            "mime",
+            "sizeBytes",
+            "width",
+            "height",
+            "url",
+            "createdAt"
+          ],
+          "ProviderAsset": [
+            "provider",
+            "providerId",
+            "thumbUrl",
+            "fullUrl",
+            "width",
+            "height",
+            "authorName",
+            "authorUrl",
+            "assetUrl",
+            "licenseUrl",
+            "attributionText"
+          ],
+          "CanvasImageNode": [
+            "id",
+            "type=image",
+            "src",
+            "w",
+            "h",
+            "x",
+            "y",
+            "rotation",
+            "opacity",
+            "lock",
+            "attribution"
+          ]
+        },
+        "constraints": [
+          "No breaking changes to existing page schema; image node can extend current node model",
+          "Attribution stored at node-level (credits page comes later)"
+        ]
+      },
+      "acceptanceTests": [
+        "Types compile and are used by Uploads/Photos panels and canvas insert flow",
+        "CanvasImageNode serializes/deserializes without data loss"
+      ],
+      "deliverables": [
+        "packages/shared/media/types.ts",
+        "packages/shared/editor/nodes/imageNode.ts"
+      ]
+    },
+    {
+      "id": "S10-T02",
+      "title": "Implement Uploads panel UI (Upload CTA + gallery grid)",
+      "skill": ["Frontend", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Left panel entry: Uploads",
+          "Primary button: Upload files",
+          "Drag & drop zone (optional if time allows)",
+          "Gallery grid with thumbnails",
+          "States: loading, empty, error"
+        ],
+        "behavior": [
+          "Selecting an upload thumbnail inserts into active page",
+          "Delete action (optional P1) with confirm"
+        ],
+        "constraints": [
+          "Must not block the canvas; panel scroll independent",
+          "Thumbnails must be cached and not cause layout shift"
+        ]
+      },
+      "acceptanceTests": [
+        "Uploads panel renders with empty state when no assets exist",
+        "After uploading, asset appears in gallery without refresh",
+        "Clicking thumbnail triggers insert flow (tested)"
+      ],
+      "deliverables": ["apps/web/components/studio/panels/UploadsPanel.tsx"]
+    },
+    {
+      "id": "S10-T03",
+      "title": "Build upload pipeline adapter (Storage + metadata persistence + RLS-safe reads)",
+      "skill": ["Backend-lite (Next.js)", "Supabase/R2", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "approach": "Use a storage adapter interface so swapping Supabase Storage/R2 does not change UI code.",
+        "adapterInterface": [
+          "uploadFile(file): { storageKey, url, width, height, mime, sizeBytes }",
+          "deleteFile(storageKey): void",
+          "listUploads(userId): UploadAsset[]"
+        ],
+        "db": {
+          "table": "uploads",
+          "columns": [
+            "id",
+            "user_id",
+            "file_name",
+            "mime",
+            "size_bytes",
+            "width",
+            "height",
+            "storage_key",
+            "url",
+            "created_at"
+          ],
+          "rls": [
+            "select where user_id = auth.uid()",
+            "insert with user_id = auth.uid()",
+            "delete where user_id = auth.uid()"
+          ]
+        },
+        "constraints": [
+          "Only image mime types allowed (png/jpg/jpeg/webp)",
+          "Reject files over configured max size (config-driven)",
+          "Use signed URLs if public read is not allowed"
+        ]
+      },
+      "acceptanceTests": [
+        "Uploading a file stores it and persists metadata in DB",
+        "List uploads returns only current user assets",
+        "Invalid type/oversized file is rejected with clear message"
+      ],
+      "deliverables": [
+        "app/api/uploads/create/route.ts",
+        "app/api/uploads/list/route.ts",
+        "lib/storage/storageAdapter.ts",
+        "supabase/migrations/*_uploads.sql"
+      ]
+    },
+    {
+      "id": "S10-T04",
+      "title": "Implement Photos panel UI (search + trending) with provider toggle (Unsplash/Pexels)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Left panel entry: Photos",
+          "Search input with debounce",
+          "Trending grid default view",
+          "Provider toggle: Unsplash | Pexels (or single provider if time)",
+          "Pagination/infinite scroll"
+        ],
+        "behavior": [
+          "Click photo thumbnail inserts onto canvas",
+          "Show author/source in hover overlay (optional P1)"
+        ],
+        "constraints": [
+          "Keep API keys server-side only",
+          "Graceful rate-limit handling"
+        ]
+      },
+      "acceptanceTests": [
+        "Trending renders on open",
+        "Search returns results within debounce time",
+        "Clicking a result inserts to canvas (tested)"
+      ],
+      "deliverables": ["apps/web/components/studio/panels/PhotosPanel.tsx"]
+    },
+    {
+      "id": "S10-T05",
+      "title": "Create provider proxy routes (server-side) + response normalization",
+      "skill": ["Backend-lite (Next.js)", "API Integration"],
+      "priority": "P0",
+      "requirements": {
+        "endpoints": [
+          "GET /api/photos/trending?provider=unsplash|pexels&page=&perPage=",
+          "GET /api/photos/search?provider=unsplash|pexels&q=&page=&perPage="
+        ],
+        "normalization": [
+          "Return ProviderAsset[] with consistent fields",
+          "Always include thumbUrl + fullUrl"
+        ],
+        "config": [
+          "Env vars for provider keys",
+          "Default perPage, max perPage"
+        ],
+        "constraints": [
+          "Do not expose provider keys to client",
+          "Add basic rate limiting (per IP) if available"
+        ]
+      },
+      "acceptanceTests": [
+        "API returns normalized assets for trending and search",
+        "Invalid provider returns 400 with message",
+        "Rate-limited response returns friendly error code and message"
+      ],
+      "deliverables": [
+        "app/api/photos/trending/route.ts",
+        "app/api/photos/search/route.ts",
+        "lib/photos/providers/unsplash.ts",
+        "lib/photos/providers/pexels.ts"
+      ]
+    },
+    {
+      "id": "S10-T06",
+      "title": "Insert-to-canvas pipeline for images (Uploads + Provider assets)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "insertRules": [
+          "Insert into active page at viewport center",
+          "Default scale: fit within max box (e.g., 40% of page width) while preserving aspect ratio",
+          "Auto-select inserted node after insert",
+          "Prevent double-insert on rapid clicks (dedupe by event window or insertion lock)"
+        ],
+        "dataHandling": [
+          "Uploads: use stored URL (signed or public) as src",
+          "Provider: optionally download to user storage (P1) OR insert external fullUrl for MVP",
+          "Persist attribution on node: provider, author, assetUrl, licenseUrl, attributionText"
+        ],
+        "constraints": [
+          "No crop mode in Sprint 10",
+          "No breaking changes to existing selection system"
+        ]
+      },
+      "acceptanceTests": [
+        "Click upload thumbnail inserts image node and selects it",
+        "Click provider thumbnail inserts image node and selects it",
+        "Inserted image is persisted and re-renders after refresh",
+        "No duplicate nodes created from double click"
+      ],
+      "deliverables": [
+        "packages/editor/commands/insertImage.ts",
+        "packages/editor/serialize/* updates",
+        "apps/web/components/studio/hooks/useInsertImage.ts"
+      ]
+    },
+    {
+      "id": "S10-T07",
+      "title": "Selection + resize baseline for image nodes (stability pass)",
+      "skill": ["Editor Engineering", "QA"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Image node shows selection outline + handles",
+          "Resize preserves aspect ratio by default (Shift overrides optional)",
+          "Drag move respects page bounds (soft clamp) if you already have it"
+        ],
+        "constraints": [
+          "No crop/edit mode yet",
+          "No new complex snapping rules (keep existing)"
+        ]
+      },
+      "acceptanceTests": [
+        "Inserted image can be moved and resized without jitter",
+        "Selection state persists correctly when switching panels",
+        "No console errors when selecting/deselecting repeatedly"
+      ],
+      "deliverables": [
+        "packages/editor/renderers/ImageRenderer.tsx",
+        "packages/editor/interaction/resizeImage.ts"
+      ]
+    },
+    {
+      "id": "S10-T08",
+      "title": "Upload & Photos loading/error UX + retries",
+      "skill": ["Frontend", "UX"],
+      "priority": "P1",
+      "requirements": {
+        "states": [
+          "Skeleton grid while loading",
+          "Empty state with CTA",
+          "Error state with Retry button",
+          "Toast notifications for upload success/failure"
+        ],
+        "constraints": ["No blocking modals for transient errors"]
+      },
+      "acceptanceTests": [
+        "Provider API errors show a retryable message",
+        "Upload failures show clear reason (type/size/network)",
+        "Retry works without full page refresh"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/ui/PanelStates.tsx",
+        "apps/web/components/studio/ui/toasts.ts"
+      ]
+    },
+    {
+      "id": "S10-T09",
+      "title": "Config-driven limits for media (size/type/count) + feature flags",
+      "skill": ["Platform", "Frontend", "Backend-lite"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "MAX_UPLOAD_MB",
+          "ALLOWED_MIME_TYPES",
+          "MAX_UPLOADS_PER_USER (optional)",
+          "PHOTOS_PROVIDER_ENABLED (unsplash/pexels)"
+        ],
+        "constraints": [
+          "Limits must be enforced server-side and mirrored client-side"
+        ]
+      },
+      "acceptanceTests": [
+        "Changing config updates behavior without code changes",
+        "Server rejects invalid uploads even if client bypassed"
+      ],
+      "deliverables": ["lib/config/media.ts", "docs/media_config.md"]
+    },
+    {
+      "id": "S10-T10",
+      "title": "QA checklist + minimal automated tests for media insert flow",
+      "skill": ["Testing", "QA", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "tests": [
+          "Unit: insertImage sizing math preserves aspect ratio",
+          "Integration: insert Upload -> node persisted",
+          "Integration: insert Provider -> node persisted",
+          "E2E (optional): upload file -> appears -> click -> inserted"
+        ],
+        "manualChecklist": [
+          "Upload png/jpg/webp",
+          "Oversized file rejection",
+          "Provider trending load",
+          "Provider search + pagination",
+          "Insert multiple images and reorder layers later (not required now)",
+          "Refresh page and verify images persist"
+        ]
+      },
+      "acceptanceTests": [
+        "Tests run in CI (or local) and pass",
+        "Checklist documented and executed once"
+      ],
+      "deliverables": ["tests/media/*", "docs/qa_sprint10_media.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S10-T01",
+      "S10-T03",
+      "S10-T02",
+      "S10-T05",
+      "S10-T04",
+      "S10-T06",
+      "S10-T07",
+      "S10-T08",
+      "S10-T09",
+      "S10-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "This sprint focuses on insertion + persistence + baseline manipulation (move/resize). Crop sidebar and crop mode are explicitly deferred to later Sprint (Image Editing v1).",
+      "Provider asset handling MVP can insert external URLs. If you prefer to always store provider images into user uploads (to avoid hotlinking), treat that as a P1 extension to S10-T06."
+    ]
+  }
+}

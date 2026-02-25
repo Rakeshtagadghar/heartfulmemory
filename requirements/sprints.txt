@@ -16,6 +16,13 @@ Media Pipeline v1 (Images only): Upload + Stock Search + Crop/Placement (R2 + Pr
 
 Digital + Hardcopy Export Modes v1 (same book, two outputs)
 
+Media v1: Uploads Library + Photos Provider + Insert-to-Canvas
+Studio Shell v2: Mini-sidebar + Hover Panels
+Text System v1: Presets + Floating Text Toolbar
+Elements v1: Shapes, Frames, Grids
+Image Editing v1: Crop Mode + Crop Sidebar
+Selection, Layers & Alignment v1 (Canva-like Object Control)
+Layout→PDF Renderer v1 (Pixel-perfect export matching editor)
 Attribution & Credits v1 (license capture + auto credits pages)
 
 Sharing & Invites v1 (contributors + permissions)

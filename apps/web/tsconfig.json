@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "plugins": [{ "name": "next" }],
-    "types": ["vitest/globals", "@testing-library/jest-dom"]
+    "types": ["react", "react-dom", "vitest/globals", "@testing-library/jest-dom"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "../../docs/**/*.json"],
   "exclude": ["node_modules"]
