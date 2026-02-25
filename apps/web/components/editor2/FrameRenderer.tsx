@@ -7,6 +7,9 @@ import type { FrameDTO } from "../../lib/dto/frame";
 import { CropMode } from "./CropMode";
 import { FrameHandles } from "./FrameHandles";
 import type { ResizeHandle } from "./FrameHandles";
+import { getSanitizedPastedText, shouldEnterTextEditMode } from "../../../../packages/editor/interaction/textEditController";
+import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
+import { TextRenderer } from "../../../../packages/editor/renderers/TextRenderer";
 
 function getTextValue(frame: FrameDTO) {
   const text = frame.content?.text;
@@ -35,6 +38,7 @@ export function FrameRenderer({
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
+  onOpenTextContextMenu,
   onDragStart,
   onResizeStart,
   issueMessages
@@ -50,11 +54,13 @@ export function FrameRenderer({
   onStartCropEdit?: () => void;
   onEndCropEdit?: () => void;
   onCropChange?: (crop: { focalX: number; focalY: number; scale: number }) => void;
+  onOpenTextContextMenu?: (clientX: number, clientY: number) => void;
   onDragStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onResizeStart: (handle: ResizeHandle, event: React.PointerEvent<HTMLButtonElement>) => void;
   issueMessages?: string[];
 }) {
   const textStyle = frame.style as Record<string, unknown>;
+  const normalizedTextStyle = normalizeTextNodeStyleV1(textStyle);
   const previewText = getTextValue(frame);
   const imageSrc = getImageSource(frame);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -68,13 +74,13 @@ export function FrameRenderer({
 
   const overflow =
     isTextFrame
-      ? estimateTextOverflow({
-          text: previewText,
-          widthPx: frame.w,
-          heightPx: frame.h,
-          fontSize: typeof textStyle.fontSize === "number" ? textStyle.fontSize : 15,
-          lineHeight: typeof textStyle.lineHeight === "number" ? textStyle.lineHeight : 1.45
-        }).overflow
+          ? estimateTextOverflow({
+              text: previewText,
+              widthPx: frame.w,
+              heightPx: frame.h,
+              fontSize: normalizedTextStyle.fontSize,
+              lineHeight: normalizedTextStyle.lineHeight
+            }).overflow
       : false;
   const hasIssueHighlight = Boolean(issueMessages && issueMessages.length > 0);
 
@@ -127,7 +133,15 @@ export function FrameRenderer({
             onClick={(event) => {
               event.stopPropagation();
               onSelect();
-              onStartTextEdit?.();
+              if (shouldEnterTextEditMode({ detail: event.detail })) {
+                onStartTextEdit?.();
+              }
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect();
+              onOpenTextContextMenu?.(event.clientX, event.clientY);
             }}
           />
         ) : null}
@@ -136,13 +150,23 @@ export function FrameRenderer({
           <div
             className="relative h-full overflow-hidden p-3 text-[#1f2633]"
             style={{
-              fontFamily: textStyle.fontFamily === "serif" ? "Georgia, serif" : "ui-sans-serif, system-ui",
-              fontSize: typeof textStyle.fontSize === "number" ? textStyle.fontSize : 15,
-              lineHeight: typeof textStyle.lineHeight === "number" ? textStyle.lineHeight : 1.45,
-              fontWeight: typeof textStyle.fontWeight === "number" ? textStyle.fontWeight : 400,
-              textAlign:
-                textStyle.align === "center" || textStyle.align === "right" ? (textStyle.align as "center" | "right") : "left",
-              color: typeof textStyle.color === "string" ? textStyle.color : "#1f2633"
+              fontFamily:
+                normalizedTextStyle.fontFamily === "Inter"
+                  ? "Inter, ui-sans-serif, system-ui"
+                  : normalizedTextStyle.fontFamily === "Georgia"
+                    ? "Georgia, serif"
+                    : normalizedTextStyle.fontFamily === "Times New Roman"
+                      ? "'Times New Roman', serif"
+                      : "Arial, sans-serif",
+              fontSize: normalizedTextStyle.fontSize,
+              lineHeight: normalizedTextStyle.lineHeight,
+              fontWeight: normalizedTextStyle.fontWeight,
+              fontStyle: normalizedTextStyle.fontStyle,
+              textDecoration: normalizedTextStyle.textDecoration,
+              letterSpacing: `${normalizedTextStyle.letterSpacing}px`,
+              textAlign: normalizedTextStyle.textAlign,
+              color: normalizedTextStyle.color,
+              opacity: normalizedTextStyle.opacity
             }}
           >
             {textEditing ? (
@@ -156,6 +180,23 @@ export function FrameRenderer({
                     event.preventDefault();
                     onEndTextEdit?.();
                   }
+                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                    event.preventDefault();
+                    onEndTextEdit?.();
+                  }
+                }}
+                onPaste={(event) => {
+                  event.preventDefault();
+                  const pasted = getSanitizedPastedText(event.nativeEvent);
+                  const target = event.currentTarget;
+                  const start = target.selectionStart ?? target.value.length;
+                  const end = target.selectionEnd ?? target.value.length;
+                  const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
+                  onTextChange?.(next);
+                  globalThis.requestAnimationFrame(() => {
+                    const caret = start + pasted.length;
+                    target.setSelectionRange(caret, caret);
+                  });
                 }}
                 onPointerDown={(event) => event.stopPropagation()}
                 className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
@@ -169,7 +210,7 @@ export function FrameRenderer({
                 }}
               />
             ) : previewText ? (
-              <div className="h-full whitespace-pre-wrap break-words">{previewText}</div>
+              <TextRenderer text={previewText} style={normalizedTextStyle} />
             ) : (
               <span className="text-black/35">Empty text frame</span>
             )}
@@ -243,6 +284,25 @@ export function FrameRenderer({
           <span className="absolute right-2 top-2 rounded bg-black/45 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/75">
             Locked
           </span>
+        ) : null}
+        {frame.type === "TEXT" && selected && !textEditing ? (
+          <button
+            type="button"
+            className="absolute right-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenTextContextMenu?.(event.clientX, event.clientY);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenTextContextMenu?.(event.clientX, event.clientY);
+            }}
+            aria-label="Open text box actions"
+            title="More"
+          >
+            ...
+          </button>
         ) : null}
         {hasIssueHighlight ? (
           <div className="absolute bottom-2 left-2 right-2 z-20 rounded-md border border-rose-300/20 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-100">

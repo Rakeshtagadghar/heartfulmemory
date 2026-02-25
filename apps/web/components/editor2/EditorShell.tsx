@@ -49,6 +49,27 @@ import { ElementsPanel } from "../studio/panels/ElementsPanel";
 import { UploadsPanel } from "../studio/panels/UploadsPanel";
 import { PhotosPanel } from "../studio/panels/PhotosPanel";
 import { ToolsPanel } from "../studio/panels/ToolsPanel";
+import {
+  buildCenteredTextFrameInput,
+  getTextInsertPreset,
+  type TextPresetId
+} from "../../../../packages/editor/commands/insertText";
+import { buildUpdatedTextStyle } from "../../../../packages/editor/commands/updateTextStyle";
+import { buildDuplicatedFrameInput } from "../../../../packages/editor/commands/duplicateNode";
+import { migrateTextFrameToTextNodeV1 } from "../../../../packages/editor/serialize/migrations/textNodeV1";
+import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
+import {
+  buildClipboardFramePayload,
+  buildFrameInputFromClipboard,
+  getNodeClipboard,
+  setNodeClipboard
+} from "../../../../packages/editor/clipboard/nodeClipboard";
+import {
+  isEditableTextTarget,
+  isNodeCopyShortcut,
+  isNodeDuplicateShortcut,
+  isNodePasteShortcut
+} from "../../../../packages/editor/shortcuts/shortcuts";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -92,6 +113,7 @@ export function Editor2Shell({
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);
   const [cropModeFrameId, setCropModeFrameId] = useState<string | null>(null);
+  const [textPanelView, setTextPanelView] = useState<"presets" | "fonts" | "colors">("presets");
   const [assets, setAssets] = useState<AssetDTO[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [storybookExportSettings, setStorybookExportSettings] = useState<StorybookExportSettingsV1>(() =>
@@ -135,6 +157,10 @@ export function Editor2Shell({
   );
   const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
   const selectedImageFrame = selectedFrame?.type === "IMAGE" ? selectedFrame : null;
+  const selectedTextStyle = useMemo(
+    () => (selectedTextFrame ? normalizeTextNodeStyleV1(selectedTextFrame.style) : null),
+    [selectedTextFrame]
+  );
   const issueHighlightMap = useMemo(() => buildIssueHighlightMap(preflightIssues), [preflightIssues]);
   const currentPageIssueHighlights = useMemo(
     () => (effectiveSelectedPageId ? issueHighlightMap[effectiveSelectedPageId] ?? {} : {}),
@@ -153,12 +179,6 @@ export function Editor2Shell({
     }
     return { pageNumberById, frameNumberById };
   }, [framesByPageId, pages]);
-
-  const textAlignButtonLabel: Record<"left" | "center" | "right", string> = {
-    left: "L",
-    center: "C",
-    right: "R"
-  };
 
   async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
     const result = await updateFrameAction(storybook.id, frameId, patch);
@@ -311,6 +331,35 @@ export function Editor2Shell({
     setMessage(null);
   }
 
+  async function handleAddTextPreset(presetId: TextPresetId) {
+    if (!selectedPage) return;
+    const preset = getTextInsertPreset(presetId);
+    const migrated = migrateTextFrameToTextNodeV1({
+      content: { text: preset.text },
+      style: preset.style as Record<string, unknown>
+    });
+    const input = buildCenteredTextFrameInput({
+      pageWidth: selectedPage.width_px,
+      pageHeight: selectedPage.height_px,
+      preset,
+      style: migrated.style
+    });
+    const result = await createFrameAction(storybook.id, selectedPage.id, {
+      ...input,
+      content: migrated.content
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
+    setSelectedFrameId(result.data.id);
+    setEditingTextFrameId(result.data.id);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage(null);
+  }
+
   async function handleApplyTemplate(templateId: string) {
     if (!selectedPage) return;
     const template = eldersFirstPageTemplates.find((item) => item.id === templateId);
@@ -367,6 +416,11 @@ export function Editor2Shell({
 
   const handleDeleteSelectedFrame = useCallback(async () => {
     if (!selectedFrameId || !selectedPageId) return;
+    const frame = currentFrames.find((item) => item.id === selectedFrameId);
+    if (frame?.locked) {
+      setMessage("Unlock the frame before deleting.");
+      return;
+    }
     const result = await removeFrameAction(storybook.id, selectedFrameId);
     if (!result.ok) {
       setMessage(result.error);
@@ -381,7 +435,7 @@ export function Editor2Shell({
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
-  }, [selectedFrameId, selectedPageId, storybook.id]);
+  }, [currentFrames, selectedFrameId, selectedPageId, storybook.id]);
 
   async function handlePageSizeChange(preset: PageDTO["size_preset"]) {
     if (!selectedPage) return;
@@ -419,12 +473,14 @@ export function Editor2Shell({
 
   function handleBringToFront() {
     if (!selectedFrame || !selectedPageId) return;
+    if (selectedFrame.locked) return;
     const maxZ = Math.max(0, ...currentFrames.map((frame) => frame.z_index));
     applySelectedFrameDraftPatch({ z_index: maxZ + 1 });
   }
 
   function handleSendBackward() {
     if (!selectedFrame) return;
+    if (selectedFrame.locked) return;
     applySelectedFrameDraftPatch({ z_index: Math.max(1, selectedFrame.z_index - 1) });
   }
 
@@ -506,11 +562,85 @@ export function Editor2Shell({
   function patchSelectedTextStyle(patch: Record<string, unknown>) {
     if (!selectedTextFrame) return;
     applySelectedFrameDraftPatch({
-      style: {
-        ...selectedTextFrame.style,
-        ...patch
-      }
+      style: buildUpdatedTextStyle(selectedTextFrame.style, patch)
     });
+  }
+
+  function openTextFontPanel() {
+    setTextPanelView("fonts");
+    studioShell.openPanel("text", "mouse", true);
+  }
+
+  function openTextColorPanel() {
+    setTextPanelView("colors");
+    studioShell.openPanel("text", "mouse", true);
+  }
+
+  function handleClearSelection() {
+    setSelectedFrameId(null);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+  }
+
+  async function handleDuplicateSelectedTextFrame() {
+    if (!selectedTextFrame || !selectedPage) return;
+    const payload = buildDuplicatedFrameInput(selectedTextFrame);
+    const result = await createFrameAction(storybook.id, selectedPage.id, payload);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
+    setSelectedFrameId(result.data.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage("Text box duplicated.");
+  }
+
+  const handleDuplicateSelectedFrame = useCallback(async () => {
+    if (!selectedFrame || !selectedPage) return;
+    const payload = buildDuplicatedFrameInput(selectedFrame);
+    const result = await createFrameAction(storybook.id, selectedPage.id, payload);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
+    setSelectedFrameId(result.data.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage(`${selectedFrame.type === "TEXT" ? "Text box" : "Frame"} duplicated.`);
+  }, [selectedFrame, selectedPage, storybook.id]);
+
+  const handleCopySelectedFrame = useCallback(() => {
+    if (!selectedFrame) return;
+    setNodeClipboard(buildClipboardFramePayload(selectedFrame));
+    setMessage(`${selectedFrame.type === "TEXT" ? "Text box" : "Frame"} copied.`);
+  }, [selectedFrame]);
+
+  const handlePasteClipboardFrame = useCallback(async () => {
+    if (!selectedPage) return;
+    const clipboard = getNodeClipboard();
+    if (!clipboard || clipboard.type !== "frame") return;
+    const result = await createFrameAction(storybook.id, selectedPage.id, buildFrameInputFromClipboard(clipboard));
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
+    setSelectedFrameId(result.data.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage(`${clipboard.frameType === "TEXT" ? "Text box" : "Frame"} pasted.`);
+  }, [selectedPage, storybook.id]);
+
+  function handleToggleSelectedFrameLock() {
+    if (!selectedFrame) return;
+    applySelectedFrameDraftPatch({ locked: !selectedFrame.locked });
   }
 
   async function refreshAssets() {
@@ -636,7 +766,18 @@ export function Editor2Shell({
         onDeletePage={handleDeletePage}
       />
     ),
-    text: <TextPanel onAddText={() => void handleAddFrame("TEXT")} />,
+    text: (
+      <TextPanel
+        onAddTextBox={() => void handleAddTextPreset("textbox")}
+        onAddPreset={(presetId) => void handleAddTextPreset(presetId)}
+        initialView={textPanelView}
+        onViewChange={setTextPanelView}
+        selectedFontFamily={selectedTextStyle?.fontFamily ?? null}
+        onSelectFont={(fontFamily) => patchSelectedTextStyle({ fontFamily })}
+        selectedColor={selectedTextStyle?.color ?? "#1f2633"}
+        onSelectColor={(color) => patchSelectedTextStyle({ color })}
+      />
+    ),
     elements: (
       <ElementsPanel
         onAddText={() => void handleAddFrame("TEXT")}
@@ -670,23 +811,53 @@ export function Editor2Shell({
         !selectedFrame ||
         editingTextFrameId === selectedFrame.id ||
         cropModeFrameId === selectedFrame.id ||
-        (event.target instanceof HTMLElement &&
-          ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName))
+        isEditableTextTarget(event.target)
       ) {
+        return;
+      }
+
+      if (isNodeCopyShortcut(event)) {
+        event.preventDefault();
+        handleCopySelectedFrame();
+        return;
+      }
+
+      if (isNodePasteShortcut(event)) {
+        event.preventDefault();
+        startTransition(() => {
+          void handlePasteClipboardFrame();
+        });
+        return;
+      }
+
+      if (isNodeDuplicateShortcut(event)) {
+        event.preventDefault();
+        if (selectedFrame.locked) return;
+        startTransition(() => {
+          void handleDuplicateSelectedFrame();
+        });
         return;
       }
 
       if (event.key === "Delete" || event.key === "Backspace") {
         event.preventDefault();
+        if (selectedFrame.locked) return;
         startTransition(() => {
           void handleDeleteSelectedFrame();
         });
         return;
       }
 
+      if (event.key === "Enter" && selectedFrame.type === "TEXT") {
+        event.preventDefault();
+        setEditingTextFrameId(selectedFrame.id);
+        return;
+      }
+
       const nudge = event.shiftKey ? 10 : 1;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         event.preventDefault();
+        if (selectedFrame.locked) return;
         let patch: { x?: number; y?: number };
         switch (event.key) {
           case "ArrowUp":
@@ -708,7 +879,17 @@ export function Editor2Shell({
 
     globalThis.addEventListener("keydown", onKeyDown);
     return () => globalThis.removeEventListener("keydown", onKeyDown);
-  }, [applySelectedFrameDraftPatch, cropModeFrameId, editingTextFrameId, handleDeleteSelectedFrame, selectedFrame, startTransition]);
+  }, [
+    applySelectedFrameDraftPatch,
+    cropModeFrameId,
+    editingTextFrameId,
+    handleCopySelectedFrame,
+    handleDuplicateSelectedFrame,
+    handleDeleteSelectedFrame,
+    handlePasteClipboardFrame,
+    selectedFrame,
+    startTransition
+  ]);
 
   return (
     <div
@@ -731,55 +912,6 @@ export function Editor2Shell({
         <div className="flex items-center gap-2">
           <TemplatePicker onApplyTemplate={handleApplyTemplate} />
           <Editor2SaveStatus status={autosave.status} error={autosave.error} />
-          {selectedTextFrame ? (
-            <div className="flex items-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2 py-1 backdrop-blur">
-              <input
-                type="number"
-                min={8}
-                max={120}
-                value={typeof selectedTextFrame.style.fontSize === "number" ? selectedTextFrame.style.fontSize : 15}
-                onChange={(event) => patchSelectedTextStyle({ fontSize: Number(event.target.value) })}
-                className="h-8 w-16 rounded-md border border-white/15 bg-black/20 px-2 text-xs text-white outline-none"
-                aria-label="Font size"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTextFrame.style.fontWeight === 700 ? "secondary" : "ghost"}
-                onClick={() =>
-                  patchSelectedTextStyle({
-                    fontWeight: selectedTextFrame.style.fontWeight === 700 ? 400 : 700
-                  })
-                }
-              >
-                B
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={selectedTextFrame.style.fontStyle === "italic" ? "secondary" : "ghost"}
-                onClick={() =>
-                  patchSelectedTextStyle({
-                    fontStyle: selectedTextFrame.style.fontStyle === "italic" ? "normal" : "italic"
-                  })
-                }
-              >
-                I
-              </Button>
-              <div className="mx-1 h-5 w-px bg-white/15" />
-              {(["left", "center", "right"] as const).map((align) => (
-                <Button
-                  key={align}
-                  type="button"
-                  size="sm"
-                  variant={(selectedTextFrame.style.align as string | undefined) === align ? "secondary" : "ghost"}
-                  onClick={() => patchSelectedTextStyle({ align })}
-                >
-                  {textAlignButtonLabel[align]}
-                </Button>
-              ))}
-            </div>
-          ) : null}
           <ExportButton
             storybookId={storybook.id}
             storybookSettings={storybookExportSettings}
@@ -839,6 +971,14 @@ export function Editor2Shell({
                 onStartTextEdit={handleStartTextEdit}
                 onEndTextEdit={handleEndTextEdit}
                 onTextContentChange={handleTextContentChange}
+                onPatchSelectedTextStyle={patchSelectedTextStyle}
+                onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
+                onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
+                onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
+                onDeleteSelectedTextFrame={() => void handleDeleteSelectedFrame()}
+                onToggleSelectedFrameLock={handleToggleSelectedFrameLock}
+                onBringSelectedFrameForward={handleBringToFront}
+                onSendSelectedFrameBackward={handleSendBackward}
                 onStartCropEdit={handleStartCropEdit}
                 onEndCropEdit={handleEndCropEdit}
                 onCropChange={handleCropChange}
@@ -854,6 +994,7 @@ export function Editor2Shell({
                   });
                 }}
                 onFramePatchCommit={handleCommitFramePatch}
+                onClearSelection={handleClearSelection}
               />
 
               <div className="pointer-events-none absolute inset-0">

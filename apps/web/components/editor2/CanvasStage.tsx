@@ -8,6 +8,10 @@ import { GuidesOverlay } from "./GuidesOverlay";
 import { FrameRenderer } from "./FrameRenderer";
 import type { ResizeHandle } from "./FrameHandles";
 import { resizeImageWithAspect } from "../../lib/editor2/resizeImage";
+import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
+import { FloatingTextToolbar } from "../studio/overlays/FloatingTextToolbar";
+import { useFloatingAnchor } from "../studio/overlays/useFloatingAnchor";
+import { TextContextMenu } from "../studio/menus/TextContextMenu";
 
 type InteractionState =
   | null
@@ -38,11 +42,20 @@ export function CanvasStage({
   onStartTextEdit,
   onEndTextEdit,
   onTextContentChange,
+  onPatchSelectedTextStyle,
+  onOpenTextFontPanel,
+  onOpenTextColorPanel,
+  onDuplicateSelectedTextFrame,
+  onDeleteSelectedTextFrame,
+  onToggleSelectedFrameLock,
+  onBringSelectedFrameForward,
+  onSendSelectedFrameBackward,
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
   onFramePatchPreview,
-  onFramePatchCommit
+  onFramePatchCommit,
+  onClearSelection
 }: {
   page: PageDTO | null;
   frames: FrameDTO[];
@@ -60,6 +73,14 @@ export function CanvasStage({
   onStartTextEdit: (frameId: string) => void;
   onEndTextEdit: (frameId: string) => void;
   onTextContentChange: (frameId: string, text: string) => void;
+  onPatchSelectedTextStyle: (patch: Record<string, unknown>) => void;
+  onOpenTextFontPanel?: () => void;
+  onOpenTextColorPanel?: () => void;
+  onDuplicateSelectedTextFrame: () => void;
+  onDeleteSelectedTextFrame: () => void;
+  onToggleSelectedFrameLock: () => void;
+  onBringSelectedFrameForward: () => void;
+  onSendSelectedFrameBackward: () => void;
   onStartCropEdit: (frameId: string) => void;
   onEndCropEdit: (frameId: string) => void;
   onCropChange: (frameId: string, crop: { focalX: number; focalY: number; scale: number }) => void;
@@ -71,11 +92,52 @@ export function CanvasStage({
     frameId: string,
     patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>
   ) => Promise<void>;
+  onClearSelection?: () => void;
 }) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const [interaction, setInteraction] = useState<InteractionState>(null);
+  const [textContextMenu, setTextContextMenu] = useState<{
+    open: boolean;
+    left: number;
+    top: number;
+  }>({ open: false, left: 0, top: 0 });
 
   const frameMap = useMemo(() => new Map(frames.map((frame) => [frame.id, frame])), [frames]);
+  const selectedFrame = useMemo(
+    () => (selectedFrameId ? frames.find((frame) => frame.id === selectedFrameId) ?? null : null),
+    [frames, selectedFrameId]
+  );
+  const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
+  const selectedTextStyle = selectedTextFrame ? normalizeTextNodeStyleV1(selectedTextFrame.style) : null;
+  const selectedTextAnchor = selectedTextFrame
+    ? {
+        x: selectedTextFrame.x * zoom,
+        y: selectedTextFrame.y * zoom,
+        w: selectedTextFrame.w * zoom,
+        h: selectedTextFrame.h * zoom
+    }
+    : null;
+  const floatingTextToolbar = useFloatingAnchor({
+    stageRef,
+    viewportRef,
+    pageSurfaceRef,
+    anchorRect: selectedTextAnchor,
+    offsetY: 12,
+    mode: "page-top-center",
+    enabled: Boolean(selectedTextFrame && selectedFrameId !== cropModeFrameId && !interaction)
+  });
+  const floatingTextQuickActions = useFloatingAnchor({
+    stageRef,
+    viewportRef,
+    pageSurfaceRef,
+    anchorRect: selectedTextAnchor,
+    offsetY: 12,
+    mode: "selection",
+    enabled: Boolean(selectedTextFrame && selectedFrameId !== cropModeFrameId && !interaction)
+  });
+  const toolbarMaxWidthPx = page ? page.width_px * zoom - 20 : undefined;
 
   useEffect(() => {
     if (!interaction || !page) return;
@@ -188,9 +250,15 @@ export function CanvasStage({
     );
   }
 
+  const textContextMenuOpen =
+    textContextMenu.open && Boolean(selectedTextFrame) && editingTextFrameId !== selectedTextFrame?.id;
+
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-[#d7d8dc]">
-      <div className="flex h-7 items-center border-b border-black/10 bg-[#eef0f3] px-3 text-[11px] text-black/55">
+    <div ref={stageRef} className="relative flex h-full min-h-0 flex-col bg-[#d7d8dc]">
+      <div
+        className="flex h-7 items-center border-b border-black/10 bg-[#eef0f3] px-3 text-[11px] text-black/55"
+        onPointerDown={() => onClearSelection?.()}
+      >
         <div className="grid h-full w-full grid-cols-12">
           {Array.from({ length: 24 }, (_, tick) => tick).map((tick) => (
             <div key={`ruler-${tick}`} className="relative border-r border-black/5 pl-1">
@@ -200,9 +268,18 @@ export function CanvasStage({
         </div>
       </div>
 
-      <div ref={viewportRef} className="relative min-h-0 flex-1 overflow-auto">
+      <div
+        ref={viewportRef}
+        className="relative min-h-0 flex-1 overflow-auto"
+        onPointerDown={(event) => {
+          if (event.target === event.currentTarget) {
+            onClearSelection?.();
+          }
+        }}
+      >
         <div className="flex min-h-full min-w-full items-start justify-center p-12">
           <div
+            ref={pageSurfaceRef}
             className="relative origin-top shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
             style={{
               width: page.width_px * zoom,
@@ -217,6 +294,11 @@ export function CanvasStage({
                 background: page.background.fill,
                 transform: `scale(${zoom})`,
                 transformOrigin: "top left"
+              }}
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  onClearSelection?.();
+                }
               }}
             >
               <GuidesOverlay
@@ -240,6 +322,15 @@ export function CanvasStage({
                     onStartTextEdit={() => onStartTextEdit(frame.id)}
                     onEndTextEdit={() => onEndTextEdit(frame.id)}
                     onTextChange={(value) => onTextContentChange(frame.id, value)}
+                    onOpenTextContextMenu={(clientX, clientY) => {
+                      const stageRect = stageRef.current?.getBoundingClientRect();
+                      if (!stageRect) return;
+                      setTextContextMenu({
+                        open: true,
+                        left: clientX - stageRect.left + 6,
+                        top: clientY - stageRect.top + 6
+                      });
+                    }}
                     onStartCropEdit={() => onStartCropEdit(frame.id)}
                     onEndCropEdit={() => onEndCropEdit(frame.id)}
                     onCropChange={(crop) => onCropChange(frame.id, crop)}
@@ -277,6 +368,37 @@ export function CanvasStage({
           </div>
         </div>
       </div>
+
+      {selectedTextFrame && selectedTextStyle ? (
+        <FloatingTextToolbar
+          open={Boolean(selectedTextFrame && !interaction)}
+          position={floatingTextToolbar}
+          selectionPosition={floatingTextQuickActions}
+          maxWidthPx={toolbarMaxWidthPx}
+          style={selectedTextStyle}
+          onPatchStyle={onPatchSelectedTextStyle}
+          onOpenFontPanel={onOpenTextFontPanel}
+          onOpenColorPanel={onOpenTextColorPanel}
+          onDuplicate={onDuplicateSelectedTextFrame}
+          onDelete={onDeleteSelectedTextFrame}
+          onToggleLock={onToggleSelectedFrameLock}
+          locked={Boolean(selectedTextFrame.locked)}
+        />
+      ) : null}
+      {selectedTextFrame ? (
+        <TextContextMenu
+          open={textContextMenuOpen}
+          x={textContextMenu.left}
+          y={textContextMenu.top}
+          onClose={() => setTextContextMenu((current) => ({ ...current, open: false }))}
+          onDuplicate={onDuplicateSelectedTextFrame}
+          onDelete={onDeleteSelectedTextFrame}
+          onToggleLock={onToggleSelectedFrameLock}
+          onBringForward={onBringSelectedFrameForward}
+          onSendBackward={onSendSelectedFrameBackward}
+          locked={Boolean(selectedTextFrame.locked)}
+        />
+      ) : null}
     </div>
   );
 }
