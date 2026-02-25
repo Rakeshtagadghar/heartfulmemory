@@ -37,12 +37,18 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { Editor2SaveStatus } from "./SaveStatus";
 import { TemplatePicker } from "./TemplatePicker";
 import { ExportButton } from "./ExportButton";
-import { ImagePicker } from "./ImagePicker";
 import { Button } from "../ui/button";
 import { buildIssueHighlightMap } from "./CanvasFocus";
 import { useInsertImage } from "./hooks/useInsertImage";
 import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
 import { showStudioToast } from "../studio/ui/toasts";
+import { StudioShellV2 } from "../studio/shell/StudioShellV2";
+import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
+import { TextPanel } from "../studio/panels/TextPanel";
+import { ElementsPanel } from "../studio/panels/ElementsPanel";
+import { UploadsPanel } from "../studio/panels/UploadsPanel";
+import { PhotosPanel } from "../studio/panels/PhotosPanel";
+import { ToolsPanel } from "../studio/panels/ToolsPanel";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -68,7 +74,7 @@ function mergeFrameIntoMap(
   return next;
 }
 
-export function Editor2Shell({ // NOSONAR
+export function Editor2Shell({
   storybook,
   initialPages,
   initialFramesByPageId,
@@ -86,7 +92,6 @@ export function Editor2Shell({ // NOSONAR
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);
   const [cropModeFrameId, setCropModeFrameId] = useState<string | null>(null);
-  const [leftPanelMode, setLeftPanelMode] = useState<"pages" | "images">("pages");
   const [assets, setAssets] = useState<AssetDTO[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
   const [storybookExportSettings, setStorybookExportSettings] = useState<StorybookExportSettingsV1>(() =>
@@ -107,10 +112,11 @@ export function Editor2Shell({ // NOSONAR
     }
   >({});
   const [isPending, startTransition] = useTransition();
+  const studioShell = useHoverPanelController();
   const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
   const { insertFromUploadAsset, insertFromProviderResult } = useInsertImage();
   let imagePanelAssetSummary = "";
-  if (leftPanelMode === "images") {
+  if (studioShell.openPanelId === "uploads" || studioShell.openPanelId === "photos") {
     const assetStatusLabel = assetsLoading ? "loading assets…" : `${assets.length} assets`;
     imagePanelAssetSummary = ` · ${assetStatusLabel}`;
   }
@@ -300,8 +306,7 @@ export function Editor2Shell({ // NOSONAR
     setSelectedFrameId(result.data.id);
     setCropModeFrameId(null);
     if (type === "IMAGE") {
-      setLeftPanelMode("images");
-      void refreshAssets();
+      openImagePanel();
     }
     setMessage(null);
   }
@@ -455,8 +460,7 @@ export function Editor2Shell({ // NOSONAR
     setEditingTextFrameId((current) => (current === frameId ? current : null));
     setCropModeFrameId((current) => (current === frameId ? current : null));
     if (frame?.type === "IMAGE") {
-      setLeftPanelMode("images");
-      void refreshAssets();
+      openImagePanel();
     }
   }
 
@@ -521,8 +525,12 @@ export function Editor2Shell({ // NOSONAR
   }
 
   function openImagePanel() {
-    setLeftPanelMode("images");
+    studioShell.openPanel("uploads", "mouse", true);
     void refreshAssets();
+  }
+
+  function openPhotosPanel() {
+    studioShell.openPanel("photos", "mouse", true);
   }
 
   async function insertUploadAssetToCanvas(asset: AssetDTO) {
@@ -614,6 +622,47 @@ export function Editor2Shell({ // NOSONAR
     setMessage(null);
     showStudioToast({ kind: "success", title: "Photo inserted", message: "Added to the active page." });
   }
+
+  const studioPanelContents = {
+    layouts: (
+      <PagesPanel
+        pages={pages}
+        selectedPageId={effectiveSelectedPageId}
+        framesByPageId={framesByPageId}
+        onSelectPage={handleSelectPage}
+        onAddPage={handleAddPage}
+        onMovePage={handleMovePage}
+        onDuplicatePage={handleDuplicatePage}
+        onDeletePage={handleDeletePage}
+      />
+    ),
+    text: <TextPanel onAddText={() => void handleAddFrame("TEXT")} />,
+    elements: (
+      <ElementsPanel
+        onAddText={() => void handleAddFrame("TEXT")}
+        onAddImage={() => void handleAddFrame("IMAGE")}
+        onOpenPhotos={openPhotosPanel}
+      />
+    ),
+    uploads: (
+      <UploadsPanel
+        storybookId={storybook.id}
+        recentAssets={assets}
+        onCreated={(asset) => {
+          void insertUploadAssetToCanvas(asset);
+        }}
+        createUploadAsset={handleCreateUploadAsset}
+      />
+    ),
+    tools: (
+      <ToolsPanel
+        selectedFrame={selectedFrame}
+        cropModeActive={Boolean(selectedImageFrame && cropModeFrameId === selectedImageFrame.id)}
+        textEditActive={Boolean(selectedTextFrame && editingTextFrameId === selectedTextFrame.id)}
+      />
+    ),
+    photos: <PhotosPanel onInsert={handleInsertStockResult} />
+  };
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -756,146 +805,114 @@ export function Editor2Shell({ // NOSONAR
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <div className="flex w-12 flex-col items-center gap-2 border-r border-white/10 bg-[#0b1320] py-3">
-          {["T", "Img", "Pg", "Grid"].map((label) => (
-            <button
-              key={label}
-              type="button"
-              className={`h-9 w-9 cursor-pointer rounded-lg border text-[11px] font-semibold transition ${
-                (label === "Img" && leftPanelMode === "images") || (label === "Pg" && leftPanelMode === "pages")
-                  ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100"
-                  : "border-white/10 bg-white/[0.02] text-white/80 hover:bg-white/[0.06]"
-              }`}
-              onClick={() => {
-                if (label === "Img") openImagePanel();
-                if (label === "Pg") setLeftPanelMode("pages");
-                if (label === "Grid") setShowGridOverlay((value) => !value);
-                if (label === "T") void handleAddFrame("TEXT");
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <StudioShellV2
+          rootRef={studioShell.rootRef}
+          hoverCapable={studioShell.hoverCapable}
+          openPanelId={studioShell.openPanelId}
+          pinnedPanelId={studioShell.pinnedPanelId}
+          closePanel={studioShell.closePanel}
+          pinPanel={studioShell.pinPanel}
+          onIconHoverStart={studioShell.onIconHoverStart}
+          onIconHoverEnd={studioShell.onIconHoverEnd}
+          onPanelHoverStart={studioShell.onPanelHoverStart}
+          onPanelHoverEnd={studioShell.onPanelHoverEnd}
+          onIconActivate={studioShell.onIconActivate}
+          panelContents={studioPanelContents}
+          onCanvasPointerDownCapture={studioShell.onCanvasPointerDown}
+        >
+          <div className="flex h-full min-w-0">
+            <div className="relative min-w-0 flex-1">
+              <CanvasStage
+                page={selectedPage}
+                frames={currentFrames}
+                selectedFrameId={selectedFrameId}
+                zoom={zoom}
+                showGrid={showGridOverlay}
+                showMarginsOverlay={showMarginsOverlay}
+                showSafeAreaOverlay={showSafeAreaOverlay}
+                safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
+                issueHighlightMessagesByFrameId={currentPageIssueHighlights}
+                snapEnabled={snapEnabled}
+                editingTextFrameId={editingTextFrameId}
+                cropModeFrameId={cropModeFrameId}
+                onSelectFrame={handleSelectFrame}
+                onStartTextEdit={handleStartTextEdit}
+                onEndTextEdit={handleEndTextEdit}
+                onTextContentChange={handleTextContentChange}
+                onStartCropEdit={handleStartCropEdit}
+                onEndCropEdit={handleEndCropEdit}
+                onCropChange={handleCropChange}
+                onFramePatchPreview={(frameId, patch) => {
+                  const active = currentFrames.find((frame) => frame.id === frameId);
+                  if (!active) return;
+                  setFramesByPageId((current) => {
+                    const next = { ...current };
+                    next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
+                      frame.id === frameId ? { ...frame, ...patch } : frame
+                    );
+                    return next;
+                  });
+                }}
+                onFramePatchCommit={handleCommitFramePatch}
+              />
 
-        {leftPanelMode === "images" ? (
-          <ImagePicker
-            storybookId={storybook.id}
-            open
-            recentAssets={assets}
-            selectedFrameLabel={
-              selectedImageFrame ? `image frame on page ${(selectedPage?.order_index ?? 0) + 1}` : undefined
-            }
-            onClose={() => setLeftPanelMode("pages")}
-            onInsertUploadAsset={(asset) => {
-              void insertUploadAssetToCanvas(asset);
-            }}
-            onCreateUploadAsset={handleCreateUploadAsset}
-            onInsertStockResult={handleInsertStockResult}
-          />
-        ) : (
-          <PagesPanel
-            pages={pages}
-            selectedPageId={effectiveSelectedPageId}
-            framesByPageId={framesByPageId}
-            onSelectPage={handleSelectPage}
-            onAddPage={handleAddPage}
-            onMovePage={handleMovePage}
-            onDuplicatePage={handleDuplicatePage}
-            onDeletePage={handleDeletePage}
-          />
-        )}
-
-        <div className="relative min-w-0 flex-1">
-          <CanvasStage
-            page={selectedPage}
-            frames={currentFrames}
-            selectedFrameId={selectedFrameId}
-            zoom={zoom}
-            showGrid={showGridOverlay}
-            showMarginsOverlay={showMarginsOverlay}
-            showSafeAreaOverlay={showSafeAreaOverlay}
-            safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
-            issueHighlightMessagesByFrameId={currentPageIssueHighlights}
-            snapEnabled={snapEnabled}
-            editingTextFrameId={editingTextFrameId}
-            cropModeFrameId={cropModeFrameId}
-            onSelectFrame={handleSelectFrame}
-            onStartTextEdit={handleStartTextEdit}
-            onEndTextEdit={handleEndTextEdit}
-            onTextContentChange={handleTextContentChange}
-            onStartCropEdit={handleStartCropEdit}
-            onEndCropEdit={handleEndCropEdit}
-            onCropChange={handleCropChange}
-            onFramePatchPreview={(frameId, patch) => {
-              const active = currentFrames.find((frame) => frame.id === frameId);
-              if (!active) return;
-              setFramesByPageId((current) => {
-                const next = { ...current };
-                next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
-                  frame.id === frameId ? { ...frame, ...patch } : frame
-                );
-                return next;
-              });
-            }}
-            onFramePatchCommit={handleCommitFramePatch}
-          />
-
-          <div className="pointer-events-none absolute inset-0">
-            <div className="pointer-events-auto absolute bottom-4 right-4 rounded-xl border border-white/15 bg-[#0c1422]/90 p-3 shadow-xl backdrop-blur-xl">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
-                  onClick={() => setZoom((value) => Math.max(0.45, Number((value - 0.05).toFixed(2))))}
-                >
-                  -
-                </button>
-                <span className="min-w-14 text-center text-xs font-semibold text-white/90">
-                  {Math.round(zoom * 100)}%
-                </span>
-                <button
-                  type="button"
-                  className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
-                  onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.05).toFixed(2))))}
-                >
-                  +
-                </button>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" size="sm" variant={showGridOverlay ? "secondary" : "ghost"} onClick={() => setShowGridOverlay((value) => !value)}>
-                  Overlay Grid
-                </Button>
-                <Button type="button" size="sm" variant={showMarginsOverlay ? "secondary" : "ghost"} onClick={() => setShowMarginsOverlay((value) => !value)}>
-                  Margins
-                </Button>
-                <Button type="button" size="sm" variant={showSafeAreaOverlay ? "secondary" : "ghost"} onClick={() => setShowSafeAreaOverlay((value) => !value)}>
-                  Safe Area
-                </Button>
-                <Button type="button" size="sm" variant={snapEnabled ? "secondary" : "ghost"} onClick={() => setSnapEnabled((value) => !value)}>
-                  Snap
-                </Button>
+              <div className="pointer-events-none absolute inset-0">
+                <div className="pointer-events-auto absolute bottom-4 right-4 rounded-xl border border-white/15 bg-[#0c1422]/90 p-3 shadow-xl backdrop-blur-xl">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
+                      onClick={() => setZoom((value) => Math.max(0.45, Number((value - 0.05).toFixed(2))))}
+                    >
+                      -
+                    </button>
+                    <span className="min-w-14 text-center text-xs font-semibold text-white/90">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
+                      onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.05).toFixed(2))))}
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button type="button" size="sm" variant={showGridOverlay ? "secondary" : "ghost"} onClick={() => setShowGridOverlay((value) => !value)}>
+                      Overlay Grid
+                    </Button>
+                    <Button type="button" size="sm" variant={showMarginsOverlay ? "secondary" : "ghost"} onClick={() => setShowMarginsOverlay((value) => !value)}>
+                      Margins
+                    </Button>
+                    <Button type="button" size="sm" variant={showSafeAreaOverlay ? "secondary" : "ghost"} onClick={() => setShowSafeAreaOverlay((value) => !value)}>
+                      Safe Area
+                    </Button>
+                    <Button type="button" size="sm" variant={snapEnabled ? "secondary" : "ghost"} onClick={() => setSnapEnabled((value) => !value)}>
+                      Snap
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        <PropertiesPanel
-          page={selectedPage}
-          selectedFrame={selectedFrame}
-          snapEnabled={snapEnabled}
-          onToggleSnap={() => setSnapEnabled((value) => !value)}
-          onPageSizeChange={handlePageSizeChange}
-          onToggleGrid={handleToggleGrid}
-          onPatchFrameDraft={applySelectedFrameDraftPatch}
-          onDeleteFrame={handleDeleteSelectedFrame}
-          onBringToFront={handleBringToFront}
-          onSendBackward={handleSendBackward}
-          onOpenImagePicker={selectedImageFrame ? openImagePanel : undefined}
-          onStartCropMode={selectedImageFrame ? () => handleStartCropEdit(selectedImageFrame.id) : undefined}
-          onEndCropMode={selectedImageFrame ? () => handleEndCropEdit(selectedImageFrame.id) : undefined}
-          cropModeActive={selectedImageFrame ? cropModeFrameId === selectedImageFrame.id : false}
-        />
+            <PropertiesPanel
+              page={selectedPage}
+              selectedFrame={selectedFrame}
+              snapEnabled={snapEnabled}
+              onToggleSnap={() => setSnapEnabled((value) => !value)}
+              onPageSizeChange={handlePageSizeChange}
+              onToggleGrid={handleToggleGrid}
+              onPatchFrameDraft={applySelectedFrameDraftPatch}
+              onDeleteFrame={handleDeleteSelectedFrame}
+              onBringToFront={handleBringToFront}
+              onSendBackward={handleSendBackward}
+              onOpenImagePicker={selectedImageFrame ? openImagePanel : undefined}
+              onStartCropMode={selectedImageFrame ? () => handleStartCropEdit(selectedImageFrame.id) : undefined}
+              onEndCropMode={selectedImageFrame ? () => handleEndCropEdit(selectedImageFrame.id) : undefined}
+              cropModeActive={selectedImageFrame ? cropModeFrameId === selectedImageFrame.id : false}
+            />
+          </div>
+        </StudioShellV2>
       </div>
 
       <div className="flex items-center justify-between border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">

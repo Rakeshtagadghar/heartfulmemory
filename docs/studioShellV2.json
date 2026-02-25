@@ -1,0 +1,37 @@
+{
+  "name": "StudioShellV2",
+  "version": 1,
+  "dimensions": {
+    "miniSidebarWidthPx": 60,
+    "panelWidthPx": 320,
+    "panelGapPx": 8,
+    "panelInsetPx": 8,
+    "panelRadiusPx": 16
+  },
+  "hoverIntent": {
+    "openDelayMs": 150,
+    "closeDelayMs": 220
+  },
+  "behavior": {
+    "miniSidebarAlwaysVisible": true,
+    "singlePanelOpen": true,
+    "overlayPanelNoCanvasReflow": true,
+    "iconHoverOpensPanel": true,
+    "iconClickPinsPanel": true,
+    "escapeClosesPanel": true,
+    "outsideClickClosesWhenNotPinned": true,
+    "mouseLeaveGraceCloseWhenNotPinned": true
+  },
+  "zIndex": {
+    "shell": 30,
+    "panel": 31,
+    "tooltip": 32,
+    "modal": 50
+  },
+  "panelContract": {
+    "header": ["title", "description", "pinToggle", "closeButton"],
+    "body": "scrollable",
+    "footer": "optional"
+  }
+}
+
