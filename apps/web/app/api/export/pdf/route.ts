@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireAuthenticatedUser } from "../../../../lib/auth/server";
 import { convexMutation, convexQuery, anyApi, getConvexUrl } from "../../../../lib/convex/ops";
 import { computeExportHash } from "../../../../lib/export/exportHash";
+import { requireExportAccess } from "../../../../lib/export/authz";
+import { checkExportRateLimit } from "../../../../lib/export/rateLimit";
 import { signR2GetObject } from "../../../../lib/r2/server";
 import { buildExportPdfKey, putExportPdfToR2 } from "../../../../lib/r2/putExportPdf";
 import { getR2FreeTierCaps } from "../../../../lib/uploads/r2Quota";
 import { normalizeStorybookExportSettingsV1 } from "../../../../../../packages/shared-schema/storybookSettings.types";
 import type { ExportTarget, PdfRenderContract, PdfRenderOutputMeta } from "../../../../../../packages/pdf-renderer/src/contracts";
-import { renderWithPlaywright } from "../../../../../../packages/pdf-renderer/src/renderWithPlaywright";
+import { createPdfDocument } from "../../../../../../packages/pdf/engine";
+import { createExportTraceId, jsonExportError } from "../../../../../../packages/pdf/errors/exportErrors";
+import { toRenderableContractV1FromLegacy } from "../../../../../../packages/pdf/contract/renderContractV1";
+import {
+  type RenderableValidationIssue,
+  validateRenderable
+} from "../../../../../../packages/pdf/contract/validateRenderable";
 import {
   type ExportValidationIssue,
   validateExportContract
@@ -22,6 +29,9 @@ type ExportPreflightResult = {
   issues: ExportValidationIssue[];
   blockingIssues: ExportValidationIssue[];
   warnings: ExportValidationIssue[];
+  contractIssues: RenderableValidationIssue[];
+  contractErrors: RenderableValidationIssue[];
+  contractWarnings: RenderableValidationIssue[];
 };
 
 type ExportPayload = {
@@ -48,7 +58,7 @@ type ExportPayload = {
     id: string;
     storybook_id: string;
     page_id: string;
-    type: "TEXT" | "IMAGE";
+    type: "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP";
     x: number;
     y: number;
     w: number;
@@ -73,6 +83,20 @@ type ExportPayload = {
     license?: Record<string, unknown> | null;
   }>;
 };
+
+function getReferencedAssetIdFromFrame(frame: ExportPayload["frames"][number]): string | null {
+  if (frame.type === "IMAGE") {
+    return typeof frame.content.assetId === "string" ? frame.content.assetId : null;
+  }
+  if (frame.type === "FRAME") {
+    const imageRef =
+      frame.content.imageRef && typeof frame.content.imageRef === "object"
+        ? (frame.content.imageRef as Record<string, unknown>)
+        : null;
+    return typeof imageRef?.assetId === "string" ? imageRef.assetId : null;
+  }
+  return null;
+}
 
 function toContract(payload: ExportPayload, exportTarget: ExportTarget): PdfRenderContract {
   const firstPage = payload.pages.slice().sort((a, b) => a.order_index - b.order_index)[0];
@@ -148,8 +172,8 @@ function toSafeFilenameBase(title: string) {
 function missingLicenseForReferencedStockAssets(payload: ExportPayload) {
   const usedAssetIds = new Set(
     payload.frames
-      .filter((frame) => frame.type === "IMAGE")
-      .map((frame) => (typeof frame.content.assetId === "string" ? frame.content.assetId : null))
+      .filter((frame) => frame.type === "IMAGE" || frame.type === "FRAME")
+      .map((frame) => getReferencedAssetIdFromFrame(frame))
       .filter((id): id is string => Boolean(id))
   );
 
@@ -166,11 +190,13 @@ function buildPreflightResult(payload: ExportPayload, exportTarget: ExportTarget
   const contract = toContract(payload, exportTarget);
   const rules = validateExportContract(contract);
   const issues = [...rules.issues];
+  const contractValidation = validateRenderable(toRenderableContractV1FromLegacy(contract));
 
   const missingLicenseAssets = missingLicenseForReferencedStockAssets(payload);
   for (const asset of missingLicenseAssets) {
     const referencedFrame = payload.frames.find(
-      (frame) => frame.type === "IMAGE" && frame.content.assetId === asset.id
+      (frame) =>
+        getReferencedAssetIdFromFrame(frame) === asset.id
     );
     issues.push({
       code: "LICENSE_MISSING",
@@ -190,10 +216,13 @@ function buildPreflightResult(payload: ExportPayload, exportTarget: ExportTarget
   const blockingIssues = issues.filter((issue) => issue.blocking);
   const warnings = issues.filter((issue) => !issue.blocking);
   return {
-    ok: blockingIssues.length === 0,
+    ok: blockingIssues.length === 0 && contractValidation.errors.length === 0,
     issues,
     blockingIssues,
-    warnings
+    warnings,
+    contractIssues: contractValidation.issues,
+    contractErrors: contractValidation.errors,
+    contractWarnings: contractValidation.warnings
   };
 }
 
@@ -251,7 +280,7 @@ export async function GET(request: Request) {
     return jsonError(400, "Invalid exportTarget.");
   }
 
-  const user = await requireAuthenticatedUser(`/app/storybooks/${storybookId}/layout`);
+  const user = await requireExportAccess(storybookId);
   const lookup = await convexQuery<ExportLookupRecord>(anyApi.exports.getExportByHash, {
     viewerSubject: user.id,
     storybookId,
@@ -277,8 +306,8 @@ export async function GET(request: Request) {
 async function resolveExportAssetUrls(payload: ExportPayload, viewerSubject: string) {
   const usedAssetIds = new Set(
     payload.frames
-      .filter((frame) => frame.type === "IMAGE")
-      .map((frame) => (typeof frame.content.assetId === "string" ? frame.content.assetId : null))
+      .filter((frame) => frame.type === "IMAGE" || frame.type === "FRAME")
+      .map((frame) => getReferencedAssetIdFromFrame(frame))
       .filter((id): id is string => Boolean(id))
   );
   const r2Assets = payload.assets.filter(
@@ -325,15 +354,26 @@ async function resolveExportAssetUrls(payload: ExportPayload, viewerSubject: str
 }
 
 export async function POST(request: Request) { // NOSONAR
+  const traceId = createExportTraceId();
   if (!getConvexUrl()) {
-    return jsonError(500, "Convex is not configured.");
+    return jsonExportError({
+      status: 500,
+      code: "EXPORT_INTERNAL",
+      message: "Convex is not configured.",
+      traceId
+    });
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return jsonError(400, "Invalid JSON body.");
+    return jsonExportError({
+      status: 400,
+      code: "EXPORT_INVALID_REQUEST",
+      message: "Invalid JSON body.",
+      traceId
+    });
   }
 
   const parsed = body as {
@@ -341,13 +381,50 @@ export async function POST(request: Request) { // NOSONAR
     exportTarget?: ExportTarget;
     preview?: boolean;
     validateOnly?: boolean;
+    debug?:
+      | boolean
+      | {
+          enabled?: boolean;
+          showSafeArea?: boolean;
+          showBleed?: boolean;
+          showNodeBounds?: boolean;
+          showNodeIds?: boolean;
+        };
   };
-  if (!parsed.storybookId) return jsonError(400, "storybookId is required.");
+  if (!parsed.storybookId) {
+    return jsonExportError({
+      status: 400,
+      code: "EXPORT_INVALID_REQUEST",
+      message: "storybookId is required.",
+      traceId
+    });
+  }
   if (parsed.exportTarget !== "DIGITAL_PDF" && parsed.exportTarget !== "HARDCOPY_PRINT_PDF") {
-    return jsonError(400, "exportTarget must be DIGITAL_PDF or HARDCOPY_PRINT_PDF.");
+    return jsonExportError({
+      status: 400,
+      code: "EXPORT_INVALID_REQUEST",
+      message: "exportTarget must be DIGITAL_PDF or HARDCOPY_PRINT_PDF.",
+      traceId
+    });
   }
 
-  const user = await requireAuthenticatedUser(`/app/storybooks/${parsed.storybookId}/layout`);
+  const user = await requireExportAccess(parsed.storybookId);
+  if (!parsed.validateOnly) {
+    const rate = checkExportRateLimit(user.id);
+    if (!rate.ok) {
+      return jsonExportError({
+        status: 429,
+        code: "EXPORT_RATE_LIMITED",
+        message: "Export rate limit exceeded. Try again later.",
+        traceId,
+        details: {
+          retryAfterSeconds: rate.retryAfterSeconds,
+          limit: rate.limit,
+          remaining: rate.remaining
+        }
+      });
+    }
+  }
 
   const payloadResult = await convexQuery<ExportPayload>(anyApi.exports.getPdfExportPayload, {
     viewerSubject: user.id,
@@ -355,7 +432,12 @@ export async function POST(request: Request) { // NOSONAR
   });
   if (!payloadResult.ok) {
     const status = payloadResult.error.toLowerCase().includes("forbidden") ? 403 : 500;
-    return jsonError(status, "Unable to build export payload.");
+    return jsonExportError({
+      status,
+      code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
+      message: "Unable to build export payload.",
+      traceId
+    });
   }
 
   const payload = payloadResult.data;
@@ -378,23 +460,30 @@ export async function POST(request: Request) { // NOSONAR
       issues: preflight.issues,
       blockingIssues: preflight.blockingIssues,
       warnings: preflight.warnings,
+      contractIssues: preflight.contractIssues,
+      contractErrors: preflight.contractErrors,
+      contractWarnings: preflight.contractWarnings,
       pageCount: payload.pages.length
     });
   }
 
   if (!preflight.ok) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Export blocked by validation issues.",
+    return jsonExportError({
+      status: 400,
+      code: "EXPORT_VALIDATION_FAILED",
+      message: "Export blocked by validation issues.",
+      traceId,
+      details: {
         exportHash,
         target: parsed.exportTarget,
         issues: preflight.issues,
         blockingIssues: preflight.blockingIssues,
-        warnings: preflight.warnings
-      },
-      { status: 400 }
-    );
+        warnings: preflight.warnings,
+        contractIssues: preflight.contractIssues,
+        contractErrors: preflight.contractErrors,
+        contractWarnings: preflight.contractWarnings
+      }
+    });
   }
 
   const cached = exportCache.get(cacheKey);
@@ -428,6 +517,7 @@ export async function POST(request: Request) { // NOSONAR
         "x-export-meta": JSON.stringify({
           ...cached.meta,
           issues: preflight.issues,
+          contractIssues: preflight.contractIssues,
           fileKey: cached.fileKey ?? null,
           fileUrl: fileUrl ?? null,
           filename
@@ -441,7 +531,19 @@ export async function POST(request: Request) { // NOSONAR
     const startedAt = Date.now();
     const resolvedPayload = await resolveExportAssetUrls(payload, user.id);
     const contract = toContract(resolvedPayload, parsed.exportTarget);
-    const rendered = await renderWithPlaywright(contract, exportHash);
+    const debug =
+      typeof parsed.debug === "boolean"
+        ? { enabled: parsed.debug }
+        : parsed.debug && typeof parsed.debug === "object"
+          ? {
+              enabled: parsed.debug.enabled ?? true,
+              showSafeArea: parsed.debug.showSafeArea,
+              showBleed: parsed.debug.showBleed,
+              showNodeBounds: parsed.debug.showNodeBounds,
+              showNodeIds: parsed.debug.showNodeIds
+            }
+          : undefined;
+    const rendered = await createPdfDocument({ contract, exportHash, debug });
     const filename = `${toSafeFilenameBase(payload.storybook.title)}-${parsed.exportTarget.toLowerCase()}.pdf`;
     let storedFileKey: string | undefined;
     let storedFileUrl: string | undefined;
@@ -487,6 +589,9 @@ export async function POST(request: Request) { // NOSONAR
           issues: preflight.issues,
           blockingIssues: preflight.blockingIssues,
           warningsFromPreflight: preflight.warnings,
+          contractIssues: preflight.contractIssues,
+          contractErrors: preflight.contractErrors,
+          contractWarnings: preflight.contractWarnings,
           fileKey: storedFileKey ?? null,
           fileUrl: storedFileUrl ?? null,
           filename
@@ -506,6 +611,15 @@ export async function POST(request: Request) { // NOSONAR
       warningsCount: preflight.warnings.length,
       errorSummary: message.slice(0, 500)
     });
-    return jsonError(500, message);
+    return jsonExportError({
+      status: 500,
+      code: "EXPORT_RENDER_FAILED",
+      message,
+      traceId,
+      details: {
+        exportHash,
+        target: parsed.exportTarget
+      }
+    });
   }
 }

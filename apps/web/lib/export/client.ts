@@ -2,6 +2,7 @@
 
 import type { ExportTarget } from "../../../../packages/pdf-renderer/src/contracts";
 import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
+import type { RenderableValidationIssue } from "../../../../packages/pdf/contract/validateRenderable";
 
 export type ExportPdfResponseMeta = {
   pageCount: number;
@@ -10,6 +11,9 @@ export type ExportPdfResponseMeta = {
   issues?: ExportValidationIssue[];
   blockingIssues?: ExportValidationIssue[];
   warningsFromPreflight?: ExportValidationIssue[];
+  contractIssues?: RenderableValidationIssue[];
+  contractErrors?: RenderableValidationIssue[];
+  contractWarnings?: RenderableValidationIssue[];
   fileKey?: string | null;
   fileUrl?: string | null;
   filename: string;
@@ -24,6 +28,9 @@ export type ExportPreflightResponse = {
   issues: ExportValidationIssue[];
   blockingIssues: ExportValidationIssue[];
   warnings: ExportValidationIssue[];
+  contractIssues?: RenderableValidationIssue[];
+  contractErrors?: RenderableValidationIssue[];
+  contractWarnings?: RenderableValidationIssue[];
 };
 
 export async function requestPdfExport(
@@ -42,8 +49,8 @@ export async function requestPdfExport(
   if (!response.ok) {
     let message = "PDF export failed.";
     try {
-      const body = (await response.json()) as { error?: string };
-      if (body.error) message = body.error;
+      const body = (await response.json()) as { error?: string; code?: string; traceId?: string };
+      if (body.error) message = body.traceId ? `${body.error} (${body.traceId})` : body.error;
     } catch {
       // ignore non-json error response
     }
@@ -78,11 +85,13 @@ export async function requestExportPreflight(
     });
     const body = (await response.json()) as
       | ExportPreflightResponse
-      | { ok?: false; error?: string; issues?: ExportValidationIssue[] };
+      | { ok?: false; error?: string; issues?: ExportValidationIssue[]; traceId?: string };
     if (!response.ok || !("ok" in body) || body.ok !== true) {
       return {
         ok: false,
-        error: ("error" in body && body.error) || "Export preflight failed.",
+        error:
+          ("error" in body && body.error ? body.error : "Export preflight failed.") +
+          ("traceId" in body && body.traceId ? ` (${body.traceId})` : ""),
         issues: "issues" in body ? body.issues : undefined
       };
     }

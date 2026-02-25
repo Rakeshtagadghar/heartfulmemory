@@ -1,3 +1,5 @@
+import { buildEmbeddedFontFaceCss } from "../../pdf/fonts/embedFonts";
+
 export type TypographyTokenName = "h1" | "h2" | "body" | "caption";
 
 export type TypographyToken = {
@@ -16,8 +18,10 @@ export const typographyTokens: Record<TypographyTokenName, TypographyToken> = {
 };
 
 export function fontFaceCss() {
-  // v1 uses robust system-stack fallbacks while keeping named faces stable for the renderer contract.
+  const embedded = buildEmbeddedFontFaceCss();
+  // v1 still falls back to local fonts when bundled Inter assets are not yet committed.
   return `
+${embedded.css}
 @font-face {
   font-family: 'MemoriosoSans';
   src: local('Arial');
@@ -30,4 +34,3 @@ export function fontFaceCss() {
 }
 `;
 }
-

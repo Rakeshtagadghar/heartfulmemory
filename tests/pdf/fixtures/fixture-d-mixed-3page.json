@@ -1,0 +1,53 @@
+{
+  "renderVersion": 1,
+  "exportTarget": "HARDCOPY_PRINT_PDF",
+  "storybook": {
+    "id": "sb_fixture_d",
+    "title": "Fixture D",
+    "subtitle": "3-page mixed",
+    "updatedAt": "2026-02-25T00:00:00.000Z",
+    "settings": {}
+  },
+  "pages": [
+    {
+      "id": "p1",
+      "orderIndex": 0,
+      "sizePreset": "BOOK_6X9",
+      "widthPx": 576,
+      "heightPx": 864,
+      "margins": { "top": 36, "right": 36, "bottom": 42, "left": 36, "unit": "px" },
+      "background": { "fill": "#fff" },
+      "drawOrder": ["t1"]
+    },
+    {
+      "id": "p2",
+      "orderIndex": 1,
+      "sizePreset": "BOOK_6X9",
+      "widthPx": 576,
+      "heightPx": 864,
+      "margins": { "top": 36, "right": 36, "bottom": 42, "left": 36, "unit": "px" },
+      "background": { "fill": "#fff" },
+      "drawOrder": ["img1"]
+    },
+    {
+      "id": "p3",
+      "orderIndex": 2,
+      "sizePreset": "BOOK_6X9",
+      "widthPx": 576,
+      "heightPx": 864,
+      "margins": { "top": 36, "right": 36, "bottom": 42, "left": 36, "unit": "px" },
+      "background": { "fill": "#fff" },
+      "drawOrder": ["shape1", "line1"]
+    }
+  ],
+  "nodes": [
+    { "id": "t1", "type": "text", "pageId": "p1", "x": 48, "y": 70, "w": 480, "h": 220, "style": { "fontFamily": "Inter", "fontSize": 20 }, "content": { "text": "Page one text" } },
+    { "id": "img1", "type": "image", "pageId": "p2", "x": 48, "y": 80, "w": 480, "h": 320, "content": { "assetId": "asset1" } },
+    { "id": "shape1", "type": "shape", "pageId": "p3", "x": 56, "y": 96, "w": 200, "h": 160, "content": { "shapeType": "circle" }, "style": { "fill": "#fde68a", "stroke": "#f59e0b", "strokeWidth": 2 } },
+    { "id": "line1", "type": "line", "pageId": "p3", "x": 64, "y": 320, "w": 420, "h": 2, "style": { "stroke": "#111827", "strokeWidth": 2 } }
+  ],
+  "assets": [
+    { "id": "asset1", "sourceUrl": "https://example.com/demo.jpg", "width": 3000, "height": 2000, "mimeType": "image/jpeg" }
+  ]
+}
+

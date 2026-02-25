@@ -5,6 +5,7 @@ import { buildHtmlDocument } from "./templates/document.html";
 import { estimateOverflowWarnings } from "./overflowDetector";
 import { hardcopyPdfTargetConfig } from "./targets/hardcopy";
 import { digitalPdfTargetConfig } from "./targets/digital";
+import type { PdfDebugOverlayOptions } from "../../pdf/debug/debugOverlays";
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -32,12 +33,15 @@ function getPageFormat(sizePreset: PdfRenderContract["pages"][number]["sizePrese
 
 export async function renderWithPlaywright(
   contract: PdfRenderContract,
-  exportHash: string
+  exportHash: string,
+  options?: {
+    debug?: PdfDebugOverlayOptions;
+  }
 ): Promise<PdfRenderOutput> {
   const browser = await getBrowser();
   const page = await browser.newPage();
   try {
-    const doc = buildHtmlDocument(contract);
+    const doc = buildHtmlDocument(contract, { debug: options?.debug });
     const overflowWarnings = estimateOverflowWarnings(contract);
     const targetConfig =
       contract.exportTarget === "HARDCOPY_PRINT_PDF" ? hardcopyPdfTargetConfig : digitalPdfTargetConfig;

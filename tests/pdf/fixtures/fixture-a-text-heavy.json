@@ -1,0 +1,38 @@
+{
+  "renderVersion": 1,
+  "exportTarget": "DIGITAL_PDF",
+  "storybook": {
+    "id": "sb_fixture_a",
+    "title": "Fixture A",
+    "subtitle": null,
+    "updatedAt": "2026-02-25T00:00:00.000Z",
+    "settings": {}
+  },
+  "pages": [
+    {
+      "id": "p1",
+      "orderIndex": 0,
+      "sizePreset": "US_LETTER",
+      "widthPx": 816,
+      "heightPx": 1056,
+      "margins": { "top": 48, "right": 48, "bottom": 48, "left": 48, "unit": "px" },
+      "background": { "fill": "#ffffff" },
+      "drawOrder": ["t1"]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "t1",
+      "type": "text",
+      "pageId": "p1",
+      "x": 72,
+      "y": 80,
+      "w": 640,
+      "h": 820,
+      "style": { "fontFamily": "Inter", "fontSize": 18, "lineHeight": 1.4, "color": "#111827" },
+      "content": { "text": "Long text fixture for wrapping checks.\nSecond line." }
+    }
+  ],
+  "assets": []
+}
+

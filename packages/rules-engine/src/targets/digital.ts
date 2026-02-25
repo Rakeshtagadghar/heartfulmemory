@@ -1,6 +1,20 @@
 import type { PdfRenderContract } from "../../../pdf-renderer/src/contracts";
 import { finalizeIssues, type ExportValidationIssue } from "../types";
 
+function getReferencedAssetId(frame: PdfRenderContract["frames"][number]) {
+  if (frame.type === "IMAGE") {
+    return typeof frame.content.assetId === "string" ? frame.content.assetId : null;
+  }
+  if (frame.type === "FRAME") {
+    const imageRef =
+      frame.content.imageRef && typeof frame.content.imageRef === "object"
+        ? (frame.content.imageRef as Record<string, unknown>)
+        : null;
+    return typeof imageRef?.assetId === "string" ? imageRef.assetId : null;
+  }
+  return null;
+}
+
 function estimateTextOverflow(frame: PdfRenderContract["frames"][number]) {
   if (frame.type !== "TEXT") return false;
   const text = typeof frame.content.text === "string" ? frame.content.text : "";
@@ -47,8 +61,8 @@ export function validateDigitalExport(contract: PdfRenderContract) {
       });
     }
 
-    if (frame.type === "IMAGE") {
-      const assetId = typeof frame.content.assetId === "string" ? frame.content.assetId : null;
+    if (frame.type === "IMAGE" || frame.type === "FRAME") {
+      const assetId = getReferencedAssetId(frame);
       const asset = assetId ? assetById.get(assetId) : null;
       if (!asset) continue;
       const width = typeof asset.width === "number" ? asset.width : 0;
@@ -69,4 +83,3 @@ export function validateDigitalExport(contract: PdfRenderContract) {
 
   return finalizeIssues(issues);
 }
-

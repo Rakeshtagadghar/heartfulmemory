@@ -1,0 +1,59 @@
+{
+  "renderVersion": 1,
+  "exportTarget": "DIGITAL_PDF",
+  "storybook": {
+    "id": "sb_fixture_c",
+    "title": "Fixture C",
+    "subtitle": null,
+    "updatedAt": "2026-02-25T00:00:00.000Z",
+    "settings": {}
+  },
+  "pages": [
+    {
+      "id": "p1",
+      "orderIndex": 0,
+      "sizePreset": "US_LETTER",
+      "widthPx": 816,
+      "heightPx": 1056,
+      "margins": { "top": 48, "right": 48, "bottom": 48, "left": 48, "unit": "px" },
+      "background": { "fill": "#ffffff" },
+      "drawOrder": ["s1", "l1", "t1"]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "s1",
+      "type": "shape",
+      "pageId": "p1",
+      "x": 160,
+      "y": 180,
+      "w": 240,
+      "h": 200,
+      "style": { "fill": "#93c5fd", "stroke": "#1d4ed8", "strokeWidth": 2, "radius": 16 },
+      "content": { "shapeType": "rect" }
+    },
+    {
+      "id": "l1",
+      "type": "line",
+      "pageId": "p1",
+      "x": 120,
+      "y": 260,
+      "w": 420,
+      "h": 2,
+      "style": { "stroke": "#ef4444", "strokeWidth": 4 }
+    },
+    {
+      "id": "t1",
+      "type": "text",
+      "pageId": "p1",
+      "x": 180,
+      "y": 220,
+      "w": 200,
+      "h": 120,
+      "style": { "fontFamily": "Inter", "fontSize": 24, "fontWeight": 700, "color": "#111827" },
+      "content": { "text": "Front layer" }
+    }
+  ],
+  "assets": []
+}
+

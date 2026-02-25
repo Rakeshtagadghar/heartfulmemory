@@ -46,7 +46,7 @@ export type PdfRenderPage = {
 export type PdfRenderFrame = {
   id: string;
   pageId: string;
-  type: "TEXT" | "IMAGE";
+  type: "TEXT" | "IMAGE" | "SHAPE" | "LINE" | "FRAME" | "GROUP";
   x: number;
   y: number;
   w: number;
