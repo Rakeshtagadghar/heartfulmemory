@@ -235,6 +235,74 @@ export const remove = mutationGeneric({
   }
 });
 
+export const duplicate = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    pageId: v.id("pages")
+  },
+  handler: async (ctx, args) => {
+    const sourcePage = await getPageOrThrow(ctx, args.pageId);
+    const access = await assertCanAccessStorybook(ctx, sourcePage.storybookId, "OWNER", args.viewerSubject);
+    const pages = await ctx.db
+      .query("pages")
+      .withIndex("by_storybookId_orderIndex", (q) => q.eq("storybookId", sourcePage.storybookId))
+      .collect();
+    const orderedPages = pages.sort((a, b) => a.orderIndex - b.orderIndex);
+    const sourceIndex = orderedPages.findIndex((page) => String(page._id) === String(sourcePage._id));
+    if (sourceIndex < 0) throw new Error("Page not found in storybook order");
+
+    const now = Date.now();
+    for (const page of orderedPages.slice(sourceIndex + 1)) {
+      await ctx.db.patch(page._id, { orderIndex: page.orderIndex + 1, updatedAt: now });
+    }
+
+    const duplicatedPageId = await ctx.db.insert("pages", {
+      storybookId: sourcePage.storybookId,
+      ownerId: sourcePage.ownerId,
+      orderIndex: sourcePage.orderIndex + 1,
+      sizePreset: sourcePage.sizePreset,
+      widthPx: sourcePage.widthPx,
+      heightPx: sourcePage.heightPx,
+      margins: sourcePage.margins,
+      grid: sourcePage.grid,
+      background: sourcePage.background,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const sourceFrames = await ctx.db
+      .query("frames")
+      .withIndex("by_pageId_zIndex", (q) => q.eq("pageId", sourcePage._id))
+      .collect();
+    const orderedFrames = sourceFrames.sort((a, b) => a.zIndex - b.zIndex);
+    for (const frame of orderedFrames) {
+      await ctx.db.insert("frames", {
+        storybookId: frame.storybookId,
+        pageId: duplicatedPageId,
+        ownerId: frame.ownerId,
+        type: frame.type,
+        x: frame.x,
+        y: frame.y,
+        w: frame.w,
+        h: frame.h,
+        zIndex: frame.zIndex,
+        locked: frame.locked,
+        style: frame.style,
+        content: frame.content,
+        crop: frame.crop,
+        version: 1,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    await ctx.db.patch(access.storybook._id as never, { updatedAt: now });
+    const duplicated = await ctx.db.get(duplicatedPageId);
+    if (!duplicated) throw new Error("Failed to duplicate page");
+    return toPageDto(duplicated as never);
+  }
+});
+
 export const createDefaultCanvas = mutationGeneric({
   args: {
     viewerSubject: v.optional(v.string()),
@@ -345,4 +413,3 @@ export const createDefaultCanvas = mutationGeneric({
     return rows.sort((a, b) => a.orderIndex - b.orderIndex).map((row) => toPageDto(row as never));
   }
 });
-

@@ -62,6 +62,32 @@ export async function reorderPagesForUser(
   return { ok: true, data: null };
 }
 
+export async function removePageForUser(
+  viewerSubject: string,
+  pageId: string
+): Promise<DataResult<null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: boolean }>(anyApi.pages.remove, {
+    viewerSubject,
+    pageId
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: null };
+}
+
+export async function duplicatePageForUser(
+  viewerSubject: string,
+  pageId: string
+): Promise<DataResult<PageDTO>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<unknown>(anyApi.pages.duplicate, {
+    viewerSubject,
+    pageId
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: pageDtoSchema.parse(result.data) };
+}
+
 export async function createDefaultCanvasForUser(
   viewerSubject: string,
   storybookId: string
@@ -74,4 +100,3 @@ export async function createDefaultCanvasForUser(
   if (!result.ok) return result;
   return { ok: true, data: result.data.map((row) => pageDtoSchema.parse(row)) };
 }
-

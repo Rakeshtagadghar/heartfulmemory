@@ -169,6 +169,23 @@ export default defineSchema({
   })
     .index("by_ownerId", ["ownerId"])
     .index("by_storageKey", ["storageKey"]),
+  exports: defineTable({
+    storybookId: v.id("storybooks"),
+    ownerId: v.string(),
+    exportTarget: v.union(v.literal("DIGITAL_PDF"), v.literal("HARDCOPY_PRINT_PDF")),
+    exportHash: v.string(),
+    status: v.union(v.literal("SUCCESS"), v.literal("FAILED")),
+    pageCount: v.number(),
+    warningsCount: v.number(),
+    runtimeMs: v.optional(v.number()),
+    fileKey: v.optional(v.string()),
+    fileUrl: v.optional(v.string()),
+    errorSummary: v.optional(v.string()),
+    createdAt: v.number()
+  })
+    .index("by_storybookId_createdAt", ["storybookId", "createdAt"])
+    .index("by_ownerId_createdAt", ["ownerId", "createdAt"])
+    .index("by_storybookId_exportHash", ["storybookId", "exportHash"]),
   collaborators: defineTable({
     storybookId: v.id("storybooks"),
     invitedEmail: v.optional(v.string()),

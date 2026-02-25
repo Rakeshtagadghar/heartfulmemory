@@ -2,8 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAuthenticatedUser } from "../auth/server";
+import { anyApi, convexQuery } from "../convex/ops";
 import { type DataResult } from "../data/_shared";
-import { createDefaultCanvasForUser, createPageForUser, listPagesByStorybookForUser, reorderPagesForUser, updatePageForUser } from "../data/pages";
+import {
+  createDefaultCanvasForUser,
+  createPageForUser,
+  duplicatePageForUser,
+  listPagesByStorybookForUser,
+  removePageForUser,
+  reorderPagesForUser,
+  updatePageForUser
+} from "../data/pages";
 import { createFrameForUser, listFramesByPageForUser, listFramesByStorybookForUser, removeFrameForUser, updateFrameForUser } from "../data/frames";
 import { createAssetMetadataForUser, listAssetsForUser } from "../data/assets";
 import { updateStorybookSettingsForUser } from "../data/storybooks";
@@ -11,6 +20,7 @@ import type { PageDTO } from "../dto/page";
 import type { FrameDTO } from "../dto/frame";
 import type { StorybookDTO } from "../dto/storybook";
 import type { AssetDTO } from "../dto/asset";
+import type { ExportMarginsPx, ExportPageSizePreset } from "../../../../packages/shared-schema/storybookSettings.types";
 
 function storybookPath(storybookId: string) {
   return `/app/storybooks/${storybookId}`;
@@ -49,6 +59,26 @@ export async function reorderPagesAction(
 ): Promise<DataResult<null>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
   const result = await reorderPagesForUser(user.id, storybookId, orderedPageIds);
+  revalidatePath(layoutPath(storybookId));
+  return result;
+}
+
+export async function duplicatePageAction(
+  storybookId: string,
+  pageId: string
+): Promise<DataResult<PageDTO>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await duplicatePageForUser(user.id, pageId);
+  revalidatePath(layoutPath(storybookId));
+  return result;
+}
+
+export async function removePageAction(
+  storybookId: string,
+  pageId: string
+): Promise<DataResult<null>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await removePageForUser(user.id, pageId);
   revalidatePath(layoutPath(storybookId));
   return result;
 }
@@ -105,16 +135,46 @@ export async function removeFrameAction(storybookId: string, frameId: string): P
 export async function updateLayoutStorybookSettingsAction(
   storybookId: string,
   settingsPatch: {
-    pageSize?: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
-    margins?: Record<string, unknown>;
+    pageSize?: ExportPageSizePreset;
+    margins?: ExportMarginsPx | Record<string, unknown>;
     grid?: Record<string, unknown>;
-    exportTargets?: { digitalPdf: boolean; printPdf: boolean };
+    exportTargets?: { digitalPdf: boolean; hardcopyPdf?: boolean; printPdf?: boolean };
+    printPreset?: Record<string, unknown>;
+    digitalPreset?: Record<string, unknown>;
   }
 ): Promise<DataResult<StorybookDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
   const result = await updateStorybookSettingsForUser(user.id, storybookId, settingsPatch);
   revalidatePath(layoutPath(storybookId));
   revalidatePath(storybookPath(storybookId));
+  return result;
+}
+
+export type ExportHistoryItem = {
+  id: string;
+  storybookId: string;
+  exportTarget: "DIGITAL_PDF" | "HARDCOPY_PRINT_PDF";
+  exportHash: string;
+  status: "SUCCESS" | "FAILED";
+  pageCount: number;
+  warningsCount: number;
+  runtimeMs: number | null;
+  fileKey: string | null;
+  fileUrl: string | null;
+  errorSummary: string | null;
+  createdAt: string;
+};
+
+export async function listExportHistoryAction(
+  storybookId: string,
+  limit = 10
+): Promise<DataResult<ExportHistoryItem[]>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await convexQuery<ExportHistoryItem[]>(anyApi.exports.listExportHistory, {
+    viewerSubject: user.id,
+    storybookId,
+    limit
+  });
   return result;
 }
 

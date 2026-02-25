@@ -36,7 +36,8 @@ export function FrameRenderer({
   onEndCropEdit,
   onCropChange,
   onDragStart,
-  onResizeStart
+  onResizeStart,
+  issueMessages
 }: {
   frame: FrameDTO;
   selected: boolean;
@@ -51,6 +52,7 @@ export function FrameRenderer({
   onCropChange?: (crop: { focalX: number; focalY: number; scale: number }) => void;
   onDragStart: (event: React.PointerEvent<HTMLButtonElement>) => void;
   onResizeStart: (handle: ResizeHandle, event: React.PointerEvent<HTMLButtonElement>) => void;
+  issueMessages?: string[];
 }) {
   const textStyle = frame.style as Record<string, unknown>;
   const previewText = getTextValue(frame);
@@ -74,6 +76,7 @@ export function FrameRenderer({
           lineHeight: typeof textStyle.lineHeight === "number" ? textStyle.lineHeight : 1.45
         }).overflow
       : false;
+  const hasIssueHighlight = Boolean(issueMessages && issueMessages.length > 0);
 
   return (
     <div
@@ -87,6 +90,9 @@ export function FrameRenderer({
     >
       <div
         className={`group relative h-full w-full overflow-hidden rounded-lg border ${
+          hasIssueHighlight
+            ? "border-rose-300 ring-2 ring-rose-300/40"
+            :
           textEditing
             ? "border-violet-300 ring-2 ring-violet-300/55"
             : selected
@@ -237,6 +243,12 @@ export function FrameRenderer({
           <span className="absolute right-2 top-2 rounded bg-black/45 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/75">
             Locked
           </span>
+        ) : null}
+        {hasIssueHighlight ? (
+          <div className="absolute bottom-2 left-2 right-2 z-20 rounded-md border border-rose-300/20 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-100">
+            {issueMessages?.[0]}
+            {issueMessages && issueMessages.length > 1 ? ` (+${issueMessages.length - 1} more)` : ""}
+          </div>
         ) : null}
         {frame.type === "IMAGE" && selected && !frame.locked && !cropEditing ? (
           <button

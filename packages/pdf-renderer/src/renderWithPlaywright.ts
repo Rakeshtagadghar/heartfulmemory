@@ -1,5 +1,5 @@
-import type { Browser } from "@playwright/test";
-import { chromium } from "@playwright/test";
+import type { Browser } from "playwright";
+import { chromium } from "playwright";
 import type { PdfRenderContract, PdfRenderOutput } from "./contracts";
 import { buildHtmlDocument } from "./templates/document.html";
 import { estimateOverflowWarnings } from "./overflowDetector";
@@ -55,7 +55,8 @@ export async function renderWithPlaywright(
         ? (getPageFormat(firstPage?.sizePreset ?? "US_LETTER") as { width: string; height: string }).height
         : undefined,
       printBackground: targetConfig.printBackground,
-      preferCSSPageSize: false
+      preferCSSPageSize: false,
+      scale: targetConfig.pdfScale
     });
 
     return {
@@ -70,4 +71,3 @@ export async function renderWithPlaywright(
     await page.close();
   }
 }
-

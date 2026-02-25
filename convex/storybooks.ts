@@ -19,6 +19,34 @@ function normalizeTitle(title?: string | null) {
   return trimmed && trimmed.length > 0 ? trimmed.slice(0, 200) : "Untitled Storybook";
 }
 
+function defaultExportSettings(pageSize: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11" = "BOOK_8_5X11") {
+  return {
+    exportTargets: {
+      digitalPdf: true,
+      hardcopyPdf: true
+    },
+    pageSize,
+    margins: {
+      top: 44,
+      right: 44,
+      bottom: 44,
+      left: 44,
+      unit: "px" as const
+    },
+    printPreset: {
+      safeAreaPadding: 24,
+      minImageWidthPx: 2000,
+      imageQuality: "high" as const,
+      disableLinksStyling: true
+    },
+    digitalPreset: {
+      imageQuality: "medium" as const,
+      enableLinksStyling: false,
+      minImageWidthPx: 1200
+    }
+  };
+}
+
 function toStorybookDto(doc: {
   _id: unknown;
   ownerId: string;
@@ -67,10 +95,11 @@ export const create = mutationGeneric({
       settings:
         args.templateId || args.templateVersion
           ? {
+              ...defaultExportSettings(),
               templateId: args.templateId ?? null,
               templateVersion: args.templateVersion ?? null
             }
-          : {},
+          : defaultExportSettings(),
       createdAt: now,
       updatedAt: now
     });
@@ -157,9 +186,12 @@ export const updateSettings = mutationGeneric({
       exportTargets: v.optional(
         v.object({
           digitalPdf: v.boolean(),
-          printPdf: v.boolean()
+          hardcopyPdf: v.optional(v.boolean()),
+          printPdf: v.optional(v.boolean())
         })
-      )
+      ),
+      printPreset: v.optional(v.any()),
+      digitalPreset: v.optional(v.any())
     })
   },
   handler: async (ctx, args) => {
@@ -179,7 +211,31 @@ export const updateSettings = mutationGeneric({
       nextSettings.grid = args.settingsPatch.grid;
     }
     if ("exportTargets" in args.settingsPatch && args.settingsPatch.exportTargets) {
-      nextSettings.exportTargets = args.settingsPatch.exportTargets;
+      nextSettings.exportTargets = {
+        ...(typeof currentSettings.exportTargets === "object" && currentSettings.exportTargets
+          ? (currentSettings.exportTargets as Record<string, unknown>)
+          : {}),
+        digitalPdf: args.settingsPatch.exportTargets.digitalPdf,
+        hardcopyPdf:
+          typeof args.settingsPatch.exportTargets.hardcopyPdf === "boolean"
+            ? args.settingsPatch.exportTargets.hardcopyPdf
+            : Boolean(args.settingsPatch.exportTargets.printPdf)
+      };
+    }
+    if ("printPreset" in args.settingsPatch && args.settingsPatch.printPreset) {
+      nextSettings.printPreset = args.settingsPatch.printPreset;
+    }
+    if ("digitalPreset" in args.settingsPatch && args.settingsPatch.digitalPreset) {
+      nextSettings.digitalPreset = args.settingsPatch.digitalPreset;
+    }
+    if (!("exportTargets" in nextSettings) || !nextSettings.exportTargets) {
+      nextSettings.exportTargets = defaultExportSettings().exportTargets;
+    }
+    if (!("printPreset" in nextSettings) || !nextSettings.printPreset) {
+      nextSettings.printPreset = defaultExportSettings().printPreset;
+    }
+    if (!("digitalPreset" in nextSettings) || !nextSettings.digitalPreset) {
+      nextSettings.digitalPreset = defaultExportSettings().digitalPreset;
     }
     await ctx.db.patch(access.storybook._id as never, {
       settings: nextSettings,

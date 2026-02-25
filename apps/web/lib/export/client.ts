@@ -1,12 +1,29 @@
 "use client";
 
 import type { ExportTarget } from "../../../../packages/pdf-renderer/src/contracts";
+import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
 
 export type ExportPdfResponseMeta = {
   pageCount: number;
   exportHash: string;
   warnings: Array<{ code: string; pageId: string; frameId?: string; message: string; severity: "info" | "warning" }>;
+  issues?: ExportValidationIssue[];
+  blockingIssues?: ExportValidationIssue[];
+  warningsFromPreflight?: ExportValidationIssue[];
+  fileKey?: string | null;
+  fileUrl?: string | null;
   filename: string;
+};
+
+export type ExportPreflightResponse = {
+  ok: true;
+  exportHash: string;
+  target: ExportTarget;
+  canProceed: boolean;
+  pageCount: number;
+  issues: ExportValidationIssue[];
+  blockingIssues: ExportValidationIssue[];
+  warnings: ExportValidationIssue[];
 };
 
 export async function requestPdfExport(
@@ -47,6 +64,34 @@ export async function requestPdfExport(
   }
 }
 
+export async function requestExportPreflight(
+  input: {
+    storybookId: string;
+    exportTarget: ExportTarget;
+  }
+): Promise<{ ok: true; data: ExportPreflightResponse } | { ok: false; error: string; issues?: ExportValidationIssue[] }> {
+  try {
+    const response = await fetch("/api/export/pdf", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...input, validateOnly: true })
+    });
+    const body = (await response.json()) as
+      | ExportPreflightResponse
+      | { ok?: false; error?: string; issues?: ExportValidationIssue[] };
+    if (!response.ok || !("ok" in body) || body.ok !== true) {
+      return {
+        ok: false,
+        error: ("error" in body && body.error) || "Export preflight failed.",
+        issues: "issues" in body ? body.issues : undefined
+      };
+    }
+    return { ok: true, data: body };
+  } catch {
+    return { ok: false, error: "Failed to fetch export preflight." };
+  }
+}
+
 export function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -57,4 +102,3 @@ export function triggerBlobDownload(blob: Blob, filename: string) {
   anchor.remove();
   URL.revokeObjectURL(url);
 }
-

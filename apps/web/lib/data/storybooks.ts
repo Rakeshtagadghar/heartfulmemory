@@ -1,6 +1,7 @@
 import { anyApi, convexMutation, convexQuery, getConvexUrl } from "../convex/ops";
 import { storybookDtoSchema, storybookPatchSchema, type StorybookDTO } from "../dto/storybook";
 import { type DataResult } from "./_shared";
+import type { ExportMarginsPx, ExportPageSizePreset } from "../../../../packages/shared-schema/storybookSettings.types";
 
 type BookMode = StorybookDTO["book_mode"];
 
@@ -74,10 +75,12 @@ export async function updateStorybookSettingsForUser(
   viewerSubject: string,
   storybookId: string,
   settingsPatch: {
-    pageSize?: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
-    margins?: Record<string, unknown>;
+    pageSize?: ExportPageSizePreset;
+    margins?: ExportMarginsPx | Record<string, unknown>;
     grid?: Record<string, unknown>;
-    exportTargets?: { digitalPdf: boolean; printPdf: boolean };
+    exportTargets?: { digitalPdf: boolean; hardcopyPdf?: boolean; printPdf?: boolean };
+    printPreset?: Record<string, unknown>;
+    digitalPreset?: Record<string, unknown>;
   }
 ): Promise<DataResult<StorybookDTO>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };

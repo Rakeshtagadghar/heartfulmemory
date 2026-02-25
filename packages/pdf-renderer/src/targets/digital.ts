@@ -3,6 +3,7 @@ export const digitalPdfTargetConfig = {
   imageMinPixels: 1200 * 800,
   safeAreaInsetMultiplier: 1,
   showBleedGuide: false,
-  printBackground: true
+  printBackground: true,
+  pdfScale: 0.95,
+  imageQuality: "medium" as const
 };
-

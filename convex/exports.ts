@@ -1,4 +1,4 @@
-import { queryGeneric } from "convex/server";
+import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { assertCanAccessStorybook } from "./authz";
 
@@ -82,6 +82,112 @@ export const getPdfExportPayload = queryGeneric({
             ? (asset.license as Record<string, unknown>)
             : null
       }))
+    };
+  }
+});
+
+export const recordExportAttempt = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    exportTarget: v.union(v.literal("DIGITAL_PDF"), v.literal("HARDCOPY_PRINT_PDF")),
+    exportHash: v.string(),
+    status: v.union(v.literal("SUCCESS"), v.literal("FAILED")),
+    pageCount: v.number(),
+    warningsCount: v.number(),
+    runtimeMs: v.optional(v.number()),
+    fileKey: v.optional(v.string()),
+    fileUrl: v.optional(v.string()),
+    errorSummary: v.optional(v.string())
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    const createdAt = Date.now();
+    const id = await ctx.db.insert("exports", {
+      storybookId: args.storybookId,
+      ownerId: access.storybook.ownerId,
+      exportTarget: args.exportTarget,
+      exportHash: args.exportHash,
+      status: args.status,
+      pageCount: args.pageCount,
+      warningsCount: args.warningsCount,
+      runtimeMs: args.runtimeMs,
+      fileKey: args.fileKey,
+      fileUrl: args.fileUrl,
+      errorSummary: args.errorSummary,
+      createdAt
+    });
+    return { id: String(id), createdAt: toIso(createdAt) };
+  }
+});
+
+export const listExportHistory = queryGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    limit: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    const rows = await ctx.db
+      .query("exports")
+      .withIndex("by_storybookId_createdAt", (q) => q.eq("storybookId", args.storybookId))
+      .collect();
+
+    return rows
+      .filter((row) => row.ownerId === access.storybook.ownerId)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, Math.max(1, Math.min(args.limit ?? 10, 50)))
+      .map((row) => ({
+        id: String(row._id),
+        storybookId: String(row.storybookId),
+        exportTarget: row.exportTarget,
+        exportHash: row.exportHash,
+        status: row.status,
+        pageCount: row.pageCount,
+        warningsCount: row.warningsCount,
+        runtimeMs: row.runtimeMs ?? null,
+        fileKey: row.fileKey ?? null,
+        fileUrl: row.fileUrl ?? null,
+        errorSummary: row.errorSummary ?? null,
+        createdAt: toIso(row.createdAt)
+      }));
+  }
+});
+
+export const getExportByHash = queryGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    exportTarget: v.union(v.literal("DIGITAL_PDF"), v.literal("HARDCOPY_PRINT_PDF")),
+    exportHash: v.string()
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    const rows = await ctx.db
+      .query("exports")
+      .withIndex("by_storybookId_exportHash", (q) => q.eq("storybookId", args.storybookId))
+      .collect();
+    const row = rows
+      .filter(
+        (item) =>
+          item.exportHash === args.exportHash &&
+          item.ownerId === access.storybook.ownerId &&
+          item.exportTarget === args.exportTarget
+      )
+      .sort((a, b) => b.createdAt - a.createdAt)[0];
+    if (!row) {
+      throw new Error("Export record not found");
+    }
+    return {
+      id: String(row._id),
+      storybookId: String(row.storybookId),
+      exportTarget: row.exportTarget,
+      exportHash: row.exportHash,
+      status: row.status,
+      fileKey: row.fileKey ?? null,
+      fileUrl: row.fileUrl ?? null,
+      createdAt: toIso(row.createdAt)
     };
   }
 });

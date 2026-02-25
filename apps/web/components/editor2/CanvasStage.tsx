@@ -26,6 +26,10 @@ export function CanvasStage({
   selectedFrameId,
   zoom,
   showGrid,
+  showMarginsOverlay = true,
+  showSafeAreaOverlay = false,
+  safeAreaPadding = 0,
+  issueHighlightMessagesByFrameId,
   snapEnabled,
   editingTextFrameId,
   cropModeFrameId,
@@ -44,6 +48,10 @@ export function CanvasStage({
   selectedFrameId: string | null;
   zoom: number;
   showGrid: boolean;
+  showMarginsOverlay?: boolean;
+  showSafeAreaOverlay?: boolean;
+  safeAreaPadding?: number;
+  issueHighlightMessagesByFrameId?: Record<string, string[]>;
   snapEnabled: boolean;
   editingTextFrameId: string | null;
   cropModeFrameId: string | null;
@@ -199,7 +207,13 @@ export function CanvasStage({
                 transformOrigin: "top left"
               }}
             >
-              <GuidesOverlay page={page} showGrid={showGrid} />
+              <GuidesOverlay
+                page={page}
+                showGrid={showGrid}
+                showMargins={showMarginsOverlay}
+                showSafeArea={showSafeAreaOverlay}
+                safeAreaPadding={safeAreaPadding}
+              />
               {frames
                 .slice()
                 .sort((a, b) => a.z_index - b.z_index)
@@ -217,6 +231,7 @@ export function CanvasStage({
                     onStartCropEdit={() => onStartCropEdit(frame.id)}
                     onEndCropEdit={() => onEndCropEdit(frame.id)}
                     onCropChange={(crop) => onCropChange(frame.id, crop)}
+                    issueMessages={issueHighlightMessagesByFrameId?.[frame.id]}
                     onDragStart={(event) => {
                       if (frame.locked) return;
                       event.preventDefault();

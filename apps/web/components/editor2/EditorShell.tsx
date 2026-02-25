@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
+import {
+  type StorybookExportSettingsV1,
+  normalizeStorybookExportSettingsV1
+} from "../../../../packages/shared-schema/storybookSettings.types";
 import type { StorybookDTO } from "../../lib/dto/storybook";
 import type { PageDTO } from "../../lib/dto/page";
 import type { FrameDTO } from "../../lib/dto/frame";
@@ -12,8 +17,12 @@ import {
   createPageAction,
   createStockAssetAction,
   createUploadAssetAction,
+  duplicatePageAction,
   ensureLayoutCanvasAction,
   listEditorAssetsAction,
+  listFramesByStorybookAction,
+  listPagesAction,
+  removePageAction,
   removeFrameAction,
   reorderPagesAction,
   updateFrameAction,
@@ -30,6 +39,7 @@ import { TemplatePicker } from "./TemplatePicker";
 import { ExportButton } from "./ExportButton";
 import { ImagePicker } from "./ImagePicker";
 import { Button } from "../ui/button";
+import { buildIssueHighlightMap } from "./CanvasFocus";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -55,7 +65,7 @@ function mergeFrameIntoMap(
   return next;
 }
 
-export function Editor2Shell({
+export function Editor2Shell({ // NOSONAR
   storybook,
   initialPages,
   initialFramesByPageId,
@@ -76,8 +86,14 @@ export function Editor2Shell({
   const [leftPanelMode, setLeftPanelMode] = useState<"pages" | "images">("pages");
   const [assets, setAssets] = useState<AssetDTO[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(false);
+  const [storybookExportSettings, setStorybookExportSettings] = useState<StorybookExportSettingsV1>(() =>
+    normalizeStorybookExportSettingsV1(storybook.settings, initialPages[0]?.size_preset, initialPages[0]?.margins)
+  );
+  const [preflightIssues, setPreflightIssues] = useState<ExportValidationIssue[]>([]);
   const [zoom, setZoom] = useState(0.85);
   const [showGridOverlay, setShowGridOverlay] = useState(true);
+  const [showMarginsOverlay, setShowMarginsOverlay] = useState(true);
+  const [showSafeAreaOverlay, setShowSafeAreaOverlay] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<
@@ -89,6 +105,11 @@ export function Editor2Shell({
   >({});
   const [isPending, startTransition] = useTransition();
   const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
+  let imagePanelAssetSummary = "";
+  if (leftPanelMode === "images") {
+    const assetStatusLabel = assetsLoading ? "loading assets…" : `${assets.length} assets`;
+    imagePanelAssetSummary = ` · ${assetStatusLabel}`;
+  }
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === effectiveSelectedPageId) ?? null,
@@ -104,6 +125,30 @@ export function Editor2Shell({
   );
   const selectedTextFrame = selectedFrame?.type === "TEXT" ? selectedFrame : null;
   const selectedImageFrame = selectedFrame?.type === "IMAGE" ? selectedFrame : null;
+  const issueHighlightMap = useMemo(() => buildIssueHighlightMap(preflightIssues), [preflightIssues]);
+  const currentPageIssueHighlights = useMemo(
+    () => (effectiveSelectedPageId ? issueHighlightMap[effectiveSelectedPageId] ?? {} : {}),
+    [effectiveSelectedPageId, issueHighlightMap]
+  );
+  const issueDisplayMeta = useMemo(() => {
+    const pageNumberById: Record<string, number> = {};
+    const frameNumberById: Record<string, number> = {};
+    const orderedPages = [...pages].sort((a, b) => a.order_index - b.order_index);
+    for (const [pageIndex, page] of orderedPages.entries()) {
+      pageNumberById[page.id] = pageIndex + 1;
+      const orderedFrames = sortFrames(framesByPageId[page.id] ?? []);
+      for (const [frameIndex, frame] of orderedFrames.entries()) {
+        frameNumberById[frame.id] = frameIndex + 1;
+      }
+    }
+    return { pageNumberById, frameNumberById };
+  }, [framesByPageId, pages]);
+
+  const textAlignButtonLabel: Record<"left" | "center" | "right", string> = {
+    left: "L",
+    center: "C",
+    right: "R"
+  };
 
   async function persistFramePatch(frameId: string, patch: Parameters<typeof updateFrameAction>[2]) {
     const result = await updateFrameAction(storybook.id, frameId, patch);
@@ -171,6 +216,73 @@ export function Editor2Shell({
       return;
     }
     setMessage(null);
+  }
+
+  async function handleDuplicatePage(pageId: string) {
+    const result = await duplicatePageAction(storybook.id, pageId);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    const freshPages = await listPagesAction(storybook.id);
+    if (freshPages.ok) {
+      setPages(sortPages(freshPages.data));
+    } else {
+      setPages((current) => sortPages([...current, result.data]));
+    }
+    const freshFrames = await listFramesByStorybookAction(storybook.id);
+    if (freshFrames.ok) {
+      const nextByPage: Record<string, FrameDTO[]> = {};
+      for (const page of (freshPages.ok ? freshPages.data : pages)) {
+        nextByPage[page.id] = [];
+      }
+      for (const frame of freshFrames.data) {
+        let list = nextByPage[frame.page_id];
+        if (!list) {
+          list = [];
+          nextByPage[frame.page_id] = list;
+        }
+        list.push(frame);
+      }
+      setFramesByPageId(nextByPage);
+    }
+    setSelectedPageId(result.data.id);
+    setSelectedFrameId(null);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage("Page duplicated.");
+  }
+
+  async function handleDeletePage(pageId: string) {
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const result = await removePageAction(storybook.id, pageId);
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+
+    const nextPages = sortPages(pages.filter((item) => item.id !== pageId)).map((item, idx) => ({
+      ...item,
+      order_index: idx
+    }));
+    setPages(nextPages);
+    setFramesByPageId((current) => {
+      const next = { ...current };
+      delete next[pageId];
+      return next;
+    });
+
+    if (selectedPageId === pageId) {
+      const nextSelected = nextPages[Math.min(page.order_index, Math.max(0, nextPages.length - 1))] ?? nextPages[0] ?? null;
+      setSelectedPageId(nextSelected?.id ?? null);
+      setSelectedFrameId(null);
+      setEditingTextFrameId(null);
+      setCropModeFrameId(null);
+      setSelectedFrameDraftPatch({});
+    }
+    setMessage(nextPages.length === 0 ? "Page deleted. Add a new page to continue." : "Page deleted.");
   }
 
   async function handleAddFrame(type: FrameDTO["type"]) {
@@ -275,6 +387,13 @@ export function Editor2Shell({
       margins: result.data.margins,
       grid: result.data.grid
     });
+    setStorybookExportSettings((current) =>
+      normalizeStorybookExportSettingsV1(
+        { ...current, pageSize: preset, margins: result.data.margins },
+        preset,
+        result.data.margins
+      )
+    );
   }
 
   async function handleToggleGrid() {
@@ -306,6 +425,19 @@ export function Editor2Shell({
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
+  }
+
+  function handleNavigateToExportIssue(issue: ExportValidationIssue) {
+    setSelectedPageId(issue.pageId);
+    if (issue.frameId) {
+      setSelectedFrameId(issue.frameId);
+      setEditingTextFrameId(null);
+      setCropModeFrameId(null);
+    }
+    if (issue.code.startsWith("PRINT_")) {
+      setShowMarginsOverlay(true);
+      setShowSafeAreaOverlay(true);
+    }
   }
 
   function handleSelectFrame(frameId: string) {
@@ -346,7 +478,7 @@ export function Editor2Shell({
 
   function handleCropChange(frameId: string, crop: { focalX: number; focalY: number; scale: number }) {
     const frame = currentFrames.find((item) => item.id === frameId);
-    if (!frame || frame.type !== "IMAGE") return;
+    if (frame?.type !== "IMAGE") return;
     setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, crop }));
     if (selectedFrameId === frameId) {
       setSelectedFrameDraftPatch((current) => ({ ...current, crop }));
@@ -355,7 +487,7 @@ export function Editor2Shell({
 
   function handleTextContentChange(frameId: string, text: string) {
     const frame = currentFrames.find((item) => item.id === frameId);
-    if (!frame || frame.type !== "TEXT") return;
+    if (frame?.type !== "TEXT") return;
     const nextContent = { ...frame.content, kind: "text_frame_v1", text };
     setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, content: nextContent }));
     if (selectedFrameId === frameId) {
@@ -488,14 +620,21 @@ export function Editor2Shell({
       const nudge = event.shiftKey ? 10 : 1;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         event.preventDefault();
-        const patch =
-          event.key === "ArrowUp"
-            ? { y: selectedFrame.y - nudge }
-            : event.key === "ArrowDown"
-              ? { y: selectedFrame.y + nudge }
-              : event.key === "ArrowLeft"
-                ? { x: selectedFrame.x - nudge }
-                : { x: selectedFrame.x + nudge };
+        let patch: { x?: number; y?: number };
+        switch (event.key) {
+          case "ArrowUp":
+            patch = { y: selectedFrame.y - nudge };
+            break;
+          case "ArrowDown":
+            patch = { y: selectedFrame.y + nudge };
+            break;
+          case "ArrowLeft":
+            patch = { x: selectedFrame.x - nudge };
+            break;
+          default:
+            patch = { x: selectedFrame.x + nudge };
+            break;
+        }
         applySelectedFrameDraftPatch(patch);
       }
     }
@@ -569,12 +708,19 @@ export function Editor2Shell({
                   variant={(selectedTextFrame.style.align as string | undefined) === align ? "secondary" : "ghost"}
                   onClick={() => patchSelectedTextStyle({ align })}
                 >
-                  {align === "left" ? "L" : align === "center" ? "C" : "R"}
+                  {textAlignButtonLabel[align]}
                 </Button>
               ))}
             </div>
           ) : null}
-          <ExportButton storybookId={storybook.id} />
+          <ExportButton
+            storybookId={storybook.id}
+            storybookSettings={storybookExportSettings}
+            issueDisplayMeta={issueDisplayMeta}
+            onExportSettingsChange={setStorybookExportSettings}
+            onIssueNavigate={handleNavigateToExportIssue}
+            onIssuesUpdate={setPreflightIssues}
+          />
           <Button type="button" size="sm" variant="secondary" onClick={() => void handleAddFrame("TEXT")}>
             Add Text
           </Button>
@@ -635,6 +781,8 @@ export function Editor2Shell({
             onSelectPage={handleSelectPage}
             onAddPage={handleAddPage}
             onMovePage={handleMovePage}
+            onDuplicatePage={handleDuplicatePage}
+            onDeletePage={handleDeletePage}
           />
         )}
 
@@ -645,6 +793,10 @@ export function Editor2Shell({
             selectedFrameId={selectedFrameId}
             zoom={zoom}
             showGrid={showGridOverlay}
+            showMarginsOverlay={showMarginsOverlay}
+            showSafeAreaOverlay={showSafeAreaOverlay}
+            safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
+            issueHighlightMessagesByFrameId={currentPageIssueHighlights}
             snapEnabled={snapEnabled}
             editingTextFrameId={editingTextFrameId}
             cropModeFrameId={cropModeFrameId}
@@ -694,6 +846,12 @@ export function Editor2Shell({
                 <Button type="button" size="sm" variant={showGridOverlay ? "secondary" : "ghost"} onClick={() => setShowGridOverlay((value) => !value)}>
                   Overlay Grid
                 </Button>
+                <Button type="button" size="sm" variant={showMarginsOverlay ? "secondary" : "ghost"} onClick={() => setShowMarginsOverlay((value) => !value)}>
+                  Margins
+                </Button>
+                <Button type="button" size="sm" variant={showSafeAreaOverlay ? "secondary" : "ghost"} onClick={() => setShowSafeAreaOverlay((value) => !value)}>
+                  Safe Area
+                </Button>
                 <Button type="button" size="sm" variant={snapEnabled ? "secondary" : "ghost"} onClick={() => setSnapEnabled((value) => !value)}>
                   Snap
                 </Button>
@@ -724,7 +882,7 @@ export function Editor2Shell({
         <p>WYSIWYG canvas v1 · Pages + frames are the canonical model for Sprint 7 PDF rendering.</p>
         <p>
           {pages.length} pages · {Object.values(framesByPageId).reduce((sum, frames) => sum + frames.length, 0)} frames
-          {leftPanelMode === "images" ? ` · ${assetsLoading ? "loading assets…" : `${assets.length} assets`}` : ""}
+          {imagePanelAssetSummary}
         </p>
       </div>
 
