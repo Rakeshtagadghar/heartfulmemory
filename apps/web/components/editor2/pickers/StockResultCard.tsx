@@ -43,6 +43,7 @@ export function StockResultCard({
           size="sm"
           className="w-full"
           loading={loading}
+          disabled={loading}
           onClick={() => onInsert(result)}
         >
           Insert

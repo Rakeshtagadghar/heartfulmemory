@@ -7,6 +7,7 @@ import { snapFrame } from "../../lib/editor2/snap";
 import { GuidesOverlay } from "./GuidesOverlay";
 import { FrameRenderer } from "./FrameRenderer";
 import type { ResizeHandle } from "./FrameHandles";
+import { resizeImageWithAspect } from "../../lib/editor2/resizeImage";
 
 type InteractionState =
   | null
@@ -108,24 +109,35 @@ export function CanvasStage({
         let nextW = startW;
         let nextH = startH;
 
-        if (handle.includes("e")) {
-          nextW = Math.max(minSize, startW + dx);
-        }
-        if (handle.includes("s")) {
-          nextH = Math.max(minSize, startH + dy);
-        }
-        if (handle.includes("w")) {
-          const rawW = startW - dx;
-          nextW = Math.max(minSize, rawW);
-          nextX = startX + (startW - nextW);
-        }
-        if (handle.includes("n")) {
-          const rawH = startH - dy;
-          nextH = Math.max(minSize, rawH);
-          nextY = startY + (startH - nextH);
-        }
+        const preserveAspect = frame.type === "IMAGE" && !event.shiftKey;
+        if (preserveAspect) {
+          proposed = resizeImageWithAspect({
+            start: { x: startX, y: startY, w: startW, h: startH },
+            dx,
+            dy,
+            handle,
+            minSize
+          });
+        } else {
+          if (handle.includes("e")) {
+            nextW = Math.max(minSize, startW + dx);
+          }
+          if (handle.includes("s")) {
+            nextH = Math.max(minSize, startH + dy);
+          }
+          if (handle.includes("w")) {
+            const rawW = startW - dx;
+            nextW = Math.max(minSize, rawW);
+            nextX = startX + (startW - nextW);
+          }
+          if (handle.includes("n")) {
+            const rawH = startH - dy;
+            nextH = Math.max(minSize, rawH);
+            nextY = startY + (startH - nextH);
+          }
 
-        proposed = { x: nextX, y: nextY, w: nextW, h: nextH };
+          proposed = { x: nextX, y: nextY, w: nextW, h: nextH };
+        }
       }
 
       const snapped = snapFrame({

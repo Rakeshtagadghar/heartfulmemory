@@ -40,6 +40,9 @@ import { ExportButton } from "./ExportButton";
 import { ImagePicker } from "./ImagePicker";
 import { Button } from "../ui/button";
 import { buildIssueHighlightMap } from "./CanvasFocus";
+import { useInsertImage } from "./hooks/useInsertImage";
+import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
+import { showStudioToast } from "../studio/ui/toasts";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -105,6 +108,7 @@ export function Editor2Shell({ // NOSONAR
   >({});
   const [isPending, startTransition] = useTransition();
   const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
+  const { insertFromUploadAsset, insertFromProviderResult } = useInsertImage();
   let imagePanelAssetSummary = "";
   if (leftPanelMode === "images") {
     const assetStatusLabel = assetsLoading ? "loading assets…" : `${assets.length} assets`;
@@ -168,7 +172,7 @@ export function Editor2Shell({ // NOSONAR
     enabled: Boolean(selectedFrame) && Object.keys(selectedFrameDraftPatch).length > 0,
     frame: selectedFrame,
     draft: selectedFrameDraftPatch,
-    save: async (patch) => persistFramePatch(patch.frameId, patch),
+    save: async ({ frameId, ...patch }) => persistFramePatch(frameId, patch),
     onSaved: (frame) => {
       setFramesByPageId((current) => mergeFrameIntoMap(current, frame));
       setSelectedFrameDraftPatch({});
@@ -521,30 +525,27 @@ export function Editor2Shell({ // NOSONAR
     void refreshAssets();
   }
 
-  function applyImageAssetToSelectedFrame(asset: AssetDTO, previewUrlOverride?: string | null) {
-    if (!selectedImageFrame) return;
-    const resolvedSourceUrl =
-      previewUrlOverride ||
-      (asset.storage_provider === "R2" ? `/api/assets/view/${asset.id}?purpose=preview` : asset.source_url || "");
-    const nextContent = {
-      ...selectedImageFrame.content,
-      kind: "image_frame_v1",
-      assetId: asset.id,
-      sourceUrl: resolvedSourceUrl,
-      caption:
-        typeof selectedImageFrame.content.caption === "string"
-          ? selectedImageFrame.content.caption
-          : "",
-      placeholderLabel: undefined
-    };
-    applySelectedFrameDraftPatch({
-      content: nextContent,
-      crop:
-        selectedImageFrame.crop && typeof selectedImageFrame.crop === "object"
-          ? selectedImageFrame.crop
-          : { focalX: 0.5, focalY: 0.5, scale: 1 }
+  async function insertUploadAssetToCanvas(asset: AssetDTO) {
+    const inserted = await insertFromUploadAsset({
+      storybookId: storybook.id,
+      page: selectedPage,
+      currentFrames,
+      asset
     });
+    if (!inserted.ok) {
+      if (inserted.error !== "Duplicate insert ignored." && inserted.error !== "Insert in progress.") {
+        setMessage(inserted.error);
+        showStudioToast({ kind: "error", title: "Insert failed", message: inserted.error });
+      }
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, inserted.frame));
+    setSelectedFrameId(inserted.frame.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
     setMessage(null);
+    showStudioToast({ kind: "success", title: "Image inserted", message: "Added to the active page." });
   }
 
   async function handleCreateUploadAsset(input: {
@@ -565,10 +566,6 @@ export function Editor2Shell({ // NOSONAR
   }
 
   async function handleInsertStockResult(result: NormalizedStockResult) {
-    if (!selectedImageFrame) {
-      setMessage("Select an image frame first.");
-      return;
-    }
     const created = await createStockAssetAction(storybook.id, {
       provider: result.provider.toUpperCase() as "UNSPLASH" | "PEXELS",
       sourceAssetId: result.assetId,
@@ -591,10 +588,31 @@ export function Editor2Shell({ // NOSONAR
     });
     if (!created.ok) {
       setMessage(created.error);
+      showStudioToast({ kind: "error", title: "Photo insert failed", message: created.error });
       return;
     }
     setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
-    applyImageAssetToSelectedFrame(created.data, result.previewUrl);
+    const inserted = await insertFromProviderResult({
+      storybookId: storybook.id,
+      page: selectedPage,
+      currentFrames,
+      asset: created.data,
+      result
+    });
+    if (!inserted.ok) {
+      if (inserted.error !== "Duplicate insert ignored." && inserted.error !== "Insert in progress.") {
+        setMessage(inserted.error);
+        showStudioToast({ kind: "error", title: "Photo insert failed", message: inserted.error });
+      }
+      return;
+    }
+    setFramesByPageId((current) => mergeFrameIntoMap(current, inserted.frame));
+    setSelectedFrameId(inserted.frame.id);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+    setMessage(null);
+    showStudioToast({ kind: "success", title: "Photo inserted", message: "Added to the active page." });
   }
 
   useEffect(() => {
@@ -769,7 +787,9 @@ export function Editor2Shell({ // NOSONAR
               selectedImageFrame ? `image frame on page ${(selectedPage?.order_index ?? 0) + 1}` : undefined
             }
             onClose={() => setLeftPanelMode("pages")}
-            onInsertUploadAsset={(asset) => applyImageAssetToSelectedFrame(asset)}
+            onInsertUploadAsset={(asset) => {
+              void insertUploadAssetToCanvas(asset);
+            }}
             onCreateUploadAsset={handleCreateUploadAsset}
             onInsertStockResult={handleInsertStockResult}
           />
@@ -891,6 +911,7 @@ export function Editor2Shell({ // NOSONAR
           Working...
         </div>
       ) : null}
+      <StudioToastsViewport />
     </div>
   );
 }

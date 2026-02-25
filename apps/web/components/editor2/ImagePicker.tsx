@@ -7,7 +7,7 @@ import { UploadTab } from "./pickers/UploadTab";
 import { StockTab } from "./pickers/StockTab";
 import { Button } from "../ui/button";
 
-type Tab = "upload" | "stock";
+type Tab = "uploads" | "photos";
 
 export function ImagePicker({
   storybookId,
@@ -35,7 +35,7 @@ export function ImagePicker({
   }) => Promise<{ ok: boolean; asset?: AssetDTO; error?: string }>;
   onInsertStockResult: (result: NormalizedStockResult) => Promise<void>;
 }) {
-  const [tab, setTab] = useState<Tab>("upload");
+  const [tab, setTab] = useState<Tab>("uploads");
   const uploadCount = useMemo(
     () => recentAssets.filter((asset) => asset.source === "UPLOAD").length,
     [recentAssets]
@@ -61,24 +61,24 @@ export function ImagePicker({
           <Button
             type="button"
             size="sm"
-            variant={tab === "upload" ? "secondary" : "ghost"}
-            onClick={() => setTab("upload")}
+            variant={tab === "uploads" ? "secondary" : "ghost"}
+            onClick={() => setTab("uploads")}
           >
-            Upload ({uploadCount})
+            Uploads ({uploadCount})
           </Button>
           <Button
             type="button"
             size="sm"
-            variant={tab === "stock" ? "secondary" : "ghost"}
-            onClick={() => setTab("stock")}
+            variant={tab === "photos" ? "secondary" : "ghost"}
+            onClick={() => setTab("photos")}
           >
-            Stock
+            Photos
           </Button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-4">
-        {tab === "upload" ? (
+        {tab === "uploads" ? (
           <UploadTab
             storybookId={storybookId}
             recentAssets={recentAssets}

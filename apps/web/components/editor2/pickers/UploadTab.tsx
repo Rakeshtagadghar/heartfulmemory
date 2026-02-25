@@ -3,17 +3,34 @@
 
 import { useRef, useState } from "react";
 import type { AssetDTO } from "../../../lib/dto/asset";
+import { getClientMediaConfig } from "../../../lib/config/media";
 import {
   prepareClientImageUpload,
   requestUploadSignature,
   uploadImageViaPreparedSignature
 } from "../../../lib/uploads/clientUpload";
 import { Button } from "../../ui/button";
+import { PanelEmptyState, PanelErrorState } from "../../studio/ui/PanelStates";
+import { showStudioToast } from "../../studio/ui/toasts";
 
 type UploadStatus =
   | { status: "idle" }
   | { status: "working"; message: string }
   | { status: "error"; error: string };
+
+function fileAcceptFromMimePrefixes(prefixes: string[]) {
+  return prefixes
+    .map((value) => (value === "image/" ? "image/*" : value))
+    .join(",");
+}
+
+function getUploadThumbnailSrc(asset: AssetDTO) {
+  if (asset.storage_provider === "R2") {
+    return `/api/assets/view/${asset.id}?purpose=preview`;
+  }
+  const sourceUrl = typeof asset.source_url === "string" ? asset.source_url.trim() : "";
+  return sourceUrl.length > 0 ? sourceUrl : null;
+}
 
 export function UploadTab({
   storybookId,
@@ -33,6 +50,7 @@ export function UploadTab({
     sizeBytes: number;
   }) => Promise<{ ok: boolean; asset?: AssetDTO; error?: string }>;
 }) {
+  const mediaConfig = getClientMediaConfig();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [upload, setUpload] = useState<UploadStatus>({ status: "idle" });
   const [retryFile, setRetryFile] = useState<File | null>(null);
@@ -40,7 +58,16 @@ export function UploadTab({
   async function onPickFile(file: File) {
     setRetryFile(file);
     setUpload({ status: "working", message: "Preparing image..." });
-    const prepared = await prepareClientImageUpload(file);
+    let prepared;
+    try {
+      prepared = await prepareClientImageUpload(file);
+    } catch (error) {
+      setUpload({
+        status: "error",
+        error: error instanceof Error ? error.message : "Could not prepare image upload."
+      });
+      return;
+    }
 
     const sign = await requestUploadSignature({
       fileName: file.name,
@@ -50,13 +77,18 @@ export function UploadTab({
     });
     if (!sign.ok) {
       setUpload({ status: "error", error: sign.error });
+      showStudioToast({ kind: "error", title: "Upload failed", message: sign.error });
       return;
     }
 
-    setUpload({ status: "working", message: sign.strategy === "local_dev" ? "Saving local dev asset..." : "Uploading..." });
+    setUpload({
+      status: "working",
+      message: sign.strategy === "local_dev" ? "Saving local dev asset..." : "Uploading..."
+    });
     const uploaded = await uploadImageViaPreparedSignature({ prepared, sign });
     if (!uploaded.ok) {
       setUpload({ status: "error", error: uploaded.error });
+      showStudioToast({ kind: "error", title: "Upload failed", message: uploaded.error });
       return;
     }
 
@@ -69,21 +101,28 @@ export function UploadTab({
       sizeBytes: file.size
     });
     if (!created.ok || !created.asset) {
-      setUpload({ status: "error", error: created.error || "Could not create asset metadata." });
+      const message = created.error || "Could not create asset metadata.";
+      setUpload({ status: "error", error: message });
+      showStudioToast({ kind: "error", title: "Upload failed", message });
       return;
     }
 
     setUpload({ status: "idle" });
     setRetryFile(null);
+    showStudioToast({ kind: "success", title: "Image uploaded", message: "Inserted into the page." });
     onCreated(created.asset);
   }
+
+  const uploadAssets = recentAssets.filter(
+    (asset) => asset.source === "UPLOAD" && typeof asset.source_url === "string"
+  );
 
   return (
     <div className="space-y-4">
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={fileAcceptFromMimePrefixes(mediaConfig.uploads.allowedMimePrefixes)}
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -93,9 +132,20 @@ export function UploadTab({
           event.currentTarget.value = "";
         }}
       />
-      <Button type="button" className="w-full" onClick={() => inputRef.current?.click()}>
-        Upload Image
+
+      <Button
+        type="button"
+        className="w-full"
+        loading={upload.status === "working"}
+        disabled={upload.status === "working"}
+        onClick={() => inputRef.current?.click()}
+      >
+        Upload files
       </Button>
+
+      <p className="text-[11px] text-white/50">
+        Max {mediaConfig.uploads.maxUploadMb}MB · {fileAcceptFromMimePrefixes(mediaConfig.uploads.allowedMimePrefixes)}
+      </p>
 
       {upload.status === "working" ? (
         <div className="space-y-2 rounded-lg border border-cyan-300/15 bg-cyan-500/5 px-3 py-2 text-xs text-cyan-100">
@@ -105,47 +155,53 @@ export function UploadTab({
           </div>
         </div>
       ) : null}
+
       {upload.status === "error" ? (
-        <div className="space-y-2 rounded-lg border border-rose-300/15 bg-rose-500/5 px-3 py-2 text-xs text-rose-100">
-          <p>{upload.error}</p>
-          {retryFile ? (
-            <Button type="button" size="sm" variant="ghost" onClick={() => void onPickFile(retryFile)}>
-              Retry Upload
-            </Button>
-          ) : null}
-        </div>
+        <PanelErrorState
+          message={upload.error}
+          onRetry={retryFile ? () => void onPickFile(retryFile) : undefined}
+        />
       ) : null}
 
       <div>
-        <p className="text-xs uppercase tracking-[0.14em] text-white/45">Recent Uploads</p>
+        <p className="text-xs uppercase tracking-[0.14em] text-white/45">Uploads Library</p>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          {recentAssets
-            .filter((asset) => asset.source === "UPLOAD" && typeof asset.source_url === "string")
-            .slice(0, 12)
-            .map((asset) => (
+          {uploadAssets.slice(0, 20).map((asset) => {
+            const thumbnailSrc = getUploadThumbnailSrc(asset);
+            return (
               <button
                 key={asset.id}
                 type="button"
-                className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] text-left"
+                className="group cursor-pointer overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] text-left"
                 onClick={() => onCreated(asset)}
               >
                 <div className="aspect-square bg-black/20">
-                  <img
-                    src={asset.source_url ?? ""}
-                    alt="Uploaded asset"
-                    className="h-full w-full object-cover transition group-hover:scale-[1.02]"
-                    loading="lazy"
-                  />
+                  {thumbnailSrc ? (
+                    <img
+                      src={thumbnailSrc}
+                      alt="Uploaded asset"
+                      className="h-full w-full object-cover transition group-hover:scale-[1.02]"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[11px] text-white/45">
+                      Preview unavailable
+                    </div>
+                  )}
                 </div>
                 <div className="px-2 py-1 text-[11px] text-white/65">
                   {asset.width ?? "?"}×{asset.height ?? "?"}
                 </div>
               </button>
-            ))}
-          {recentAssets.filter((asset) => asset.source === "UPLOAD").length === 0 ? (
-            <p className="col-span-2 rounded-lg border border-white/10 bg-white/[0.02] px-3 py-4 text-xs text-white/55">
-              No uploads yet.
-            </p>
+            );
+          })}
+          {uploadAssets.length === 0 ? (
+            <div className="col-span-2">
+              <PanelEmptyState
+                title="No uploads yet"
+                description="Upload a PNG, JPG, or WebP to insert it on the page."
+              />
+            </div>
           ) : null}
         </div>
       </div>

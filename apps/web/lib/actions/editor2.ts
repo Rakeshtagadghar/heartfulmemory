@@ -15,6 +15,7 @@ import {
 } from "../data/pages";
 import { createFrameForUser, listFramesByPageForUser, listFramesByStorybookForUser, removeFrameForUser, updateFrameForUser } from "../data/frames";
 import { createAssetMetadataForUser, listAssetsForUser } from "../data/assets";
+import { getMediaConfig } from "../config/media";
 import { updateStorybookSettingsForUser } from "../data/storybooks";
 import type { PageDTO } from "../dto/page";
 import type { FrameDTO } from "../dto/frame";
@@ -196,6 +197,21 @@ export async function createUploadAssetAction(
   }
 ): Promise<DataResult<AssetDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const mediaConfig = getMediaConfig();
+  if (mediaConfig.uploads.maxUploadsPerUser) {
+    const existing = await listAssetsForUser(user.id, mediaConfig.uploads.maxUploadsPerUser + 1);
+    if (!existing.ok) {
+      return existing;
+    }
+    const uploadCount = existing.data.filter((asset) => asset.source === "UPLOAD").length;
+    if (uploadCount >= mediaConfig.uploads.maxUploadsPerUser) {
+      return {
+        ok: false,
+        error: `Upload limit reached (${mediaConfig.uploads.maxUploadsPerUser} files).`
+      };
+    }
+  }
+
   const result = await createAssetMetadataForUser(user.id, {
     source: "UPLOAD",
     source_url: input.sourceUrl,

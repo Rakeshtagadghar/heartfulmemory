@@ -1,6 +1,7 @@
 "use client";
 
 import type { AssetDTO } from "../dto/asset";
+import { getClientMediaConfig } from "../config/media";
 
 export type ClientUploadPrepared = {
   file: File;
@@ -39,6 +40,14 @@ function readImageSize(url: string): Promise<{ width: number; height: number }> 
 }
 
 export async function prepareClientImageUpload(file: File): Promise<ClientUploadPrepared> {
+  const mediaConfig = getClientMediaConfig();
+  if (!mediaConfig.uploads.allowedMimePrefixes.some((prefix) => file.type.startsWith(prefix))) {
+    throw new Error(`Unsupported file type: ${file.type || "unknown"}`);
+  }
+  if (file.size > mediaConfig.uploads.maxUploadMb * 1024 * 1024) {
+    throw new Error(`File is too large. Max ${mediaConfig.uploads.maxUploadMb}MB.`);
+  }
+
   const previewUrl = await readAsDataUrl(file);
   let size: { width: number; height: number } | null = null;
   try {

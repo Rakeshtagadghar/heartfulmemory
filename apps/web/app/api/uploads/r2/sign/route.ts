@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import limits from "../../../../../config/limits.default.json";
 import { requireAuthenticatedUser } from "../../../../../lib/auth/server";
+import { getMediaConfig } from "../../../../../lib/config/media";
 import { anyApi, convexMutation, getConvexUrl } from "../../../../../lib/convex/ops";
 import { signR2PutObject } from "../../../../../lib/r2/server";
 import { generateUploadObjectKey } from "../../../../../lib/uploads/keygen";
@@ -15,7 +16,8 @@ function jsonError(status: number, error: string) {
 }
 
 function isAllowedImageMime(mimeType: string) {
-  return limits.uploads.allowedMimePrefixes.some((prefix) => mimeType.startsWith(prefix));
+  const media = getMediaConfig();
+  return media.uploads.allowedMimePrefixes.some((prefix) => mimeType.startsWith(prefix));
 }
 
 function checkRateLimit(key: string) {
@@ -64,11 +66,8 @@ export async function POST(request: Request) {
     return jsonError(400, "Only image uploads are allowed.");
   }
 
-  const maxBytesFromEnv = Number(process.env.R2_UPLOAD_MAX_MB || "") * 1024 * 1024;
-  const maxBytes =
-    Number.isFinite(maxBytesFromEnv) && maxBytesFromEnv > 0
-      ? maxBytesFromEnv
-      : limits.uploads.imageMaxBytes;
+  const media = getMediaConfig();
+  const maxBytes = media.uploads.maxUploadBytes || limits.uploads.imageMaxBytes;
   if (input.sizeBytes > maxBytes) {
     return jsonError(400, `File too large. Max ${Math.round(maxBytes / (1024 * 1024))}MB.`);
   }
