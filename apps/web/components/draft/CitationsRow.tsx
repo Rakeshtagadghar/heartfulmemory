@@ -5,7 +5,8 @@ export function CitationsRow({
   citations: string[];
   label?: string;
 }) {
-  if (!citations || citations.length === 0) {
+  const safeCitations = (citations ?? []).filter((citation) => /^q[_a-z0-9-]+$/i.test(citation));
+  if (safeCitations.length === 0) {
     return (
       <p className="text-xs text-white/45">
         {label}: <span className="italic">uncertain / uncited</span>
@@ -17,9 +18,8 @@ export function CitationsRow({
     <p className="text-xs text-white/55">
       {label}:{" "}
       <span className="font-medium text-white/75">
-        {citations.join(", ")}
+        {safeCitations.join(", ")}
       </span>
     </p>
   );
 }
-

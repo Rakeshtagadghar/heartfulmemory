@@ -143,6 +143,7 @@ export default defineSchema({
       v.object({
         sectionId: v.string(),
         title: v.string(),
+        guidance: v.optional(v.string()),
         text: v.string(),
         wordCount: v.number(),
         citations: v.array(v.string()),

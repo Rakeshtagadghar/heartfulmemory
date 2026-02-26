@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { AppShell } from "../../../../../../components/app/app-shell";
 import { Card } from "../../../../../../components/ui/card";
 import { ButtonLink } from "../../../../../../components/ui/button";
 import { WizardShell } from "../../../../../../components/wizard/WizardShell";
@@ -126,6 +128,14 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     redirect("/app/onboarding");
   }
 
+  function renderInAppShell(content: ReactNode) {
+    return (
+      <AppShell email={user.email} profile={profile}>
+        {content}
+      </AppShell>
+    );
+  }
+
   const [storybookResult, chaptersResult, answersResult] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
@@ -133,7 +143,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   ]);
 
   if (!storybookResult.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load storybook: {storybookResult.error}</p>
@@ -148,7 +158,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   }
 
   if (!chaptersResult.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load chapter list: {chaptersResult.error}</p>
@@ -158,7 +168,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   }
 
   if (!answersResult.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load answers: {answersResult.error}</p>
@@ -169,7 +179,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
 
   const chapter = chaptersResult.data.find((item) => item.id === chapterInstanceId);
   if (!chapter) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Chapter not found for this storybook.</p>
@@ -187,7 +197,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   if (storybookResult.data.templateId) {
     const templateResult = await getGuidedTemplateById(storybookResult.data.templateId);
     if (!templateResult.ok) {
-      return (
+      return renderInAppShell(
         <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
           <Card className="p-6">
             <p className="text-sm text-rose-100">Could not load template flow: {templateResult.error}</p>
@@ -202,7 +212,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   }
 
   if (questions.length === 0) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-white/75">
@@ -359,7 +369,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     );
   }
 
-  return (
+  return renderInAppShell(
     <>
       <ViewportEvent eventName="chapter_start" eventProps={{ chapterKey: chapter.chapterKey }} />
       <WizardShell
@@ -382,20 +392,20 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
             question={currentQuestion}
             stepIndex={currentStepIndex}
             totalSteps={questions.length}
-          currentAnswer={
-            currentAnswer
-              ? {
-                  answerText: currentAnswer.answerText,
-                  skipped: currentAnswer.skipped,
-                  source: currentAnswer.source,
-                  sttMeta: currentAnswer.sttMeta,
-                  audioRef: currentAnswer.audioRef
-                }
-              : null
-          }
-          chapterKey={chapter.chapterKey}
-        />
-      </form>
+            currentAnswer={
+              currentAnswer
+                ? {
+                    answerText: currentAnswer.answerText,
+                    skipped: currentAnswer.skipped,
+                    source: currentAnswer.source,
+                    sttMeta: currentAnswer.sttMeta,
+                    audioRef: currentAnswer.audioRef
+                  }
+                : null
+            }
+            chapterKey={chapter.chapterKey}
+          />
+        </form>
       </WizardShell>
     </>
   );

@@ -5,6 +5,7 @@ import { TrackedDraftActionButton } from "./TrackedDraftActionButton";
 type Section = {
   sectionId: string;
   title: string;
+  guidance?: string;
   text: string;
   wordCount: number;
   citations: string[];
@@ -29,6 +30,7 @@ export function DraftSectionCard({
     provider: string;
   };
 }) {
+  const visibleText = section.text || "No text yet.";
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -71,7 +73,7 @@ export function DraftSectionCard({
         ) : null}
       </div>
 
-      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-white/80">{section.text || "No text yet."}</p>
+      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-white/80">{visibleText}</p>
       <div className="mt-3">
         <CitationsRow citations={section.citations} />
       </div>

@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import type { ReactNode } from "react";
+import { AppShell } from "../../../../../../components/app/app-shell";
 import { Card } from "../../../../../../components/ui/card";
 import { ButtonLink } from "../../../../../../components/ui/button";
-import { Badge } from "../../../../../../components/ui/badge";
 import { ViewportEvent } from "../../../../../../components/viewport-event";
 import { DraftSectionCard } from "../../../../../../components/draft/DraftSectionCard";
 import { DraftSummary } from "../../../../../../components/draft/DraftSummary";
 import { DraftWarnings } from "../../../../../../components/draft/DraftWarnings";
+import { DraftHeader } from "../../../../../../components/draft/DraftHeader";
 import { TrackedDraftActionButton } from "../../../../../../components/draft/TrackedDraftActionButton";
 import { NarrationSettingsPanel } from "../../../../../../components/story/NarrationSettingsPanel";
 import { requireAuthenticatedUser } from "../../../../../../lib/auth/server";
@@ -121,6 +122,14 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
   const profile = await getOrCreateProfileForUser(user);
   if (!profile.onboarding_completed) redirect("/app/onboarding");
 
+  function renderInAppShell(content: ReactNode) {
+    return (
+      <AppShell email={user.email} profile={profile}>
+        {content}
+      </AppShell>
+    );
+  }
+
   const [storybook, chapters, latestDraft, draftVersions] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
@@ -129,7 +138,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
   ]);
 
   if (!storybook.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load storybook: {storybook.error}</p>
@@ -138,7 +147,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     );
   }
   if (!chapters.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load chapter list: {chapters.error}</p>
@@ -149,7 +158,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
 
   const chapter = chapters.data.find((item) => item.id === chapterInstanceId) ?? null;
   if (!chapter) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Chapter not found for this storybook.</p>
@@ -285,7 +294,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     );
   }
 
-  return (
+  return renderInAppShell(
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <ViewportEvent eventName="draft_review_view" eventProps={{ chapterKey: chapter.chapterKey }} />
       {notice === "generated" ? (
@@ -321,26 +330,13 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
         />
       ) : null}
 
-      <Card className="p-6 sm:p-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.16em] text-gold/75">Chapter Draft Review</p>
-            <h1 className="mt-2 font-display text-3xl text-parchment sm:text-4xl">{chapter.title}</h1>
-            <p className="mt-2 text-sm text-white/70">
-              {storybook.data.title} / {chapter.chapterKey}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge className="border-white/15 bg-white/[0.03] text-white/80">{chapter.status}</Badge>
-            <Link
-              href={`/book/${storybookId}/chapters`}
-              className="inline-flex h-10 items-center rounded-xl border border-white/15 px-4 text-sm font-semibold text-white/75 hover:bg-white/[0.03]"
-            >
-              Back to Chapters
-            </Link>
-          </div>
-        </div>
-      </Card>
+      <DraftHeader
+        chapterTitle={chapter.title}
+        chapterKey={chapter.chapterKey}
+        chapterStatus={chapter.status}
+        storybookTitle={storybook.data.title}
+        storybookId={storybookId}
+      />
 
       {notice === "approved" ? (
         <Card className="p-4">

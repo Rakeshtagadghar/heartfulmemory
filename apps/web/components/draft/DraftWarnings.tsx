@@ -13,6 +13,20 @@ function severityClass(severity: WarningRow["severity"]) {
   return "border-cyan-300/25 bg-cyan-400/10 text-cyan-100";
 }
 
+function warningTitle(code: string) {
+  const map: Record<string, string> = {
+    PROMPT_LEAK: "Prompt leakage detected",
+    REPEATED_SECTION_TEXT: "Repeated section text",
+    SECTION_LABEL_PREFIX: "Section label prefix",
+    SECTION_TOO_SHORT: "Section may be too short",
+    ENTITY_STOPWORDS: "Entity values need review",
+    ENTITY_SANITY: "Entity sanity review",
+    TOO_SHORT: "Draft may be too short",
+    EMPTY_SUMMARY: "Summary is empty"
+  };
+  return map[code] ?? code.replaceAll("_", " ");
+}
+
 export function DraftWarnings({ warnings }: { warnings: WarningRow[] }) {
   if (!warnings.length) return null;
 
@@ -23,7 +37,7 @@ export function DraftWarnings({ warnings }: { warnings: WarningRow[] }) {
         {warnings.map((warning, index) => (
           <div key={`${warning.code}-${index}`} className={`rounded-xl border px-3 py-2 ${severityClass(warning.severity)}`}>
             <p className="text-sm font-semibold">
-              {warning.code}
+              {warningTitle(warning.code)}
               {warning.sectionId ? ` (${warning.sectionId})` : ""}
             </p>
             <p className="mt-1 text-xs opacity-90">{warning.message}</p>
@@ -33,4 +47,3 @@ export function DraftWarnings({ warnings }: { warnings: WarningRow[] }) {
     </Card>
   );
 }
-

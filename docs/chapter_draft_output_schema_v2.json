@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChapterDraftOutputV2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "sections",
+    "keyFacts",
+    "quotes",
+    "imageIdeas",
+    "entities"
+  ],
+  "properties": {
+    "summary": { "type": "string" },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sectionId", "text", "citations"],
+        "properties": {
+          "sectionId": { "type": "string" },
+          "text": { "type": "string" },
+          "citations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "keyFacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "value", "citations"],
+        "properties": {
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "citations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "quotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "citations"],
+        "properties": {
+          "text": { "type": "string" },
+          "citations": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "imageIdeas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query", "reason", "slotHint"],
+        "properties": {
+          "query": { "type": "string" },
+          "reason": { "type": "string" },
+          "slotHint": {
+            "type": "string",
+            "enum": ["portrait", "landscape", "texture", "scene", "object"]
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["people", "places", "dates"],
+      "properties": {
+        "people": { "$ref": "#/$defs/entityList" },
+        "places": { "$ref": "#/$defs/entityList" },
+        "dates": { "$ref": "#/$defs/entityList" }
+      }
+    }
+  },
+  "$defs": {
+    "entityList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "citations", "confidence"],
+        "properties": {
+          "value": { "type": "string" },
+          "citations": { "type": "array", "items": { "type": "string" } },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}
+

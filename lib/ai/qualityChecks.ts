@@ -4,6 +4,7 @@ import type {
   ChapterDraftWarning,
   DraftNarrationLength
 } from "../../packages/shared/drafts/draftTypes";
+import { runEntitySanityChecks } from "./qualityChecks/entitySanity";
 
 export type DraftQualityInput = {
   sections: ChapterDraftSection[];
@@ -24,11 +25,6 @@ function minWordsForLength(length: DraftNarrationLength) {
   if (length === "short") return 80;
   if (length === "long") return 280;
   return 160;
-}
-
-function extractNameLikeTokens(value: string) {
-  const matches = value.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b/g) ?? [];
-  return matches.map((item) => item.trim()).filter((item) => item.length >= 3);
 }
 
 export function runDraftQualityChecks(input: DraftQualityInput): {
@@ -61,19 +57,23 @@ export function runDraftQualityChecks(input: DraftQualityInput): {
     });
   }
 
-  const answerCorpus = input.answers.map((answer) => answer.answerText).join(" ");
-  const knownNames = new Set(extractNameLikeTokens(answerCorpus));
-  const generatedNames = new Set<string>();
-  for (const person of input.entities.people) generatedNames.add(person);
-  for (const section of input.sections) {
-    for (const token of extractNameLikeTokens(section.text)) generatedNames.add(token);
+  const entitySanity = runEntitySanityChecks({
+    entities: input.entities,
+    answers: input.answers
+  });
+
+  if (entitySanity.invalidStopwords.length > 0) {
+    warnings.push({
+      code: "ENTITY_STOPWORDS",
+      message: `Review invalid entity values: ${entitySanity.invalidStopwords.slice(0, 5).join(", ")}.`,
+      severity: "warning"
+    });
   }
 
-  const unexpectedNames = Array.from(generatedNames).filter((name) => !knownNames.has(name));
-  if (unexpectedNames.length > 0) {
+  if (entitySanity.unexpected.length > 0) {
     warnings.push({
       code: "ENTITY_SANITY",
-      message: `Review names not found in answers: ${unexpectedNames.slice(0, 5).join(", ")}.`,
+      message: `Review entities not found in answers: ${entitySanity.unexpected.slice(0, 5).join(", ")}.`,
       severity: "warning"
     });
   }

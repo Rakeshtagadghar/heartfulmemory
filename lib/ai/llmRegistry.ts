@@ -94,19 +94,6 @@ function sectionCitations(sectionId: string, answers: GenerateChapterDraftInput[
     .map((row) => row.questionId);
 }
 
-function styleHint(narration: DraftNarrationSettings) {
-  const voice =
-    narration.voice === "first_person"
-      ? "Write as the storyteller speaking about their own life."
-      : "Write in third person while preserving a personal memoir tone.";
-  const tense = narration.tense === "present" ? "Use present tense." : "Use past tense.";
-  let tone = "Keep the tone warm and intimate.";
-  if (narration.tone === "formal") tone = "Keep the tone composed and respectful.";
-  else if (narration.tone === "playful") tone = "Keep the tone light and affectionate where appropriate.";
-  else if (narration.tone === "poetic") tone = "Use vivid and reflective language.";
-  return `${voice} ${tense} ${tone}`;
-}
-
 function narrativeAnchor(narration: DraftNarrationSettings) {
   if (narration.voice === "first_person") {
     if (narration.tense === "present") {
@@ -118,6 +105,15 @@ function narrativeAnchor(narration: DraftNarrationSettings) {
     return "They return to this moment as the memory unfolds.";
   }
   return "They remembered this moment clearly.";
+}
+
+function sectionLeadPhrase(sectionId: string) {
+  const key = sectionId.toLowerCase();
+  if (key.includes("timeline")) return "The memories unfold in a clear sequence";
+  if (key.includes("reflection")) return "What stayed with them most was the meaning of these moments";
+  if (key.includes("intro")) return "The memory begins with a vivid sense of place and feeling";
+  if (key.includes("main")) return "At the heart of the memory, the story takes shape through people and events";
+  return "This part of the memory adds another layer to the story";
 }
 
 function composeSectionText(
@@ -135,8 +131,13 @@ function composeSectionText(
       ? snippets.join(" ")
       : input.questionAnswers.map((qa) => qa.answerText.trim()).filter(Boolean).join(" ");
 
+  const anchor = narrativeAnchor(input.narrationSettings);
+  const lead = sectionLeadPhrase(section.sectionId);
+  const tenseHint = input.narrationSettings.tense === "present" ? "It comes forward in the present moment." : "";
+  const voiceHint = input.narrationSettings.voice === "first_person" ? "The storyteller recalls it personally." : "";
+
   return clampWords(
-    `${section.title}. ${narrativeAnchor(input.narrationSettings)} ${styleHint(input.narrationSettings)} ${section.guidance} ${detailText}`,
+    `${lead}. ${anchor} ${voiceHint} ${tenseHint} ${detailText}`.replaceAll(/\s+/g, " ").trim(),
     perSectionBudget
   );
 }

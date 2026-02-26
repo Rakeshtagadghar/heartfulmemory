@@ -9,6 +9,7 @@
  */
 
 import type * as ai_chapterDrafts from "../ai/chapterDrafts.js";
+import type * as ai_chapterDrafts_v2 from "../ai/chapterDrafts_v2.js";
 import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
@@ -47,6 +48,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "ai/chapterDrafts": typeof ai_chapterDrafts;
+  "ai/chapterDrafts_v2": typeof ai_chapterDrafts_v2;
   "ai/rateLimit": typeof ai_rateLimit;
   assets: typeof assets;
   authz: typeof authz;

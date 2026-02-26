@@ -104,6 +104,7 @@ export type GuidedNarrationSettings = {
 export type ChapterDraftSection = {
   sectionId: string;
   title: string;
+  guidance?: string;
   text: string;
   wordCount: number;
   citations: string[];
@@ -410,10 +411,10 @@ export async function generateChapterDraftForUser(
   input: { storybookId: string; chapterInstanceId: string }
 ): Promise<DataResult<ChapterDraftActionResult>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
-  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { generate: unknown }>)[
-    "ai/chapterDrafts"
+  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { generateV2: unknown }>)[
+    "ai/chapterDrafts_v2"
   ];
-  const result = await convexAction<ChapterDraftActionResult>(aiChapterDraftsApi.generate, {
+  const result = await convexAction<ChapterDraftActionResult>(aiChapterDraftsApi.generateV2, {
     viewerSubject,
     ...input
   });
@@ -425,11 +426,11 @@ export async function regenChapterDraftSectionForUser(
   input: { storybookId: string; chapterInstanceId: string; sectionId: string }
 ): Promise<DataResult<ChapterDraftActionResult & { regeneratedSectionId?: string }>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
-  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { regenSection: unknown }>)[
-    "ai/chapterDrafts"
+  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { regenSectionV2: unknown }>)[
+    "ai/chapterDrafts_v2"
   ];
   const result = await convexAction<ChapterDraftActionResult & { regeneratedSectionId?: string }>(
-    aiChapterDraftsApi.regenSection,
+    aiChapterDraftsApi.regenSectionV2,
     {
       viewerSubject,
       ...input

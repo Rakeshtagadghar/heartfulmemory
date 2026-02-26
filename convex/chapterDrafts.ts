@@ -3,6 +3,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { assertCanAccessStorybook } from "./authz";
+import { getSectionFrameworkForChapterKey } from "../packages/shared/templates/sectionFramework";
 import type {
   ChapterDraftEntities,
   ChapterDraftGenerationScope,
@@ -26,6 +27,7 @@ const narrationValidator = v.object({
 const sectionValidator = v.object({
   sectionId: v.string(),
   title: v.string(),
+  guidance: v.optional(v.string()),
   text: v.string(),
   wordCount: v.number(),
   citations: v.array(v.string()),
@@ -113,7 +115,7 @@ function toDraftDto(doc: ChapterDraftDoc) {
     version: doc.version,
     status: doc.status,
     narration: normalizeNarration(doc.narration),
-    sections: doc.sections,
+    sections: normalizeSections(doc.chapterKey, doc.sections as ChapterDraftSection[]),
     summary: doc.summary,
     keyFacts: doc.keyFacts,
     quotes: doc.quotes,
@@ -173,9 +175,19 @@ function normalizeWordCount(text: string, wordCount?: number) {
   return words.length;
 }
 
-function normalizeSections(sections: ChapterDraftSection[]): ChapterDraftSection[] {
+function getGuidanceMapForChapterKey(chapterKey: string) {
+  const map = new Map<string, string>();
+  for (const section of getSectionFrameworkForChapterKey(chapterKey)) {
+    map.set(section.sectionId, section.guidance);
+  }
+  return map;
+}
+
+function normalizeSections(chapterKey: string, sections: ChapterDraftSection[]): ChapterDraftSection[] {
+  const guidanceMap = getGuidanceMapForChapterKey(chapterKey);
   return sections.map((section) => ({
     ...section,
+    guidance: typeof section.guidance === "string" ? section.guidance : guidanceMap.get(section.sectionId) ?? "",
     text: section.text ?? "",
     wordCount: normalizeWordCount(section.text ?? "", section.wordCount),
     citations: Array.isArray(section.citations) ? [...section.citations] : []
@@ -286,7 +298,8 @@ export const beginVersion = mutationGeneric({
       v.array(
         v.object({
           sectionId: v.string(),
-          title: v.string()
+          title: v.string(),
+          guidance: v.optional(v.string())
         })
       )
     ),
@@ -325,6 +338,7 @@ export const beginVersion = mutationGeneric({
       : (args.sectionPlan ?? []).map((section) => ({
           sectionId: section.sectionId,
           title: section.title,
+          guidance: section.guidance ?? "",
           text: "",
           wordCount: 0,
           citations: []
@@ -379,7 +393,7 @@ export const setReady = mutationGeneric({
     await ctx.db.patch(draft._id, {
       status: "ready",
       summary: args.summary,
-      sections: normalizeSections(args.sections as ChapterDraftSection[]),
+      sections: normalizeSections(draft.chapterKey, args.sections as ChapterDraftSection[]),
       keyFacts: args.keyFacts as ChapterDraftKeyFact[],
       quotes: args.quotes as ChapterDraftQuote[],
       entities: args.entities as ChapterDraftEntities,

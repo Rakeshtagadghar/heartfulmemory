@@ -1,4 +1,6 @@
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { AppShell } from "../../../../../../components/app/app-shell";
 import { Card } from "../../../../../../components/ui/card";
 import { Badge } from "../../../../../../components/ui/badge";
 import { ButtonLink } from "../../../../../../components/ui/button";
@@ -94,6 +96,14 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
   const profile = await getOrCreateProfileForUser(user);
   if (!profile.onboarding_completed) redirect("/app/onboarding");
 
+  function renderInAppShell(content: ReactNode) {
+    return (
+      <AppShell email={user.email} profile={profile}>
+        {content}
+      </AppShell>
+    );
+  }
+
   const [storybook, chapters, latestDraft, latestIllustration, illustrationSlotMap, versions] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
@@ -107,7 +117,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     let contextError: string | undefined;
     if (!storybook.ok) contextError = storybook.error;
     else if (!chapters.ok) contextError = chapters.error;
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">
@@ -120,7 +130,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
 
   const chapter = chapters.data.find((item) => item.id === chapterInstanceId) ?? null;
   if (!chapter) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Chapter not found.</p>
@@ -239,7 +249,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
   const errorCode = getSearchString(resolvedSearchParams, "error");
   const notice = getSearchString(resolvedSearchParams, "notice");
 
-  return (
+  return renderInAppShell(
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <ViewportEvent eventName="illustrations_review_view" eventProps={{ chapterKey: chapter.chapterKey }} />
       {notice === "generated" || notice === "regenerated" ? (

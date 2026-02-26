@@ -15,6 +15,8 @@ export type ChapterDraftStatus = "generating" | "ready" | "error";
 export type ChapterDraftSection = {
   sectionId: string;
   title: string;
+  // Internal-only section guidance for generation. UI should render only `text`.
+  guidance?: string;
   text: string;
   wordCount: number;
   citations: string[];
@@ -85,4 +87,3 @@ export type ChapterDraftSectionDefinition = {
   title: string;
   guidance: string;
 };
-

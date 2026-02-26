@@ -7,10 +7,15 @@ import { api } from "../_generated/api";
 import { getConvexAiEnv } from "../env";
 import { checkAndRecordAiRateLimit } from "./rateLimit";
 import { createLlmRegistry } from "../../lib/ai/llmRegistry";
-import { buildChapterDraftPrompt } from "../../lib/ai/prompts/chapterDraftPrompt";
+import { buildChapterDraftPromptV2 } from "../../lib/ai/prompts/chapterDraftPrompt_v2";
+import { getSectionFrameworkForChapterKeyV2 } from "../../lib/ai/prompts/sectionGuidance_v2";
+import { validateDraftOutputV1 } from "../../lib/ai/validators/draftValidator";
 import { runDraftQualityChecks } from "../../lib/ai/qualityChecks";
-import { getSectionFrameworkForChapterKey } from "../../packages/shared/templates/sectionFramework";
-import type { ChapterDraftSection, DraftNarrationSettings } from "../../packages/shared/drafts/draftTypes";
+import type {
+  ChapterDraftSection,
+  ChapterDraftSectionDefinition,
+  DraftNarrationSettings
+} from "../../packages/shared/drafts/draftTypes";
 
 type StableAiErrorCode =
   | "UNAUTHORIZED"
@@ -21,6 +26,8 @@ type StableAiErrorCode =
   | "DRAFT_ALREADY_GENERATING"
   | "INVALID_SECTION"
   | "GENERATION_EMPTY"
+  | "PROMPT_LEAK"
+  | "REPEATED_SECTION_TEXT"
   | "PROVIDER_ERROR"
   | "UNKNOWN";
 
@@ -91,17 +98,76 @@ function hasMeaningfulAnswer(answer: { answerText?: string | null; skipped?: boo
   return typeof answer.answerText === "string" && answer.answerText.trim().length > 0;
 }
 
-function mergeRegeneratedSection(latestSections: ChapterDraftSection[], regeneratedSection: ChapterDraftSection) {
-  let found = false;
-  const merged = latestSections.map((section) => {
-    if (section.sectionId !== regeneratedSection.sectionId) return section;
-    found = true;
-    return regeneratedSection;
-  });
-  return found ? merged : [...latestSections, regeneratedSection];
+function countWords(text: string) {
+  return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export const generate = action({
+function normalizeGeneratedSectionsForFramework(
+  targetSections: ChapterDraftSectionDefinition[],
+  generatedSections: ChapterDraftSection[]
+) {
+  const byId = new Map(generatedSections.map((section) => [section.sectionId, section] as const));
+  return targetSections.map((targetSection) => {
+    const generated = byId.get(targetSection.sectionId);
+    const text = typeof generated?.text === "string" ? generated.text.trim() : "";
+    return {
+      sectionId: targetSection.sectionId,
+      title: targetSection.title,
+      guidance: targetSection.guidance,
+      text,
+      wordCount: countWords(text),
+      citations: Array.isArray(generated?.citations) ? [...generated.citations] : [],
+      uncertain: generated?.uncertain
+    } satisfies ChapterDraftSection;
+  });
+}
+
+function mergeRegeneratedSectionText(
+  latestSections: ChapterDraftSection[],
+  targetSection: ChapterDraftSectionDefinition,
+  regeneratedSection: ChapterDraftSection | undefined
+) {
+  const regeneratedText = (regeneratedSection?.text ?? "").trim();
+  const regeneratedCitations = Array.isArray(regeneratedSection?.citations) ? [...regeneratedSection.citations] : [];
+
+  let found = false;
+  const merged = latestSections.map((section) => {
+    if (section.sectionId !== targetSection.sectionId) return section;
+    found = true;
+    return {
+      ...section,
+      title: targetSection.title,
+      guidance: targetSection.guidance,
+      text: regeneratedText,
+      wordCount: countWords(regeneratedText),
+      citations: regeneratedCitations,
+      uncertain: regeneratedSection?.uncertain
+    };
+  });
+
+  if (found) return merged;
+  return [
+    ...merged,
+    {
+      sectionId: targetSection.sectionId,
+      title: targetSection.title,
+      guidance: targetSection.guidance,
+      text: regeneratedText,
+      wordCount: countWords(regeneratedText),
+      citations: regeneratedCitations,
+      uncertain: regeneratedSection?.uncertain
+    }
+  ];
+}
+
+function combineWarnings(
+  qualityWarnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>,
+  validatorWarnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>
+) {
+  return [...qualityWarnings, ...validatorWarnings];
+}
+
+export const generateV2 = action({
   args: {
     viewerSubject: v.optional(v.string()),
     storybookId: v.id("storybooks"),
@@ -177,9 +243,8 @@ export const generate = action({
         };
       }
 
-      const sectionPlan = getSectionFrameworkForChapterKey(chapter.chapterKey);
+      const sectionPlan = getSectionFrameworkForChapterKeyV2(chapter.chapterKey);
       const narration = normalizeNarration((storybook.narration ?? null) as Record<string, unknown> | null);
-
       const begin = await ctx.runMutation(api.chapterDrafts.beginVersion, {
         viewerSubject: viewer.subject,
         storybookId: args.storybookId,
@@ -206,7 +271,7 @@ export const generate = action({
       }
 
       const llm = createLlmRegistry(aiEnv);
-      const promptText = buildChapterDraftPrompt({
+      const promptText = buildChapterDraftPromptV2({
         templateId: storybook.templateId ?? null,
         chapterKey: chapter.chapterKey,
         chapterTitle: chapter.title,
@@ -227,8 +292,28 @@ export const generate = action({
         maxWordsByLength: aiEnv.maxWordsByLength
       });
 
+      const normalizedSections = normalizeGeneratedSectionsForFramework(sectionPlan, generated.sections);
+      const validator = validateDraftOutputV1({
+        sections: normalizedSections,
+        entities: generated.entities
+      });
+      if (!validator.valid) {
+        await ctx.runMutation(api.chapterDrafts.setError, {
+          viewerSubject: viewer.subject,
+          draftId: begin.draft.id,
+          errorCode: validator.errors[0]?.code ?? "GENERATION_EMPTY",
+          errorMessage: validator.errors[0]?.message ?? "Draft validation failed."
+        });
+        return {
+          ok: false as const,
+          errorCode: (validator.errors[0]?.code as StableAiErrorCode | undefined) ?? "GENERATION_EMPTY",
+          message: validator.errors[0]?.message ?? "Draft validation failed.",
+          retryable: true
+        };
+      }
+
       const quality = runDraftQualityChecks({
-        sections: generated.sections,
+        sections: normalizedSections,
         summary: generated.summary,
         entities: generated.entities,
         answers: groundedAnswers.map((answer) => ({ questionId: answer.questionId, answerText: answer.answerText })),
@@ -254,13 +339,13 @@ export const generate = action({
         viewerSubject: viewer.subject,
         draftId: begin.draft.id,
         summary: generated.summary,
-        sections: generated.sections,
+        sections: normalizedSections,
         keyFacts: generated.keyFacts,
         quotes: generated.quotes,
         entities: generated.entities,
         imageIdeas: generated.imageIdeas,
         sourceAnswerIds: groundedAnswers.map((answer) => answer.questionId),
-        warnings: quality.warnings
+        warnings: combineWarnings(quality.warnings, validator.warnings)
       });
 
       return {
@@ -281,7 +366,7 @@ export const generate = action({
   }
 });
 
-export const regenSection = action({
+export const regenSectionV2 = action({
   args: {
     viewerSubject: v.optional(v.string()),
     storybookId: v.id("storybooks"),
@@ -330,7 +415,7 @@ export const regenSection = action({
         };
       }
 
-      const sectionPlan = getSectionFrameworkForChapterKey(chapter.chapterKey);
+      const sectionPlan = getSectionFrameworkForChapterKeyV2(chapter.chapterKey);
       const targetSection = sectionPlan.find((section) => section.sectionId === args.sectionId);
       if (!targetSection) {
         return {
@@ -381,7 +466,7 @@ export const regenSection = action({
       }
 
       const llm = createLlmRegistry(aiEnv);
-      const promptText = buildChapterDraftPrompt({
+      const promptText = buildChapterDraftPromptV2({
         templateId: storybook.templateId ?? null,
         chapterKey: chapter.chapterKey,
         chapterTitle: chapter.title,
@@ -401,10 +486,30 @@ export const regenSection = action({
         maxWordsByLength: aiEnv.maxWordsByLength
       });
 
-      const regeneratedSection = generated.sections[0];
-      const mergedSections = regeneratedSection
-        ? mergeRegeneratedSection(latestDraft.sections as ChapterDraftSection[], regeneratedSection)
-        : (latestDraft.sections as ChapterDraftSection[]);
+      const mergedSections = mergeRegeneratedSectionText(
+        latestDraft.sections as ChapterDraftSection[],
+        targetSection,
+        generated.sections[0]
+      );
+
+      const validator = validateDraftOutputV1({
+        sections: mergedSections,
+        entities: latestDraft.entities
+      });
+      if (!validator.valid) {
+        await ctx.runMutation(api.chapterDrafts.setError, {
+          viewerSubject: viewer.subject,
+          draftId: begin.draft.id,
+          errorCode: validator.errors[0]?.code ?? "INVALID_SECTION",
+          errorMessage: validator.errors[0]?.message ?? "Draft validation failed."
+        });
+        return {
+          ok: false as const,
+          errorCode: (validator.errors[0]?.code as StableAiErrorCode | undefined) ?? "INVALID_SECTION",
+          message: validator.errors[0]?.message ?? "Draft validation failed.",
+          retryable: true
+        };
+      }
 
       const quality = runDraftQualityChecks({
         sections: mergedSections,
@@ -413,6 +518,21 @@ export const regenSection = action({
         answers: groundedAnswers.map((answer) => ({ questionId: answer.questionId, answerText: answer.answerText })),
         targetLength: narration.length
       });
+
+      if (quality.errors.length > 0) {
+        await ctx.runMutation(api.chapterDrafts.setError, {
+          viewerSubject: viewer.subject,
+          draftId: begin.draft.id,
+          errorCode: quality.errors[0].code,
+          errorMessage: quality.errors[0].message
+        });
+        return {
+          ok: false as const,
+          errorCode: "GENERATION_EMPTY" as const,
+          message: quality.errors[0].message,
+          retryable: true
+        };
+      }
 
       const ready = await ctx.runMutation(api.chapterDrafts.setReady, {
         viewerSubject: viewer.subject,
@@ -424,7 +544,7 @@ export const regenSection = action({
         entities: latestDraft.entities,
         imageIdeas: latestDraft.imageIdeas,
         sourceAnswerIds: latestDraft.sourceAnswerIds,
-        warnings: quality.warnings
+        warnings: combineWarnings(quality.warnings, validator.warnings)
       });
 
       return {
