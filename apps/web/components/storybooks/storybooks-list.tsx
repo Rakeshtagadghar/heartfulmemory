@@ -40,7 +40,7 @@ export function StorybooksList({
               </p>
             </div>
             <Link
-              href={`/app/storybooks/${book.id}`}
+              href={`/book/${book.id}/chapters`}
               className="inline-flex h-10 items-center rounded-xl border border-white/15 bg-white/[0.03] px-4 text-sm font-semibold text-white hover:bg-white/[0.06]"
             >
               Open
@@ -51,4 +51,3 @@ export function StorybooksList({
     </div>
   );
 }
-

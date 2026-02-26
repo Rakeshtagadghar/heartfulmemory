@@ -2,6 +2,7 @@ import { Card } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { ButtonLink } from "../ui/button";
 import { TrackedLink } from "../tracked-link";
+import { OpenInStudioButton } from "./OpenInStudioButton";
 import type { GuidedChapterInstance, GuidedChapterProgress } from "../../lib/data/create-flow";
 
 function statusLabel(status: GuidedChapterInstance["status"]) {
@@ -72,14 +73,11 @@ export function ChapterCard({
               >
                 Review Illustrations
               </TrackedLink>
-              <TrackedLink
+              <OpenInStudioButton
                 href={`/studio/${storybookId}?chapter=${chapter.id}`}
-                eventName="open_studio_from_chapter"
-                eventProps={{ chapterKey: chapter.chapterKey }}
-                className="text-xs font-semibold text-cyan-100 hover:text-cyan-50"
-              >
-                Open in Studio
-              </TrackedLink>
+                chapterKey={chapter.chapterKey}
+                className="h-auto border-0 bg-transparent p-0 text-xs font-semibold text-cyan-100 shadow-none hover:bg-transparent hover:text-cyan-50"
+              />
             </div>
           ) : (
             <span className="text-xs text-white/35">Complete chapter to open in Studio</span>

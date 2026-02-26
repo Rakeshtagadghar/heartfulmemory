@@ -266,6 +266,24 @@ export default defineSchema({
     .index("by_chapterInstanceId", ["chapterInstanceId"])
     .index("by_storybookId", ["storybookId"])
     .index("by_chapterInstanceId_version", ["chapterInstanceId", "version"]),
+  chapterStudioState: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    chapterKey: v.string(),
+    status: v.union(
+      v.literal("not_started"),
+      v.literal("populated"),
+      v.literal("edited"),
+      v.literal("finalized")
+    ),
+    lastAppliedDraftVersion: v.optional(v.union(v.number(), v.null())),
+    lastAppliedIllustrationVersion: v.optional(v.union(v.number(), v.null())),
+    pageIds: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_storybookId", ["storybookId"])
+    .index("by_chapterInstanceId", ["chapterInstanceId"]),
   pages: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),

@@ -23,7 +23,7 @@ export function AppShell({ children, email, profile }: { children: ReactNode; em
             <div className="flex items-center gap-2">
               <Link href="/app" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Dashboard</Link>
               <Link href="/app/start" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Start</Link>
-              <Link href="/app/templates" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Templates</Link>
+              <Link href="/create/template" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Templates</Link>
               <Link href="/app/onboarding" className="rounded-lg px-3 py-2 text-sm text-white/75 hover:bg-white/[0.05] hover:text-white">Onboarding</Link>
               <LogoutButton />
             </div>
@@ -34,20 +34,9 @@ export function AppShell({ children, email, profile }: { children: ReactNode; em
         className={
           isLayoutStudio
             ? "h-screen w-full p-0"
-            : "mx-auto grid w-full max-w-7xl gap-6 px-4 py-6 sm:grid-cols-[240px_1fr] sm:px-6"
+            : "mx-auto w-full max-w-7xl px-4 py-6 sm:px-6"
         }
       >
-        <aside className={isLayoutStudio ? "hidden" : "hidden sm:block"}>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-white/45">Workspace</p>
-            <ul className="mt-3 space-y-2 text-sm text-white/70">
-              <li>Storybooks (soon)</li>
-              <li>Templates gallery</li>
-              <li>Exports (soon)</li>
-              <li>Family invites (soon)</li>
-            </ul>
-          </div>
-        </aside>
         <main className={isLayoutStudio ? "h-full w-full p-0" : ""}>{children}</main>
       </div>
     </div>

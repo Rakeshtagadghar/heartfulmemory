@@ -131,6 +131,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
 
   const draft = latestDraft.ok ? latestDraft.data : null;
   const illustration = latestIllustration.ok ? latestIllustration.data : null;
+  const illustrationId = illustration?.id ?? null;
   const slotMap = illustrationSlotMap.ok ? illustrationSlotMap.data : null;
   const versionList = versions.ok ? versions.data : [];
 
@@ -172,8 +173,8 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     const currentProfile = await getOrCreateProfileForUser(currentUser);
     if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
     const slotId = String(formData.get("slotId") ?? "");
-    if (!illustration?.id || !slotId) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
-    const result = await toggleIllustrationSlotLockForUser(currentUser.id, { illustrationId: illustration.id, slotId });
+    if (!illustrationId || !slotId) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
+    const result = await toggleIllustrationSlotLockForUser(currentUser.id, { illustrationId, slotId });
     if (!result.ok) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
     redirect(routeUrl(storybookId, chapterInstanceId, { notice: "lock_updated", slotId }));
   }
@@ -186,7 +187,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
 
     const slotId = String(formData.get("slotId") ?? "");
     const candidate = parseCandidateJson(formData.get("candidateJson"));
-    if (!illustration?.id || !slotId || !candidate) {
+    if (!illustrationId || !slotId || !candidate) {
       redirect(routeUrl(storybookId, chapterInstanceId, { error: "REPLACE_FAILED" }));
     }
 
@@ -196,7 +197,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     }
     const cachedRow = cached.data.assets[0];
     const replaced = await replaceIllustrationSlotAssignmentForUser(currentUser.id, {
-      illustrationId: illustration.id,
+      illustrationId,
       slotId,
       mediaAssetId: cachedRow.mediaAssetId,
       providerMetaSnapshot: {

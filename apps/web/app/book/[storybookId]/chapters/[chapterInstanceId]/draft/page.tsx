@@ -529,9 +529,9 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
                   Approve Draft
                 </TrackedDraftActionButton>
               </form>
-              <span className="inline-flex h-10 items-center rounded-xl border border-white/10 px-4 text-sm text-white/40">
-                Continue to Studio (Sprint 21)
-              </span>
+              <ButtonLink href={`/studio/${storybookId}?chapter=${chapterInstanceId}`} variant="secondary">
+                Continue to Studio
+              </ButtonLink>
             </div>
           </Card>
         </div>

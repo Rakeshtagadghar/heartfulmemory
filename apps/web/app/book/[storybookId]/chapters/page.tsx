@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { AppShell } from "../../../../components/app/app-shell";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { ChapterCard } from "../../../../components/chapters/ChapterCard";
@@ -63,6 +64,14 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
     redirect("/app/onboarding");
   }
 
+  function renderInAppShell(content: ReactNode) {
+    return (
+      <AppShell email={user.email} profile={profile}>
+        {content}
+      </AppShell>
+    );
+  }
+
   const [storybook, chapters, progress] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
@@ -70,7 +79,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
   ]);
 
   if (!storybook.ok) {
-    return (
+    return renderInAppShell(
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <Card className="p-6">
           <p className="text-sm text-rose-100">Could not load storybook: {storybook.error}</p>
@@ -146,7 +155,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
     );
   }
 
-  return (
+  return renderInAppShell(
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <ViewportEvent eventName="chapters_view" eventProps={{ storybookId }} />
       {completedChapter ? (

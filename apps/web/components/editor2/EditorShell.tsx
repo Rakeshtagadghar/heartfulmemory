@@ -194,17 +194,23 @@ export function Editor2Shell({// NOSONAR
   storybook,
   initialPages,
   initialFramesByPageId,
+  initialSelectedPageId = null,
   fullscreen = false
 }: {
   storybook: StorybookDTO;
   initialPages: PageDTO[];
   initialFramesByPageId: Record<string, FrameDTO[]>;
+  initialSelectedPageId?: string | null;
   fullscreen?: boolean;
 }) {
   const [pages, setPages] = useState(sortPages(initialPages));
   const [framesByPageId, setFramesByPageId] =
     useState<Record<string, FrameDTO[]>>(initialFramesByPageId);
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(initialPages[0]?.id ?? null);
+  const [selectedPageId, setSelectedPageId] = useState<string | null>(
+    initialSelectedPageId && initialPages.some((page) => page.id === initialSelectedPageId)
+      ? initialSelectedPageId
+      : (initialPages[0]?.id ?? null)
+  );
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [selectedFrameIds, setSelectedFrameIds] = useState<string[]>([]);
   const [editingTextFrameId, setEditingTextFrameId] = useState<string | null>(null);

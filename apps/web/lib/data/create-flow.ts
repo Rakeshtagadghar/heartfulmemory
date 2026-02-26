@@ -199,6 +199,42 @@ export type ChapterIllustrationSlotMap = {
   >;
 };
 
+export type ChapterStudioStateRecord = {
+  id: string;
+  storybookId: string;
+  chapterInstanceId: string;
+  chapterKey: string;
+  status: "not_started" | "populated" | "edited" | "finalized";
+  lastAppliedDraftVersion: number | null;
+  lastAppliedIllustrationVersion: number | null;
+  pageIds: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type StudioPopulateChapterResult =
+  | {
+      ok: true;
+      storybookId: string;
+      chapterInstanceId: string;
+      chapterKey: string;
+      pageIds: string[];
+      firstPageId: string | null;
+      createdNodeIds: string[];
+      updatedNodeIds: string[];
+      skippedNodeIds: string[];
+      reused: boolean;
+      skippedBecauseEdited: boolean;
+      versions: { draftVersion: number; illustrationVersion: number };
+      metadata?: Record<string, unknown>;
+    }
+  | {
+      ok: false;
+      errorCode: string;
+      message: string;
+      retryable?: boolean;
+    };
+
 export async function listActiveGuidedTemplates(): Promise<DataResult<GuidedTemplateForCreate[]>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
   const result = await convexQuery<GuidedTemplateForCreate[]>(anyApi.templates.getActive, {});
@@ -588,5 +624,68 @@ export async function cacheIllustrationAssetsForUser(
     viewerSubject,
     assets
   });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function listChapterStudioStateByStorybookForUser(
+  viewerSubject: string,
+  storybookId: string
+): Promise<DataResult<ChapterStudioStateRecord[]>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterStudioStateRecord[]>(anyApi.chapterStudioState.listByStorybook, {
+    viewerSubject,
+    storybookId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function getChapterStudioStateForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterStudioStateRecord | null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterStudioStateRecord | null>(anyApi.chapterStudioState.getByChapterInstance, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function populateStudioChapterForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string }
+): Promise<DataResult<StudioPopulateChapterResult>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexAction<StudioPopulateChapterResult>(anyApi.studioPopulate.populateChapter, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function markChapterStudioEditedForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string }
+): Promise<DataResult<{ ok: true; state: ChapterStudioStateRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; state: ChapterStudioStateRecord }>(anyApi.chapterStudioState.markEdited, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function markChapterStudioFinalizedForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string }
+): Promise<DataResult<{ ok: true; state: ChapterStudioStateRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; state: ChapterStudioStateRecord }>(
+    anyApi.chapterStudioState.markFinalized,
+    {
+      viewerSubject,
+      ...input
+    }
+  );
   return result.ok ? result : { ok: false, error: result.error };
 }
