@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ChapterDraftEntitiesV2",
+  "type": "object",
+  "required": ["people", "places", "dates", "meta"],
+  "properties": {
+    "people": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "kind", "confidence", "citations", "source"],
+        "properties": {
+          "value": { "type": "string" },
+          "kind": { "enum": ["person", "role"] },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "citations": { "type": "array", "items": { "type": "string" } },
+          "source": { "enum": ["llm", "override"] }
+        }
+      }
+    },
+    "places": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "confidence", "citations", "source"],
+        "properties": {
+          "value": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "citations": { "type": "array", "items": { "type": "string" } },
+          "source": { "enum": ["llm", "override"] }
+        }
+      }
+    },
+    "dates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "normalized", "confidence", "citations", "source"],
+        "properties": {
+          "value": { "type": "string" },
+          "normalized": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "citations": { "type": "array", "items": { "type": "string" } },
+          "source": { "enum": ["llm", "override"] }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["version", "generatedAt", "generator"],
+      "properties": {
+        "version": { "const": 2 },
+        "generatedAt": { "type": "number" },
+        "generator": { "const": "llm_extractor_v2" }
+      }
+    }
+  }
+}

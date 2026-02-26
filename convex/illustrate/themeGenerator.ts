@@ -1,8 +1,12 @@
+import { buildThemeFromEntities } from "../../lib/illustrate/themeFromEntities";
+import type { ChapterDraftEntitiesV2 } from "../../packages/shared/entities/entitiesTypes";
+
 type NarrationLike = Record<string, unknown> | null | undefined;
 type ChapterDraftLike = {
   summary: string;
   keyFacts: Array<{ text: string }>;
   entities: { people: string[]; places: string[]; dates: string[] };
+  entitiesV2?: ChapterDraftEntitiesV2 | null;
   imageIdeas: Array<{ query: string }>;
 };
 
@@ -60,7 +64,13 @@ export function generateThemeForChapterDraft(input: {
   const chapterTokens = tokenize(`${safeTitlePhrase} ${input.chapterKey}`);
   const summaryTokens = tokenize(input.chapterDraft.summary).slice(0, 20);
   const factTokens = tokenize(input.chapterDraft.keyFacts.map((fact) => fact.text).join(" ")).slice(0, 20);
-  const placeKeywords = (input.chapterDraft.entities.places ?? [])
+  const entityTheme = buildThemeFromEntities({
+    chapterKey: input.chapterKey,
+    entities: input.chapterDraft.entities,
+    entitiesV2: input.chapterDraft.entitiesV2 ?? null,
+    includePersonalNames: false
+  });
+  const placeKeywords = entityTheme.placeKeywords
     .map(safePlaceKeyword)
     .filter((value): value is string => Boolean(value));
   const imageIdeaTokens = tokenize(input.chapterDraft.imageIdeas.map((idea) => idea.query).join(" ")).slice(0, 15);
@@ -69,6 +79,7 @@ export function generateThemeForChapterDraft(input: {
     ...chapterTokens,
     ...summaryTokens,
     ...factTokens,
+    ...entityTheme.keywords,
     ...placeKeywords,
     ...imageIdeaTokens
   ]).filter((token) => token.length >= 3 && !/^\d+$/.test(token));
@@ -97,11 +108,7 @@ export function generateThemeForChapterDraft(input: {
     .slice(0, 6);
 
   const negativeKeywords = uniqueStrings([
-    "text overlay",
-    "watermark",
-    "logo",
-    "blurry",
-    "low resolution",
+    ...entityTheme.negativeKeywords,
     "cartoon"
   ]).slice(0, 8);
 

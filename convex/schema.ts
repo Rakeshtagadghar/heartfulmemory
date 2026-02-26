@@ -171,6 +171,41 @@ export default defineSchema({
       places: v.array(v.string()),
       dates: v.array(v.string())
     }),
+    entitiesV2: v.optional(
+      v.object({
+        people: v.array(
+          v.object({
+            value: v.string(),
+            kind: v.union(v.literal("person"), v.literal("role")),
+            confidence: v.number(),
+            citations: v.array(v.string()),
+            source: v.union(v.literal("llm"), v.literal("override"))
+          })
+        ),
+        places: v.array(
+          v.object({
+            value: v.string(),
+            confidence: v.number(),
+            citations: v.array(v.string()),
+            source: v.union(v.literal("llm"), v.literal("override"))
+          })
+        ),
+        dates: v.array(
+          v.object({
+            value: v.string(),
+            normalized: v.string(),
+            confidence: v.number(),
+            citations: v.array(v.string()),
+            source: v.union(v.literal("llm"), v.literal("override"))
+          })
+        ),
+        meta: v.object({
+          version: v.literal(2),
+          generatedAt: v.number(),
+          generator: v.literal("llm_extractor_v2")
+        })
+      })
+    ),
     imageIdeas: v.array(
       v.object({
         query: v.string(),
@@ -178,6 +213,7 @@ export default defineSchema({
         slotHint: v.optional(v.string())
       })
     ),
+    answersHash: v.optional(v.string()),
     sourceAnswerIds: v.array(v.string()),
     warnings: v.optional(
       v.array(
@@ -210,6 +246,48 @@ export default defineSchema({
     .index("by_chapterInstanceId", ["chapterInstanceId"])
     .index("by_storybookId_chapterKey", ["storybookId", "chapterKey"])
     .index("by_chapterInstanceId_version", ["chapterInstanceId", "version"]),
+  chapterEntityOverrides: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    adds: v.object({
+      people: v.array(
+        v.object({
+          value: v.string(),
+          kind: v.union(v.literal("person"), v.literal("role")),
+          confidence: v.number(),
+          citations: v.array(v.string()),
+          source: v.union(v.literal("llm"), v.literal("override"))
+        })
+      ),
+      places: v.array(
+        v.object({
+          value: v.string(),
+          confidence: v.number(),
+          citations: v.array(v.string()),
+          source: v.union(v.literal("llm"), v.literal("override"))
+        })
+      ),
+      dates: v.array(
+        v.object({
+          value: v.string(),
+          normalized: v.string(),
+          confidence: v.number(),
+          citations: v.array(v.string()),
+          source: v.union(v.literal("llm"), v.literal("override"))
+        })
+      )
+    }),
+    removes: v.array(
+      v.object({
+        kind: v.union(v.literal("people"), v.literal("places"), v.literal("dates")),
+        value: v.string()
+      })
+    ),
+    updatedAt: v.number(),
+    createdAt: v.number()
+  })
+    .index("by_chapterInstanceId", ["chapterInstanceId"])
+    .index("by_storybookId", ["storybookId"]),
   mediaAssets: defineTable({
     ownerUserId: v.optional(v.union(v.string(), v.null())),
     type: v.literal("image"),

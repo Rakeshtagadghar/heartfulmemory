@@ -1,3 +1,5 @@
+import type { ChapterDraftEntitiesV2 } from "../entities/entitiesTypes";
+
 export type DraftNarrationVoice = "first_person" | "third_person";
 export type DraftNarrationTense = "past" | "present";
 export type DraftNarrationTone = "warm" | "formal" | "playful" | "poetic";
@@ -71,7 +73,9 @@ export type ChapterDraftRecord = {
   keyFacts: ChapterDraftKeyFact[];
   quotes: ChapterDraftQuote[];
   entities: ChapterDraftEntities;
+  entitiesV2?: ChapterDraftEntitiesV2 | null;
   imageIdeas: ChapterDraftImageIdea[];
+  answersHash?: string | null;
   sourceAnswerIds: string[];
   warnings?: ChapterDraftWarning[];
   errorCode?: string | null;

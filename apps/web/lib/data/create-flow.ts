@@ -3,6 +3,11 @@ import type {
   GuidedTemplateSummary,
   GuidedTemplateV2
 } from "../../../../packages/shared/templates/templateTypes";
+import type {
+  ChapterDraftEntitiesV2,
+  ChapterEntityOverrides
+} from "../../../../packages/shared/entities/entitiesTypes";
+import { normalizeEntityDateValue } from "../../../../lib/entities/normalizeDates";
 import type { DataResult } from "./_shared";
 
 export type GuidedTemplateForCreate = GuidedTemplateSummary & {
@@ -124,7 +129,9 @@ export type ChapterDraftRecord = {
   keyFacts: Array<{ text: string; citations: string[]; uncertain?: boolean }>;
   quotes: Array<{ text: string; speaker?: string; citations: string[]; uncertain?: boolean }>;
   entities: { people: string[]; places: string[]; dates: string[] };
+  entitiesV2?: ChapterDraftEntitiesV2 | null;
   imageIdeas: Array<{ query: string; reason: string; slotHint?: string }>;
+  answersHash?: string | null;
   sourceAnswerIds: string[];
   warnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>;
   generationScope: { kind: "full" } | { kind: "section"; targetSectionId: string } | null;
@@ -134,6 +141,8 @@ export type ChapterDraftRecord = {
   createdAt: number;
   updatedAt: number;
 };
+
+export type ChapterEntityOverridesRecord = ChapterEntityOverrides;
 
 export type ChapterDraftActionResult =
   | { ok: true; draft: ChapterDraftRecord; provider: string }
@@ -447,6 +456,102 @@ export async function approveChapterDraftForUser(
   const result = await convexMutation<{ ok: true; draftId: string; approvedAt: number }>(anyApi.chapterDrafts.approve, {
     viewerSubject,
     draftId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function getChapterEntityOverridesForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterEntityOverridesRecord | null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterEntityOverridesRecord | null>(anyApi.chapterEntityOverrides.getByChapter, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function addChapterEntityOverrideForUser(
+  viewerSubject: string,
+  input:
+    | { storybookId: string; chapterInstanceId: string; kind: "people"; value: string }
+    | { storybookId: string; chapterInstanceId: string; kind: "places"; value: string }
+    | { storybookId: string; chapterInstanceId: string; kind: "dates"; value: string; normalized: string }
+): Promise<DataResult<{ ok: true; overrides: ChapterEntityOverridesRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const trimmedValue = input.value.trim();
+  if (!trimmedValue) return { ok: false, error: "Entity value is required." };
+  if (input.kind === "people") {
+    const result = await convexMutation<{ ok: true; overrides: ChapterEntityOverridesRecord }>(
+      anyApi.chapterEntityOverrides.addPerson,
+      {
+        viewerSubject,
+        storybookId: input.storybookId,
+        chapterInstanceId: input.chapterInstanceId,
+        entity: {
+          value: trimmedValue,
+          kind: "role",
+          confidence: 1,
+          citations: [],
+          source: "override"
+        }
+      }
+    );
+    return result.ok ? result : { ok: false, error: result.error };
+  }
+  if (input.kind === "places") {
+    const result = await convexMutation<{ ok: true; overrides: ChapterEntityOverridesRecord }>(
+      anyApi.chapterEntityOverrides.addPlace,
+      {
+        viewerSubject,
+        storybookId: input.storybookId,
+        chapterInstanceId: input.chapterInstanceId,
+        entity: {
+          value: trimmedValue,
+          confidence: 1,
+          citations: [],
+          source: "override"
+        }
+      }
+    );
+    return result.ok ? result : { ok: false, error: result.error };
+  }
+  const result = await convexMutation<{ ok: true; overrides: ChapterEntityOverridesRecord }>(anyApi.chapterEntityOverrides.addDate, {
+    viewerSubject,
+    storybookId: input.storybookId,
+    chapterInstanceId: input.chapterInstanceId,
+    entity: {
+      value: trimmedValue,
+      normalized: normalizeEntityDateValue(input.normalized || trimmedValue) ?? trimmedValue,
+      confidence: 1,
+      citations: [],
+      source: "override"
+    }
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function removeChapterEntityForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string; kind: "people" | "places" | "dates"; value: string }
+): Promise<DataResult<{ ok: true; overrides: ChapterEntityOverridesRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; overrides: ChapterEntityOverridesRecord }>(anyApi.chapterEntityOverrides.removeEntity, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function resetChapterEntityOverridesForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string }
+): Promise<DataResult<{ ok: true; overrides: ChapterEntityOverridesRecord | null }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; overrides: ChapterEntityOverridesRecord | null }>(anyApi.chapterEntityOverrides.reset, {
+    viewerSubject,
+    ...input
   });
   return result.ok ? result : { ok: false, error: result.error };
 }

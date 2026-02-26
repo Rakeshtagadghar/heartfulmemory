@@ -10,12 +10,14 @@
 
 import type * as ai_chapterDrafts from "../ai/chapterDrafts.js";
 import type * as ai_chapterDrafts_v2 from "../ai/chapterDrafts_v2.js";
+import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
 import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
 import type * as blocks from "../blocks.js";
 import type * as chapterAnswers from "../chapterAnswers.js";
 import type * as chapterDrafts from "../chapterDrafts.js";
+import type * as chapterEntityOverrides from "../chapterEntityOverrides.js";
 import type * as chapterIllustrations from "../chapterIllustrations.js";
 import type * as chapterStudioState from "../chapterStudioState.js";
 import type * as chapters from "../chapters.js";
@@ -49,12 +51,14 @@ import type {
 declare const fullApi: ApiFromModules<{
   "ai/chapterDrafts": typeof ai_chapterDrafts;
   "ai/chapterDrafts_v2": typeof ai_chapterDrafts_v2;
+  "ai/entitiesExtractor": typeof ai_entitiesExtractor;
   "ai/rateLimit": typeof ai_rateLimit;
   assets: typeof assets;
   authz: typeof authz;
   blocks: typeof blocks;
   chapterAnswers: typeof chapterAnswers;
   chapterDrafts: typeof chapterDrafts;
+  chapterEntityOverrides: typeof chapterEntityOverrides;
   chapterIllustrations: typeof chapterIllustrations;
   chapterStudioState: typeof chapterStudioState;
   chapters: typeof chapters;

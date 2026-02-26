@@ -7,6 +7,7 @@ describe("runDraftQualityChecks", () => {
       sections: [{ sectionId: "intro", title: "Opening", text: "", wordCount: 0, citations: [] }],
       summary: "",
       entities: { people: [], places: [], dates: [] },
+      entitiesV2: null,
       answers: [{ questionId: "q1", answerText: "My father told me stories." }],
       targetLength: "medium"
     });
@@ -27,6 +28,12 @@ describe("runDraftQualityChecks", () => {
       ],
       summary: "A memory.",
       entities: { people: ["Alexander"], places: ["Delhi"], dates: [] },
+      entitiesV2: {
+        people: [{ value: "Alexander", kind: "person", confidence: 0.92, citations: ["q1"], source: "llm" }],
+        places: [{ value: "Delhi", confidence: 0.94, citations: ["q1"], source: "llm" }],
+        dates: [],
+        meta: { version: 2, generatedAt: Date.now(), generator: "llm_extractor_v2" }
+      },
       answers: [{ questionId: "q1", answerText: "I met my cousin Ravi at home." }],
       targetLength: "short"
     });
@@ -34,4 +41,3 @@ describe("runDraftQualityChecks", () => {
     expect(result.warnings.some((warning) => warning.code === "ENTITY_SANITY")).toBe(true);
   });
 });
-

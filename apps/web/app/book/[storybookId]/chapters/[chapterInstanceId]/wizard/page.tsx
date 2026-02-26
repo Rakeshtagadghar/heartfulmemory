@@ -48,14 +48,16 @@ function parseStepIndex(raw: string | undefined) {
 function buildWizardUrl(
   storybookId: string,
   chapterInstanceId: string,
-  options?: { step?: number; notice?: string; error?: string }
+  options?: { step?: number; notice?: string; error?: string; questionId?: string }
 ) {
   const params = new URLSearchParams();
   if (typeof options?.step === "number") params.set("step", String(options.step));
   if (options?.notice) params.set("notice", options.notice);
   if (options?.error) params.set("error", options.error);
+  if (options?.questionId) params.set("questionId", options.questionId);
   const query = params.toString();
-  return `/book/${storybookId}/chapters/${chapterInstanceId}/wizard${query ? `?${query}` : ""}`;
+  const suffix = query ? `?${query}` : "";
+  return `/book/${storybookId}/chapters/${chapterInstanceId}/wizard${suffix}`;
 }
 
 function getFreeformQuestions(chapterTitle: string): GuidedTemplateQuestion[] {
@@ -119,12 +121,12 @@ function parseSttMetaJson(raw: FormDataEntryValue | null) {
   }
 }
 
-export default async function ChapterWizardPage({ params, searchParams }: Props) {
+export default async function ChapterWizardPage({ params, searchParams }: Props) { // NOSONAR
   const { storybookId, chapterInstanceId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(`/book/${storybookId}/chapters/${chapterInstanceId}/wizard`);
   const profile = await getOrCreateProfileForUser(user);
-  if (!profile.onboarding_completed) {
+  if (profile.onboarding_completed === false) {
     redirect("/app/onboarding");
   }
 
@@ -234,25 +236,37 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     answers: answersResult.data
   });
 
+  const requestedQuestionId = getSearchString(resolvedSearchParams, "questionId");
   const requestedStep = parseStepIndex(getSearchString(resolvedSearchParams, "step"));
-  const currentStepIndex = clampIndex(
-    requestedStep == null ? resumeIndex : requestedStep,
-    questions.length - 1
-  );
+  const questionStepIndex =
+    requestedQuestionId != null ? questions.findIndex((question) => question.questionId === requestedQuestionId) : -1;
+  let selectedStepIndex = resumeIndex;
+  if (requestedStep != null) selectedStepIndex = requestedStep;
+  if (questionStepIndex >= 0) selectedStepIndex = questionStepIndex;
+  const currentStepIndex = clampIndex(selectedStepIndex, questions.length - 1);
   const currentQuestion = questions[currentStepIndex];
   const currentAnswer = answersByQuestionId.get(currentQuestion.questionId) ?? null;
+  const currentAnswerForStep = currentAnswer
+    ? {
+        answerText: currentAnswer.answerText,
+        skipped: currentAnswer.skipped,
+        source: currentAnswer.source,
+        sttMeta: currentAnswer.sttMeta,
+        audioRef: currentAnswer.audioRef
+      }
+    : null;
   const answeredCount = questions.reduce((count, question) => {
     return count + (hasMeaningfulAnswer(answersByQuestionId.get(question.questionId) ?? null) ? 1 : 0);
   }, 0);
 
-  async function handleWizardAction(formData: FormData) {
+  async function handleWizardAction(formData: FormData) { // NOSONAR
     "use server";
 
     const currentUser = await requireAuthenticatedUser(
       `/book/${storybookId}/chapters/${chapterInstanceId}/wizard`
     );
     const currentProfile = await getOrCreateProfileForUser(currentUser);
-    if (!currentProfile.onboarding_completed) {
+    if (currentProfile.onboarding_completed === false) {
       redirect("/app/onboarding");
     }
 
@@ -264,7 +278,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
       questions.length - 1
     );
     const submittedQuestion = questions[submittedStep];
-    if (!submittedQuestion) {
+    if (submittedQuestion == null) {
       redirect(buildWizardUrl(storybookId, chapterInstanceId, { error: "save_failed" }));
     }
 
@@ -392,17 +406,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
             question={currentQuestion}
             stepIndex={currentStepIndex}
             totalSteps={questions.length}
-            currentAnswer={
-              currentAnswer
-                ? {
-                    answerText: currentAnswer.answerText,
-                    skipped: currentAnswer.skipped,
-                    source: currentAnswer.source,
-                    sttMeta: currentAnswer.sttMeta,
-                    audioRef: currentAnswer.audioRef
-                  }
-                : null
-            }
+            currentAnswer={currentAnswerForStep}
             chapterKey={chapter.chapterKey}
           />
         </form>

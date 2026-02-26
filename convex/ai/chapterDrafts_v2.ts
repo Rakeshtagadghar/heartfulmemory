@@ -11,11 +11,19 @@ import { buildChapterDraftPromptV2 } from "../../lib/ai/prompts/chapterDraftProm
 import { getSectionFrameworkForChapterKeyV2 } from "../../lib/ai/prompts/sectionGuidance_v2";
 import { validateDraftOutputV1 } from "../../lib/ai/validators/draftValidator";
 import { runDraftQualityChecks } from "../../lib/ai/qualityChecks";
+import { computeAnswersHash } from "../../lib/hash/answersHash";
+import { toLegacyDraftEntities } from "../../lib/entities/entitiesV2ToLegacy";
+import { applyEntityOverrides } from "../../lib/entities/applyOverrides";
 import type {
   ChapterDraftSection,
   ChapterDraftSectionDefinition,
   DraftNarrationSettings
 } from "../../packages/shared/drafts/draftTypes";
+import type {
+  ChapterDraftEntitiesV2,
+  ChapterEntityOverrides,
+  ExtractorWarning
+} from "../../packages/shared/entities/entitiesTypes";
 
 type StableAiErrorCode =
   | "UNAUTHORIZED"
@@ -167,6 +175,108 @@ function combineWarnings(
   return [...qualityWarnings, ...validatorWarnings];
 }
 
+type GroundedAnswer = {
+  questionId: string;
+  prompt: string;
+  answerText: string;
+};
+
+function hasOverrideEntries(overrides: ChapterEntityOverrides | null | undefined) {
+  if (!overrides) return false;
+  return (
+    overrides.adds.people.length > 0 ||
+    overrides.adds.places.length > 0 ||
+    overrides.adds.dates.length > 0 ||
+    overrides.removes.length > 0
+  );
+}
+
+function mapExtractorWarningsToDraftWarnings(
+  warnings: ExtractorWarning[]
+): Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }> {
+  return warnings.map((warning) => ({
+    code: warning.code,
+    message: warning.message,
+    severity: "info" as const
+  }));
+}
+
+function extractorApiRef() {
+  return (api as unknown as Record<string, { extractFromAnswers: unknown }>)["ai/entitiesExtractor"];
+}
+
+async function resolveEntitiesForChapter(args: {
+  ctx: ActionCtx;
+  viewerSubject: string;
+  storybookId: string;
+  chapterInstanceId: string;
+  chapterKey: string;
+  chapterTitle: string;
+  groundedAnswers: GroundedAnswer[];
+  latestDraft: { answersHash?: string | null; entitiesV2?: ChapterDraftEntitiesV2 | null } | null;
+}) {
+  const answersHash = computeAnswersHash(
+    args.groundedAnswers.map((answer) => ({ questionId: answer.questionId, answerText: answer.answerText }))
+  );
+
+  const overrides = (await args.ctx.runQuery(api.chapterEntityOverrides.getByChapter, {
+    viewerSubject: args.viewerSubject,
+    chapterInstanceId: args.chapterInstanceId as any
+  })) as ChapterEntityOverrides | null;
+
+  const canReuseCachedEntities =
+    !hasOverrideEntries(overrides) &&
+    args.latestDraft?.entitiesV2 &&
+    args.latestDraft.answersHash === answersHash;
+
+  if (canReuseCachedEntities) {
+    return {
+      entitiesV2: args.latestDraft?.entitiesV2 ?? null,
+      answersHash,
+      warnings: [] as Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>,
+      usedCache: true
+    };
+  }
+
+  const extractResult = (await args.ctx.runAction(extractorApiRef().extractFromAnswers as any, {
+    viewerSubject: args.viewerSubject,
+    storybookId: args.storybookId,
+    chapterInstanceId: args.chapterInstanceId,
+    chapterKey: args.chapterKey,
+    chapterTitle: args.chapterTitle,
+    answers: args.groundedAnswers.map((answer) => ({
+      questionId: answer.questionId,
+      questionPrompt: answer.prompt,
+      answerText: answer.answerText
+    }))
+  })) as
+    | { ok: true; entities: ChapterDraftEntitiesV2; warnings?: ExtractorWarning[] }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean };
+
+  if (!extractResult.ok) {
+    return {
+      entitiesV2: null,
+      answersHash,
+      warnings: [
+        {
+          code: "ENTITY_EXTRACTOR_UNAVAILABLE",
+          message: "Entity extraction was unavailable. You can regenerate to try again.",
+          severity: "warning" as const
+        }
+      ],
+      usedCache: false
+    };
+  }
+
+  const finalEntities = applyEntityOverrides(extractResult.entities, overrides);
+  return {
+    entitiesV2: finalEntities,
+    answersHash,
+    warnings: mapExtractorWarningsToDraftWarnings(extractResult.warnings ?? []),
+    usedCache: false
+  };
+}
+
 export const generateV2 = action({
   args: {
     viewerSubject: v.optional(v.string()),
@@ -243,6 +353,17 @@ export const generateV2 = action({
         };
       }
 
+      const entitiesResolution = await resolveEntitiesForChapter({
+        ctx,
+        viewerSubject: viewer.subject,
+        storybookId: args.storybookId as any,
+        chapterInstanceId: args.chapterInstanceId as any,
+        chapterKey: chapter.chapterKey,
+        chapterTitle: chapter.title,
+        groundedAnswers,
+        latestDraft
+      });
+
       const sectionPlan = getSectionFrameworkForChapterKeyV2(chapter.chapterKey);
       const narration = normalizeNarration((storybook.narration ?? null) as Record<string, unknown> | null);
       const begin = await ctx.runMutation(api.chapterDrafts.beginVersion, {
@@ -315,7 +436,8 @@ export const generateV2 = action({
       const quality = runDraftQualityChecks({
         sections: normalizedSections,
         summary: generated.summary,
-        entities: generated.entities,
+        entities: entitiesResolution.entitiesV2 ? toLegacyDraftEntities(entitiesResolution.entitiesV2) : generated.entities,
+        entitiesV2: entitiesResolution.entitiesV2,
         answers: groundedAnswers.map((answer) => ({ questionId: answer.questionId, answerText: answer.answerText })),
         targetLength: narration.length
       });
@@ -342,10 +464,12 @@ export const generateV2 = action({
         sections: normalizedSections,
         keyFacts: generated.keyFacts,
         quotes: generated.quotes,
-        entities: generated.entities,
+        entities: entitiesResolution.entitiesV2 ? toLegacyDraftEntities(entitiesResolution.entitiesV2) : generated.entities,
+        entitiesV2: entitiesResolution.entitiesV2 ?? undefined,
         imageIdeas: generated.imageIdeas,
+        answersHash: entitiesResolution.answersHash,
         sourceAnswerIds: groundedAnswers.map((answer) => answer.questionId),
-        warnings: combineWarnings(quality.warnings, validator.warnings)
+        warnings: [...combineWarnings(quality.warnings, validator.warnings), ...entitiesResolution.warnings]
       });
 
       return {
@@ -446,6 +570,16 @@ export const regenSectionV2 = action({
         .filter((answer) => answer.answerText.length > 0);
 
       const narration = normalizeNarration((storybook.narration ?? null) as Record<string, unknown> | null);
+      const entitiesResolution = await resolveEntitiesForChapter({
+        ctx,
+        viewerSubject: viewer.subject,
+        storybookId: args.storybookId as any,
+        chapterInstanceId: args.chapterInstanceId as any,
+        chapterKey: chapter.chapterKey,
+        chapterTitle: chapter.title,
+        groundedAnswers,
+        latestDraft
+      });
       const begin = await ctx.runMutation(api.chapterDrafts.beginVersion, {
         viewerSubject: viewer.subject,
         storybookId: args.storybookId,
@@ -514,7 +648,8 @@ export const regenSectionV2 = action({
       const quality = runDraftQualityChecks({
         sections: mergedSections,
         summary: latestDraft.summary,
-        entities: latestDraft.entities,
+        entities: entitiesResolution.entitiesV2 ? toLegacyDraftEntities(entitiesResolution.entitiesV2) : latestDraft.entities,
+        entitiesV2: entitiesResolution.entitiesV2 ?? latestDraft.entitiesV2 ?? null,
         answers: groundedAnswers.map((answer) => ({ questionId: answer.questionId, answerText: answer.answerText })),
         targetLength: narration.length
       });
@@ -541,10 +676,12 @@ export const regenSectionV2 = action({
         sections: mergedSections,
         keyFacts: latestDraft.keyFacts,
         quotes: latestDraft.quotes,
-        entities: latestDraft.entities,
+        entities: entitiesResolution.entitiesV2 ? toLegacyDraftEntities(entitiesResolution.entitiesV2) : latestDraft.entities,
+        entitiesV2: entitiesResolution.entitiesV2 ?? latestDraft.entitiesV2 ?? undefined,
         imageIdeas: latestDraft.imageIdeas,
+        answersHash: entitiesResolution.answersHash ?? latestDraft.answersHash ?? undefined,
         sourceAnswerIds: latestDraft.sourceAnswerIds,
-        warnings: combineWarnings(quality.warnings, validator.warnings)
+        warnings: [...combineWarnings(quality.warnings, validator.warnings), ...entitiesResolution.warnings]
       });
 
       return {

@@ -8,18 +8,24 @@ import { DraftSectionCard } from "../../../../../../components/draft/DraftSectio
 import { DraftSummary } from "../../../../../../components/draft/DraftSummary";
 import { DraftWarnings } from "../../../../../../components/draft/DraftWarnings";
 import { DraftHeader } from "../../../../../../components/draft/DraftHeader";
+import { EntitiesPanel } from "../../../../../../components/draft/EntitiesPanel";
+import { EntityOverridesEditor } from "../../../../../../components/draft/EntityOverridesEditor";
 import { TrackedDraftActionButton } from "../../../../../../components/draft/TrackedDraftActionButton";
 import { NarrationSettingsPanel } from "../../../../../../components/story/NarrationSettingsPanel";
 import { requireAuthenticatedUser } from "../../../../../../lib/auth/server";
 import { getOrCreateProfileForUser } from "../../../../../../lib/profile";
 import {
   approveChapterDraftForUser,
+  addChapterEntityOverrideForUser,
   generateChapterDraftForUser,
+  getChapterEntityOverridesForUser,
   getGuidedStorybookByIdForUser,
   getLatestChapterDraftForUser,
   listChapterDraftVersionsForUser,
   listGuidedChaptersByStorybookForUser,
+  removeChapterEntityForUser,
   regenChapterDraftSectionForUser,
+  resetChapterEntityOverridesForUser,
   updateGuidedNarrationForUser
 } from "../../../../../../lib/data/create-flow";
 
@@ -130,11 +136,12 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     );
   }
 
-  const [storybook, chapters, latestDraft, draftVersions] = await Promise.all([
+  const [storybook, chapters, latestDraft, draftVersions, entityOverrides] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
     getLatestChapterDraftForUser(user.id, chapterInstanceId),
-    listChapterDraftVersionsForUser(user.id, chapterInstanceId)
+    listChapterDraftVersionsForUser(user.id, chapterInstanceId),
+    getChapterEntityOverridesForUser(user.id, chapterInstanceId)
   ]);
 
   if (!storybook.ok) {
@@ -248,6 +255,107 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     redirect(draftUrl(storybookId, chapterInstanceId, { notice: "approved" }));
   }
 
+  async function addEntityOverride(formData: FormData) {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(draftUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
+    const kindValue = formData.get("kind");
+    const valueRaw = formData.get("value");
+    const kind = kindValue === "people" || kindValue === "places" || kindValue === "dates" ? kindValue : "places";
+    const value = typeof valueRaw === "string" ? valueRaw : "";
+    const result =
+      kind === "dates"
+        ? await addChapterEntityOverrideForUser(currentUser.id, { storybookId, chapterInstanceId, kind, value, normalized: value })
+        : await addChapterEntityOverrideForUser(currentUser.id, { storybookId, chapterInstanceId, kind, value } as
+            | { storybookId: string; chapterInstanceId: string; kind: "people"; value: string }
+            | { storybookId: string; chapterInstanceId: string; kind: "places"; value: string });
+    if (!result.ok) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+    redirect(draftUrl(storybookId, chapterInstanceId, { notice: "entity_override_saved" }));
+  }
+
+  async function removeEntityOverride(formData: FormData) {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(draftUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
+    const kindValue = formData.get("kind");
+    const kind = kindValue === "people" || kindValue === "places" || kindValue === "dates" ? kindValue : null;
+    const valueRaw = formData.get("value");
+    const value = typeof valueRaw === "string" ? valueRaw : "";
+    if (!kind || !value.trim()) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+    const result = await removeChapterEntityForUser(currentUser.id, { storybookId, chapterInstanceId, kind, value });
+    if (!result.ok) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+    redirect(draftUrl(storybookId, chapterInstanceId, { notice: "entity_override_saved" }));
+  }
+
+  async function undoRemovedEntityOverride(formData: FormData) {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(draftUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
+    const kindValue = formData.get("kind");
+    const kind = kindValue === "people" || kindValue === "places" || kindValue === "dates" ? kindValue : null;
+    const valueRaw = formData.get("value");
+    const value = typeof valueRaw === "string" ? valueRaw : "";
+    if (!kind || !value.trim()) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+
+    const currentOverrides = await getChapterEntityOverridesForUser(currentUser.id, chapterInstanceId);
+    if (!currentOverrides.ok) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+    const overridesData = currentOverrides.data;
+    if (!overridesData) redirect(draftUrl(storybookId, chapterInstanceId, { notice: "entity_override_saved" }));
+
+    const remainingRemoves = overridesData.removes.filter(
+      (item) => !(item.kind === kind && item.value.toLowerCase() === value.trim().toLowerCase())
+    );
+    await resetChapterEntityOverridesForUser(currentUser.id, { storybookId, chapterInstanceId });
+    for (const item of overridesData.adds.people) {
+      await addChapterEntityOverrideForUser(currentUser.id, {
+        storybookId,
+        chapterInstanceId,
+        kind: "people",
+        value: item.value
+      });
+    }
+    for (const item of overridesData.adds.places) {
+      await addChapterEntityOverrideForUser(currentUser.id, {
+        storybookId,
+        chapterInstanceId,
+        kind: "places",
+        value: item.value
+      });
+    }
+    for (const item of overridesData.adds.dates) {
+      await addChapterEntityOverrideForUser(currentUser.id, {
+        storybookId,
+        chapterInstanceId,
+        kind: "dates",
+        value: item.value,
+        normalized: item.normalized
+      });
+    }
+    for (const item of remainingRemoves) {
+      await removeChapterEntityForUser(currentUser.id, {
+        storybookId,
+        chapterInstanceId,
+        kind: item.kind,
+        value: item.value
+      });
+    }
+
+    redirect(draftUrl(storybookId, chapterInstanceId, { notice: "entity_override_saved" }));
+  }
+
+  async function resetEntityOverrides() {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(draftUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
+    const result = await resetChapterEntityOverridesForUser(currentUser.id, { storybookId, chapterInstanceId });
+    if (!result.ok) redirect(draftUrl(storybookId, chapterInstanceId, { error: "entity_override_failed" }));
+    redirect(draftUrl(storybookId, chapterInstanceId, { notice: "entity_override_saved" }));
+  }
+
   const notice = getSearchString(resolvedSearchParams, "notice");
   const providerFromQuery = getSearchString(resolvedSearchParams, "provider") ?? "heuristic";
   const errorCode = getSearchString(resolvedSearchParams, "error");
@@ -317,6 +425,11 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             ...narrationForAnalytics
           }}
         />
+      ) : null}
+      {notice === "entity_override_saved" ? (
+        <Card className="p-4">
+          <p className="text-sm text-emerald-100">Entity overrides saved. Regenerate the draft to apply them.</p>
+        </Card>
       ) : null}
       {errorCode ? (
         <ViewportEvent
@@ -485,14 +598,21 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             </div>
           </Card>
 
-          <Card className="p-4 sm:p-5">
-            <p className="text-xs uppercase tracking-[0.14em] text-white/45">Entities</p>
-            <div className="mt-3 space-y-2 text-sm text-white/75">
-              <p>People: {(latest?.entities.people ?? []).join(", ") || "None"}</p>
-              <p>Places: {(latest?.entities.places ?? []).join(", ") || "None"}</p>
-              <p>Dates: {(latest?.entities.dates ?? []).join(", ") || "None"}</p>
-            </div>
-          </Card>
+          <EntitiesPanel
+            entitiesV2={latest?.entitiesV2 ?? null}
+            warnings={latest?.warnings ?? []}
+            storybookId={storybookId}
+            chapterInstanceId={chapterInstanceId}
+            retryAction={generateDraft}
+          />
+
+          <EntityOverridesEditor
+            overrides={entityOverrides.ok ? entityOverrides.data : null}
+            addAction={addEntityOverride}
+            removeEntityAction={removeEntityOverride}
+            undoRemoveAction={undoRemovedEntityOverride}
+            resetAction={resetEntityOverrides}
+          />
 
           <Card className="p-4 sm:p-5">
             <p className="text-xs uppercase tracking-[0.14em] text-white/45">Version History</p>

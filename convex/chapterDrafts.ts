@@ -13,6 +13,12 @@ import type {
   ChapterDraftSection,
   DraftNarrationSettings
 } from "../packages/shared/drafts/draftTypes";
+import type {
+  ChapterDraftEntitiesV2,
+  EntityDateV2,
+  EntityPersonV2,
+  EntityPlaceV2
+} from "../packages/shared/entities/entitiesTypes";
 
 type ConvexCtx = MutationCtx | QueryCtx;
 type ChapterDraftDoc = Doc<"chapterDrafts">;
@@ -51,6 +57,40 @@ const entitiesValidator = v.object({
   people: v.array(v.string()),
   places: v.array(v.string()),
   dates: v.array(v.string())
+});
+
+const entitiesV2Validator = v.object({
+  people: v.array(
+    v.object({
+      value: v.string(),
+      kind: v.union(v.literal("person"), v.literal("role")),
+      confidence: v.number(),
+      citations: v.array(v.string()),
+      source: v.union(v.literal("llm"), v.literal("override"))
+    })
+  ),
+  places: v.array(
+    v.object({
+      value: v.string(),
+      confidence: v.number(),
+      citations: v.array(v.string()),
+      source: v.union(v.literal("llm"), v.literal("override"))
+    })
+  ),
+  dates: v.array(
+    v.object({
+      value: v.string(),
+      normalized: v.string(),
+      confidence: v.number(),
+      citations: v.array(v.string()),
+      source: v.union(v.literal("llm"), v.literal("override"))
+    })
+  ),
+  meta: v.object({
+    version: v.literal(2),
+    generatedAt: v.number(),
+    generator: v.literal("llm_extractor_v2")
+  })
 });
 
 const imageIdeaValidator = v.object({
@@ -120,7 +160,9 @@ function toDraftDto(doc: ChapterDraftDoc) {
     keyFacts: doc.keyFacts,
     quotes: doc.quotes,
     entities: doc.entities,
+    entitiesV2: normalizeEntitiesV2(doc.entitiesV2),
     imageIdeas: doc.imageIdeas,
+    answersHash: typeof doc.answersHash === "string" ? doc.answersHash : null,
     sourceAnswerIds: doc.sourceAnswerIds,
     warnings: doc.warnings ?? [],
     generationScope: normalizeGenerationScope(doc.generationScope),
@@ -161,6 +203,84 @@ function emptyEntities(): ChapterDraftEntities {
     people: [],
     places: [],
     dates: []
+  };
+}
+
+function normalizeEntityPersonV2(value: unknown): EntityPersonV2 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.value !== "string") return null;
+  if (row.kind !== "person" && row.kind !== "role") return null;
+  if (typeof row.confidence !== "number" || !Number.isFinite(row.confidence)) return null;
+  if (!Array.isArray(row.citations) || row.citations.some((item) => typeof item !== "string")) return null;
+  if (row.source !== "llm" && row.source !== "override") return null;
+  return {
+    value: row.value,
+    kind: row.kind,
+    confidence: row.confidence,
+    citations: [...(row.citations as string[])],
+    source: row.source
+  };
+}
+
+function normalizeEntityPlaceV2(value: unknown): EntityPlaceV2 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.value !== "string") return null;
+  if (typeof row.confidence !== "number" || !Number.isFinite(row.confidence)) return null;
+  if (!Array.isArray(row.citations) || row.citations.some((item) => typeof item !== "string")) return null;
+  if (row.source !== "llm" && row.source !== "override") return null;
+  return {
+    value: row.value,
+    confidence: row.confidence,
+    citations: [...(row.citations as string[])],
+    source: row.source
+  };
+}
+
+function normalizeEntityDateV2(value: unknown): EntityDateV2 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.value !== "string" || typeof row.normalized !== "string") return null;
+  if (typeof row.confidence !== "number" || !Number.isFinite(row.confidence)) return null;
+  if (!Array.isArray(row.citations) || row.citations.some((item) => typeof item !== "string")) return null;
+  if (row.source !== "llm" && row.source !== "override") return null;
+  return {
+    value: row.value,
+    normalized: row.normalized,
+    confidence: row.confidence,
+    citations: [...(row.citations as string[])],
+    source: row.source
+  };
+}
+
+function normalizeEntitiesV2(value: unknown): ChapterDraftEntitiesV2 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  if (!Array.isArray(input.people) || !Array.isArray(input.places) || !Array.isArray(input.dates)) return null;
+  if (!input.meta || typeof input.meta !== "object" || Array.isArray(input.meta)) return null;
+  const meta = input.meta as Record<string, unknown>;
+  if (meta.version !== 2) return null;
+  if (typeof meta.generatedAt !== "number" || !Number.isFinite(meta.generatedAt)) return null;
+  if (meta.generator !== "llm_extractor_v2") return null;
+
+  const people = input.people.map(normalizeEntityPersonV2).filter((row): row is EntityPersonV2 => row !== null);
+  const places = input.places.map(normalizeEntityPlaceV2).filter((row): row is EntityPlaceV2 => row !== null);
+  const dates = input.dates.map(normalizeEntityDateV2).filter((row): row is EntityDateV2 => row !== null);
+
+  if (people.length !== input.people.length || places.length !== input.places.length || dates.length !== input.dates.length) {
+    return null;
+  }
+
+  return {
+    people,
+    places,
+    dates,
+    meta: {
+      version: 2,
+      generatedAt: meta.generatedAt,
+      generator: "llm_extractor_v2"
+    }
   };
 }
 
@@ -205,7 +325,9 @@ function cloneDraftContent(doc: ChapterDraftDoc) {
       places: [...doc.entities.places],
       dates: [...doc.entities.dates]
     },
+    entitiesV2: normalizeEntitiesV2(doc.entitiesV2),
     imageIdeas: doc.imageIdeas.map((idea) => ({ ...idea })),
+    answersHash: typeof doc.answersHash === "string" ? doc.answersHash : null,
     warnings: doc.warnings?.map((warning) => ({ ...warning })) ?? [],
     sourceAnswerIds: [...doc.sourceAnswerIds]
   };
@@ -322,11 +444,13 @@ export const beginVersion = mutationGeneric({
 
     const seedDraft =
       args.seedFromDraftId != null ? await getDraftOrThrow(ctx, args.seedFromDraftId) : null;
-    if (seedDraft && String(seedDraft.storybookId) !== String(args.storybookId)) {
-      throw new Error("Seed draft does not belong to storybook");
-    }
-    if (seedDraft && String(seedDraft.chapterInstanceId) !== String(args.chapterInstanceId)) {
-      throw new Error("Seed draft does not belong to chapter");
+    if (seedDraft) {
+      if (String(seedDraft.storybookId) !== String(args.storybookId)) {
+        throw new Error("Seed draft does not belong to storybook");
+      }
+      if (String(seedDraft.chapterInstanceId) !== String(args.chapterInstanceId)) {
+        throw new Error("Seed draft does not belong to chapter");
+      }
     }
 
     const now = Date.now();
@@ -357,6 +481,7 @@ export const beginVersion = mutationGeneric({
       quotes: seededContent?.quotes ?? [],
       entities: seededContent?.entities ?? emptyEntities(),
       imageIdeas: seededContent?.imageIdeas ?? [],
+      ...(seededContent?.answersHash ? { answersHash: seededContent.answersHash } : {}),
       sourceAnswerIds: args.sourceAnswerIds ?? seededContent?.sourceAnswerIds ?? [],
       warnings: seededContent?.warnings ?? [],
       generationScope: args.generationScope ?? { kind: "full" },
@@ -364,7 +489,8 @@ export const beginVersion = mutationGeneric({
       errorMessage: null,
       approvedAt: null,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      ...(seededContent?.entitiesV2 ? { entitiesV2: seededContent.entitiesV2 } : {})
     });
     await touchStorybook(ctx, args.storybookId, now);
     const draft = await ctx.db.get(id);
@@ -382,7 +508,9 @@ export const setReady = mutationGeneric({
     keyFacts: v.array(keyFactValidator),
     quotes: v.array(quoteValidator),
     entities: entitiesValidator,
+    entitiesV2: v.optional(entitiesV2Validator),
     imageIdeas: v.array(imageIdeaValidator),
+    answersHash: v.optional(v.string()),
     sourceAnswerIds: v.array(v.string()),
     warnings: v.optional(v.array(warningValidator))
   },
@@ -398,11 +526,13 @@ export const setReady = mutationGeneric({
       quotes: args.quotes as ChapterDraftQuote[],
       entities: args.entities as ChapterDraftEntities,
       imageIdeas: args.imageIdeas as ChapterDraftImageIdea[],
+      ...(args.answersHash ? { answersHash: args.answersHash } : {}),
       sourceAnswerIds: args.sourceAnswerIds,
       warnings: args.warnings ?? [],
       errorCode: null,
       errorMessage: null,
-      updatedAt: now
+      updatedAt: now,
+      ...(args.entitiesV2 ? { entitiesV2: args.entitiesV2 as ChapterDraftEntitiesV2 } : {})
     });
     await touchStorybook(ctx, draft.storybookId, now);
     const updated = await ctx.db.get(draft._id);

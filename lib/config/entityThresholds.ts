@@ -1,0 +1,4 @@
+export const ENTITY_THRESHOLD_CONFIG = {
+  LOW_CONFIDENCE_WARN: 0.55,
+  MISSING_CITATION_ERROR: true
+} as const;
