@@ -209,6 +209,63 @@ export default defineSchema({
     .index("by_chapterInstanceId", ["chapterInstanceId"])
     .index("by_storybookId_chapterKey", ["storybookId", "chapterKey"])
     .index("by_chapterInstanceId_version", ["chapterInstanceId", "version"]),
+  mediaAssets: defineTable({
+    ownerUserId: v.optional(v.union(v.string(), v.null())),
+    type: v.literal("image"),
+    source: v.union(v.literal("upload"), v.literal("unsplash"), v.literal("pexels"), v.literal("system")),
+    sourceId: v.optional(v.union(v.string(), v.null())),
+    cachedUrl: v.string(),
+    thumbUrl: v.optional(v.union(v.string(), v.null())),
+    width: v.number(),
+    height: v.number(),
+    mime: v.optional(v.union(v.string(), v.null())),
+    attribution: v.object({
+      authorName: v.string(),
+      authorUrl: v.optional(v.union(v.string(), v.null())),
+      assetUrl: v.optional(v.union(v.string(), v.null())),
+      licenseUrl: v.optional(v.union(v.string(), v.null())),
+      provider: v.union(v.literal("upload"), v.literal("unsplash"), v.literal("pexels"), v.literal("system")),
+      attributionText: v.string()
+    }),
+    createdAt: v.number()
+  })
+    .index("by_ownerUserId", ["ownerUserId"])
+    .index("by_source_sourceId", ["source", "sourceId"]),
+  chapterIllustrations: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    chapterKey: v.string(),
+    version: v.number(),
+    status: v.union(v.literal("selecting"), v.literal("ready"), v.literal("error")),
+    theme: v.object({
+      queries: v.array(v.string()),
+      keywords: v.array(v.string()),
+      negativeKeywords: v.array(v.string())
+    }),
+    slotTargets: v.array(
+      v.object({
+        slotId: v.string(),
+        aspectTarget: v.number(),
+        orientation: v.union(v.literal("landscape"), v.literal("portrait"), v.literal("square")),
+        minShortSidePx: v.number()
+      })
+    ),
+    slotAssignments: v.array(
+      v.object({
+        slotId: v.string(),
+        mediaAssetId: v.id("mediaAssets"),
+        providerMetaSnapshot: v.any()
+      })
+    ),
+    lockedSlotIds: v.array(v.string()),
+    errorCode: v.optional(v.union(v.string(), v.null())),
+    errorMessage: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_chapterInstanceId", ["chapterInstanceId"])
+    .index("by_storybookId", ["storybookId"])
+    .index("by_chapterInstanceId_version", ["chapterInstanceId", "version"]),
   pages: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),

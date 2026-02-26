@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { ChapterCard } from "../../../../components/chapters/ChapterCard";
@@ -27,6 +28,30 @@ function getSearchString(
   const value = searchParams?.[key];
   if (Array.isArray(value)) return value[0];
   return typeof value === "string" ? value : undefined;
+}
+
+function readNarrationFormValue(formData: FormData) {
+  const read = (key: string) => {
+    const value = formData.get(key);
+    return typeof value === "string" ? value : "";
+  };
+
+  const voice: "first_person" | "third_person" = read("voice") === "first_person" ? "first_person" : "third_person";
+  const tense: "past" | "present" = read("tense") === "present" ? "present" : "past";
+
+  let tone: "warm" | "formal" | "playful" | "poetic" = "warm";
+  const rawTone = read("tone");
+  if (rawTone === "formal" || rawTone === "playful" || rawTone === "poetic") {
+    tone = rawTone;
+  }
+
+  let length: "short" | "medium" | "long" = "medium";
+  const rawLength = read("length");
+  if (rawLength === "short" || rawLength === "long") {
+    length = rawLength;
+  }
+
+  return { voice, tense, tone, length };
 }
 
 export default async function GuidedChapterListPage({ params, searchParams }: Props) {
@@ -80,29 +105,45 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
       redirect("/app/onboarding");
     }
 
-    const read = (key: string) => {
-      const value = formData.get(key);
-      return typeof value === "string" ? value : "";
-    };
-
-    const result = await updateGuidedNarrationForUser(currentUser.id, storybookId, {
-      voice: read("voice") === "first_person" ? "first_person" : "third_person",
-      tense: read("tense") === "present" ? "present" : "past",
-      tone:
-        read("tone") === "formal" || read("tone") === "playful" || read("tone") === "poetic"
-          ? (read("tone") as "formal" | "playful" | "poetic")
-          : "warm",
-      length:
-        read("length") === "short" || read("length") === "long"
-          ? (read("length") as "short" | "long")
-          : "medium"
-    });
+    const result = await updateGuidedNarrationForUser(currentUser.id, storybookId, readNarrationFormValue(formData));
 
     if (!result.ok) {
       redirect(`/book/${storybookId}/chapters?narrationError=1`);
     }
 
     redirect(`/book/${storybookId}/chapters?narrationSaved=1`);
+  }
+
+  const isFreeformStory = storybook.data.templateId == null;
+  const chaptersLoadError = chapters.ok ? null : chapters.error;
+  const progressWarning = progress.ok ? null : progress.error;
+
+  let chaptersContent: ReactNode;
+  if (chaptersLoadError) {
+    chaptersContent = (
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load chapters: {chaptersLoadError}</p>
+      </Card>
+    );
+  } else if (chaptersData.length === 0) {
+    chaptersContent = (
+      <Card className="p-6">
+        <p className="text-sm text-white/75">No guided chapters found yet.</p>
+      </Card>
+    );
+  } else {
+    chaptersContent = (
+      <div className="grid gap-4">
+        {chaptersData.map((chapter) => (
+          <ChapterCard
+            key={chapter.id}
+            storybookId={storybookId}
+            chapter={chapter}
+            progress={progressByChapterId.get(chapter.id)}
+          />
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -121,7 +162,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
               <h1 className="mt-2 font-display text-3xl text-parchment sm:text-4xl">{storybook.data.title}</h1>
               <p className="mt-2 text-sm text-white/70">
                 {storybook.data.templateTitle ?? "Freeform story"}
-                {storybook.data.templateSubtitle ? ` • ${storybook.data.templateSubtitle}` : ""}
+                {storybook.data.templateSubtitle ? ` / ${storybook.data.templateSubtitle}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -210,7 +251,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
         subtitle="These settings are applied when generating chapter drafts in Sprint 19."
       />
 
-      {!storybook.data.templateId ? (
+      {isFreeformStory ? (
         <Card className="p-4">
           <p className="text-sm text-white/75">
             Freeform mode is active. Add-more-chapters UI is planned next; Chapter 1 is ready now.
@@ -218,30 +259,11 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
         </Card>
       ) : null}
 
-      {!chapters.ok ? (
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Could not load chapters: {chapters.error}</p>
-        </Card>
-      ) : chaptersData.length === 0 ? (
-        <Card className="p-6">
-          <p className="text-sm text-white/75">No guided chapters found yet.</p>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {chaptersData.map((chapter) => (
-            <ChapterCard
-              key={chapter.id}
-              storybookId={storybookId}
-              chapter={chapter}
-              progress={progressByChapterId.get(chapter.id)}
-            />
-          ))}
-        </div>
-      )}
+      {chaptersContent}
 
-      {!progress.ok ? (
+      {progressWarning ? (
         <Card className="p-4">
-          <p className="text-xs text-white/55">Progress query warning: {progress.error}</p>
+          <p className="text-xs text-white/55">Progress query warning: {progressWarning}</p>
         </Card>
       ) : null}
     </div>

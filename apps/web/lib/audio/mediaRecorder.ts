@@ -26,7 +26,7 @@ export type BrowserRecordingSession = {
 };
 
 export function getSupportedAudioMimeType() {
-  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") {
+  if (globalThis.window === undefined || MediaRecorder === undefined) {
     return null;
   }
 
@@ -52,7 +52,11 @@ export async function createBrowserRecordingSession(
     preferredMimeType?: string | null;
   }
 ): Promise<BrowserRecordingSession> {
-  if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+  if (
+    globalThis.window === undefined ||
+    !navigator.mediaDevices?.getUserMedia ||
+    MediaRecorder === undefined
+  ) {
     throw new MediaRecorderClientError("UNSUPPORTED_BROWSER", "This browser does not support voice recording.");
   }
 
@@ -166,9 +170,8 @@ export async function blobToBase64(blob: Blob) {
   const buffer = await blob.arrayBuffer();
   let binary = "";
   const bytes = new Uint8Array(buffer);
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]);
+  for (const byte of bytes) {
+    binary += String.fromCodePoint(byte);
   }
   return btoa(binary);
 }
-

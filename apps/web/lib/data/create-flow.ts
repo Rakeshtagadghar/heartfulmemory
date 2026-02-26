@@ -138,6 +138,67 @@ export type ChapterDraftActionResult =
   | { ok: true; draft: ChapterDraftRecord; provider: string }
   | { ok: false; errorCode: string; message: string; retryable?: boolean };
 
+export type ProviderAssetCandidate = {
+  provider: "unsplash" | "pexels";
+  id: string;
+  thumbUrl: string;
+  fullUrl: string;
+  width: number;
+  height: number;
+  authorName: string;
+  authorUrl: string | null;
+  assetUrl: string | null;
+  licenseUrl: string | null;
+  attributionText: string;
+  query?: string;
+};
+
+export type ChapterIllustrationRecord = {
+  id: string;
+  storybookId: string;
+  chapterInstanceId: string;
+  chapterKey: string;
+  version: number;
+  status: "selecting" | "ready" | "error";
+  theme: { queries: string[]; keywords: string[]; negativeKeywords: string[] };
+  slotTargets: Array<{
+    slotId: string;
+    aspectTarget: number;
+    orientation: "landscape" | "portrait" | "square";
+    minShortSidePx: number;
+  }>;
+  slotAssignments: Array<{
+    slotId: string;
+    mediaAssetId: string;
+    providerMetaSnapshot: Record<string, unknown>;
+  }>;
+  lockedSlotIds: string[];
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ChapterIllustrationSlotMap = {
+  illustrationId: string;
+  version: number;
+  status: "selecting" | "ready" | "error";
+  chapterInstanceId: string;
+  chapterKey: string;
+  slots: Record<
+    string,
+    {
+      mediaAssetId: string;
+      cachedUrl: string;
+      thumbUrl: string | null;
+      width: number;
+      height: number;
+      attribution: Record<string, unknown>;
+      providerMetaSnapshot: Record<string, unknown>;
+    }
+  >;
+};
+
 export async function listActiveGuidedTemplates(): Promise<DataResult<GuidedTemplateForCreate[]>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
   const result = await convexQuery<GuidedTemplateForCreate[]>(anyApi.templates.getActive, {});
@@ -349,6 +410,183 @@ export async function approveChapterDraftForUser(
   const result = await convexMutation<{ ok: true; draftId: string; approvedAt: number }>(anyApi.chapterDrafts.approve, {
     viewerSubject,
     draftId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function listChapterIllustrationVersionsForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterIllustrationRecord[]>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterIllustrationRecord[]>(anyApi.chapterIllustrations.listByChapter, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function getLatestChapterIllustrationForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterIllustrationRecord | null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterIllustrationRecord | null>(anyApi.chapterIllustrations.getLatestByChapterInstance, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function getChapterIllustrationSlotMapForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterIllustrationSlotMap | null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterIllustrationSlotMap | null>(anyApi.chapterIllustrations.getByChapterInstance, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function autoIllustrateChapterForUser(
+  viewerSubject: string,
+  input: {
+    storybookId: string;
+    chapterInstanceId: string;
+    providerMode?: "unsplash" | "pexels" | "both";
+    regenerate?: boolean;
+  }
+): Promise<
+  DataResult<
+    | { ok: true; illustration: ChapterIllustrationRecord; reused: boolean; warnings: Array<Record<string, unknown>> }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >
+> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexAction<
+    | { ok: true; illustration: ChapterIllustrationRecord; reused: boolean; warnings: Array<Record<string, unknown>> }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >(anyApi.chapterIllustrations.autoIllustrate, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function toggleIllustrationSlotLockForUser(
+  viewerSubject: string,
+  input: { illustrationId: string; slotId: string }
+): Promise<DataResult<{ ok: true; illustration: ChapterIllustrationRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; illustration: ChapterIllustrationRecord }>(
+    anyApi.chapterIllustrations.toggleLockSlot,
+    {
+      viewerSubject,
+      ...input
+    }
+  );
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function replaceIllustrationSlotAssignmentForUser(
+  viewerSubject: string,
+  input: {
+    illustrationId: string;
+    slotId: string;
+    mediaAssetId: string;
+    providerMetaSnapshot: Record<string, unknown>;
+  }
+): Promise<DataResult<{ ok: true; illustration: ChapterIllustrationRecord }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; illustration: ChapterIllustrationRecord }>(
+    anyApi.chapterIllustrations.replaceSlotAssignment,
+    {
+      viewerSubject,
+      ...input
+    }
+  );
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function fetchIllustrationCandidatesForUser(
+  viewerSubject: string,
+  input: {
+    provider: "unsplash" | "pexels" | "both";
+    queries: string[];
+    orientation: "landscape" | "portrait" | "square";
+    page?: number;
+    perPage?: number;
+    minShortSidePx?: number;
+  }
+): Promise<
+  DataResult<
+    | { ok: true; candidates: ProviderAssetCandidate[]; droppedLowRes: number }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >
+> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const illustrateApi = (anyApi as unknown as Record<string, { fetchCandidates: unknown }>)["illustrate/fetchCandidates"];
+  const result = await convexAction<
+    | { ok: true; candidates: ProviderAssetCandidate[]; droppedLowRes: number }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >(illustrateApi.fetchCandidates, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function cacheIllustrationAssetsForUser(
+  viewerSubject: string,
+  assets: ProviderAssetCandidate[]
+): Promise<
+  DataResult<
+    | {
+        ok: true;
+        assets: Array<{
+          providerAsset: ProviderAssetCandidate;
+          mediaAssetId: string;
+          mediaAsset: {
+            id: string;
+            cachedUrl: string;
+            thumbUrl: string | null;
+            width: number;
+            height: number;
+            attribution: Record<string, unknown>;
+          };
+          reused: boolean;
+          cacheMode: string;
+        }>;
+      }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >
+> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const illustrateApi = (anyApi as unknown as Record<string, { cacheSelectedAssets: unknown }>)["illustrate/cacheAssets"];
+  const result = await convexAction<
+    | {
+        ok: true;
+        assets: Array<{
+          providerAsset: ProviderAssetCandidate;
+          mediaAssetId: string;
+          mediaAsset: {
+            id: string;
+            cachedUrl: string;
+            thumbUrl: string | null;
+            width: number;
+            height: number;
+            attribution: Record<string, unknown>;
+          };
+          reused: boolean;
+          cacheMode: string;
+        }>;
+      }
+    | { ok: false; errorCode: string; message: string; retryable?: boolean }
+  >(illustrateApi.cacheSelectedAssets, {
+    viewerSubject,
+    assets
   });
   return result.ok ? result : { ok: false, error: result.error };
 }

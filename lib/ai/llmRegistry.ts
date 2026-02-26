@@ -100,26 +100,24 @@ function styleHint(narration: DraftNarrationSettings) {
       ? "Write as the storyteller speaking about their own life."
       : "Write in third person while preserving a personal memoir tone.";
   const tense = narration.tense === "present" ? "Use present tense." : "Use past tense.";
-  const tone =
-    narration.tone === "formal"
-      ? "Keep the tone composed and respectful."
-      : narration.tone === "playful"
-        ? "Keep the tone light and affectionate where appropriate."
-        : narration.tone === "poetic"
-          ? "Use vivid and reflective language."
-          : "Keep the tone warm and intimate.";
+  let tone = "Keep the tone warm and intimate.";
+  if (narration.tone === "formal") tone = "Keep the tone composed and respectful.";
+  else if (narration.tone === "playful") tone = "Keep the tone light and affectionate where appropriate.";
+  else if (narration.tone === "poetic") tone = "Use vivid and reflective language.";
   return `${voice} ${tense} ${tone}`;
 }
 
 function narrativeAnchor(narration: DraftNarrationSettings) {
   if (narration.voice === "first_person") {
-    return narration.tense === "present"
-      ? "I remember this moment as it unfolds again in memory."
-      : "I remember this moment clearly.";
+    if (narration.tense === "present") {
+      return "I remember this moment as it unfolds again in memory.";
+    }
+    return "I remember this moment clearly.";
   }
-  return narration.tense === "present"
-    ? "They return to this moment as the memory unfolds."
-    : "They remembered this moment clearly.";
+  if (narration.tense === "present") {
+    return "They return to this moment as the memory unfolds.";
+  }
+  return "They remembered this moment clearly.";
 }
 
 function composeSectionText(

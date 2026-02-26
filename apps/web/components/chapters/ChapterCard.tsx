@@ -42,7 +42,7 @@ export function ChapterCard({
           <h3 className="text-lg font-semibold text-parchment">{chapter.title}</h3>
           <p className="text-sm text-white/65">
             Progress: {answeredCount}/{totalQuestions}
-            {typeof progress?.requiredQuestions === "number" ? ` • Required ${progress.requiredQuestions}` : ""}
+            {typeof progress?.requiredQuestions === "number" ? ` / Required ${progress.requiredQuestions}` : ""}
           </p>
         </div>
 
@@ -63,6 +63,14 @@ export function ChapterCard({
                 className="text-xs font-semibold text-gold hover:text-[#e6c77f]"
               >
                 Review Draft
+              </TrackedLink>
+              <TrackedLink
+                href={`/book/${storybookId}/chapters/${chapter.id}/illustrations`}
+                eventName="illustrations_review_open"
+                eventProps={{ chapterKey: chapter.chapterKey }}
+                className="text-xs font-semibold text-white/80 hover:text-white"
+              >
+                Review Illustrations
               </TrackedLink>
               <TrackedLink
                 href={`/studio/${storybookId}?chapter=${chapter.id}`}

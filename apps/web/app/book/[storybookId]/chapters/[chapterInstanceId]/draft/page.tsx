@@ -277,7 +277,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             <p className="text-xs uppercase tracking-[0.16em] text-gold/75">Chapter Draft Review</p>
             <h1 className="mt-2 font-display text-3xl text-parchment sm:text-4xl">{chapter.title}</h1>
             <p className="mt-2 text-sm text-white/70">
-              {storybook.data.title} • {chapter.chapterKey}
+              {storybook.data.title} / {chapter.chapterKey}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -369,6 +369,9 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/wizard`} variant="secondary">
               Edit Answers
             </ButtonLink>
+            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/illustrations`} variant="secondary">
+              Review Illustrations
+            </ButtonLink>
           </div>
         </div>
       </Card>
@@ -443,7 +446,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
               ) : (
                 latest?.quotes.map((quote, idx) => (
                   <div key={`${quote.text}-${idx}`} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                    <p className="text-sm italic text-white/85">“{quote.text}”</p>
+                    <p className="text-sm italic text-white/85">"{quote.text}"</p>
                     <p className="mt-1 text-xs text-white/50">Citations: {quote.citations.join(", ") || "none"}</p>
                   </div>
                 ))

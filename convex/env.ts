@@ -1,5 +1,6 @@
 import { getSttConfig } from "../lib/config/stt";
 import { getAiConfig } from "../lib/config/ai";
+import { getAutoIllustrateConfig } from "../lib/config/autoIllustrate";
 
 function readRawEnv(name: string) {
   const maybeProcess = globalThis as typeof globalThis & {
@@ -28,4 +29,8 @@ export function getConvexSttEnv() {
 
 export function getConvexAiEnv() {
   return getAiConfig();
+}
+
+export function getConvexAutoIllustrateEnv() {
+  return getAutoIllustrateConfig();
 }
