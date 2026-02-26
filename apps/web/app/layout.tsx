@@ -8,12 +8,14 @@ import "./globals.css";
 const cormorant = Cormorant_Garamond({
   variable: "--font-cormorant",
   subsets: ["latin"],
-  weight: ["500", "600", "700"]
+  weight: ["500", "600", "700"],
+  preload: false
 });
 
 const manrope = Manrope({
   variable: "--font-manrope",
-  subsets: ["latin"]
+  subsets: ["latin"],
+  preload: false
 });
 
 export const metadata: Metadata = {
@@ -26,7 +28,6 @@ export const metadata: Metadata = {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" }
     ],
-    apple: [{ url: "/apple-icon.svg", type: "image/svg+xml" }],
     shortcut: ["/icon.svg"]
   },
   openGraph: {

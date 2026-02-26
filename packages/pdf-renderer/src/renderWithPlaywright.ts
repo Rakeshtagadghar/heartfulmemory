@@ -9,9 +9,43 @@ import type { PdfDebugOverlayOptions } from "../../pdf/debug/debugOverlays";
 
 let browserPromise: Promise<Browser> | null = null;
 
+function shouldUseServerlessChromium() {
+  return process.env.VERCEL === "1" || process.env.VERCEL_ENV !== undefined || process.env.AWS_REGION !== undefined;
+}
+
+async function launchBrowser() {
+  if (!shouldUseServerlessChromium()) {
+    return chromium.launch({ headless: true });
+  }
+
+  try {
+    const chromiumModule = (await import("@sparticuz/chromium")) as {
+      default: {
+        args: string[];
+        executablePath: (input?: string) => Promise<string>;
+        headless?: boolean | "shell";
+      };
+    };
+    const serverlessChromium = chromiumModule.default;
+    const executablePath = await serverlessChromium.executablePath();
+
+    return chromium.launch({
+      headless: true,
+      executablePath,
+      args: serverlessChromium.args
+    });
+  } catch (error) {
+    // Fall back to Playwright-managed browser locally or if serverless chromium is unavailable.
+    if (process.env.NODE_ENV !== "production") {
+      return chromium.launch({ headless: true });
+    }
+    throw error;
+  }
+}
+
 async function getBrowser() {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true });
+    browserPromise = launchBrowser();
   }
   return browserPromise;
 }
