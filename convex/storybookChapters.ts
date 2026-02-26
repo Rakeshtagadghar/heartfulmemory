@@ -37,7 +37,7 @@ async function getChapterOrThrow(ctx: ConvexCtx, chapterInstanceId: Id<"storyboo
   return chapter;
 }
 
-async function touchStorybook(ctx: ConvexCtx, storybookId: Id<"storybooks">, at = Date.now()) {
+async function touchStorybook(ctx: MutationCtx, storybookId: Id<"storybooks">, at = Date.now()) {
   await ctx.db.patch(storybookId, { updatedAt: at });
 }
 

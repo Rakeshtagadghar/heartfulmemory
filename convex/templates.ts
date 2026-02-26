@@ -12,8 +12,6 @@ import type {
 
 type ConvexCtx = MutationCtx | QueryCtx;
 
-const templateSeedsV2 = templatesV2Json as GuidedTemplateV2[];
-
 function starterTextContent(chapterTitle: string) {
   return {
     kind: "starter_text",
@@ -43,36 +41,34 @@ function coerceQuestion(value: unknown): GuidedTemplateQuestion | null {
   };
 }
 
-function coerceTemplateV2(value: unknown): GuidedTemplateV2 | null {
+function coerceChapter(value: unknown): GuidedTemplateV2["chapters"][number] | null {
   if (!isRecord(value)) return null;
-  if (typeof value.templateId !== "string") return null;
-  if (typeof value.version !== "number") return null;
-  if (typeof value.title !== "string") return null;
-  if (typeof value.subtitle !== "string") return null;
-  if (typeof value.isActive !== "boolean") return null;
-  if (!Array.isArray(value.chapters)) return null;
-  if (!isRecord(value.questionFlow) || !isRecord(value.slotMap)) return null;
+  if (typeof value.chapterKey !== "string" || typeof value.title !== "string") return null;
+  return {
+    chapterKey: value.chapterKey,
+    title: value.title,
+    subtitle: typeof value.subtitle === "string" ? value.subtitle : undefined
+  };
+}
 
-  const chapters = value.chapters
-    .map((chapter) => {
-      if (!isRecord(chapter)) return null;
-      if (typeof chapter.chapterKey !== "string" || typeof chapter.title !== "string") return null;
-      return {
-        chapterKey: chapter.chapterKey,
-        title: chapter.title,
-        subtitle: typeof chapter.subtitle === "string" ? chapter.subtitle : undefined
-      };
-    })
-    .filter(Boolean) as GuidedTemplateV2["chapters"];
+function coerceQuestionFlow(value: unknown): Record<string, GuidedTemplateQuestion[]> | null {
+  if (!isRecord(value)) return null;
 
-  const questionFlow: GuidedTemplateV2["questionFlow"] = {};
-  for (const [chapterKey, questions] of Object.entries(value.questionFlow)) {
+  const questionFlow: Record<string, GuidedTemplateQuestion[]> = {};
+  for (const [chapterKey, questions] of Object.entries(value)) {
     if (!Array.isArray(questions)) continue;
-    questionFlow[chapterKey] = questions.map(coerceQuestion).filter(Boolean) as GuidedTemplateQuestion[];
+    questionFlow[chapterKey] = questions
+      .map(coerceQuestion)
+      .filter((question): question is GuidedTemplateQuestion => Boolean(question));
   }
+  return questionFlow;
+}
+
+function coerceSlotMap(value: unknown): GuidedTemplateV2["slotMap"] | null {
+  if (!isRecord(value)) return null;
 
   const slotMap: GuidedTemplateV2["slotMap"] = {};
-  for (const [slotKey, binding] of Object.entries(value.slotMap)) {
+  for (const [slotKey, binding] of Object.entries(value)) {
     if (!isRecord(binding)) continue;
     if (
       typeof binding.chapterKey !== "string" ||
@@ -87,6 +83,25 @@ function coerceTemplateV2(value: unknown): GuidedTemplateV2 | null {
       slotPath: binding.slotPath
     };
   }
+  return slotMap;
+}
+
+function coerceTemplateV2(value: unknown): GuidedTemplateV2 | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.templateId !== "string") return null;
+  if (typeof value.version !== "number") return null;
+  if (typeof value.title !== "string") return null;
+  if (typeof value.subtitle !== "string") return null;
+  if (typeof value.isActive !== "boolean") return null;
+  if (!Array.isArray(value.chapters)) return null;
+
+  const chapters = value.chapters
+    .map(coerceChapter)
+    .filter((chapter): chapter is GuidedTemplateV2["chapters"][number] => Boolean(chapter));
+  const questionFlow = coerceQuestionFlow(value.questionFlow);
+  const slotMap = coerceSlotMap(value.slotMap);
+
+  if (!questionFlow || !slotMap) return null;
 
   return {
     templateId: value.templateId,
@@ -116,6 +131,8 @@ function normalizeTemplateList(values: unknown[]): GuidedTemplateV2[] {
     .map(coerceTemplateV2)
     .filter((template): template is GuidedTemplateV2 => Boolean(template));
 }
+
+const templateSeedsV2 = normalizeTemplateList(Array.isArray(templatesV2Json) ? templatesV2Json : []);
 
 export function getTemplateV2SeedById(templateId: string) {
   return templateSeedsV2.find((template) => template.templateId === templateId) ?? null;

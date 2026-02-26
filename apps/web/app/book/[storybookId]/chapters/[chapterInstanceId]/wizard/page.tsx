@@ -98,6 +98,25 @@ function mapError(error: string | undefined) {
   return "Something went wrong. Please try again.";
 }
 
+function parseSttMetaJson(raw: FormDataEntryValue | null) {
+  if (typeof raw !== "string" || raw.trim().length === 0) return null;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object") return null;
+    if (parsed.provider !== "groq" && parsed.provider !== "elevenlabs") return null;
+    return {
+      provider: parsed.provider,
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : null,
+      durationMs: typeof parsed.durationMs === "number" ? parsed.durationMs : null,
+      providerRequestId: typeof parsed.providerRequestId === "string" ? parsed.providerRequestId : null,
+      mimeType: typeof parsed.mimeType === "string" ? parsed.mimeType : null,
+      bytes: typeof parsed.bytes === "number" ? parsed.bytes : null
+    } as const;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ChapterWizardPage({ params, searchParams }: Props) {
   const { storybookId, chapterInstanceId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -249,6 +268,12 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
 
     const answerTextValue = formData.get("answerText");
     const answerText = typeof answerTextValue === "string" ? answerTextValue : "";
+    const answerSourceRaw = formData.get("answerSource");
+    const answerSource =
+      answerSourceRaw === "voice" || answerSourceRaw === "text" ? answerSourceRaw : "text";
+    const answerSttMeta = parseSttMetaJson(formData.get("answerSttMetaJson"));
+    const answerAudioRefRaw = formData.get("answerAudioRef");
+    const answerAudioRef = typeof answerAudioRefRaw === "string" && answerAudioRefRaw.trim() ? answerAudioRefRaw : null;
 
     if ((intent === "next" || intent === "finish") && !hasAnswerText(answerText)) {
       redirect(
@@ -265,7 +290,9 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
       questionId: submittedQuestion.questionId,
       answerText: intent === "skip" ? null : answerText,
       skipped: intent === "skip",
-      source: "text"
+      source: intent === "skip" ? "text" : answerSource,
+      sttMeta: intent === "skip" ? null : answerSttMeta,
+      audioRef: intent === "skip" ? null : answerAudioRef
     });
 
     if (!saveResult.ok) {
@@ -355,16 +382,20 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
             question={currentQuestion}
             stepIndex={currentStepIndex}
             totalSteps={questions.length}
-            currentAnswer={
-              currentAnswer
-                ? {
-                    answerText: currentAnswer.answerText,
-                    skipped: currentAnswer.skipped
-                  }
-                : null
-            }
-          />
-        </form>
+          currentAnswer={
+            currentAnswer
+              ? {
+                  answerText: currentAnswer.answerText,
+                  skipped: currentAnswer.skipped,
+                  source: currentAnswer.source,
+                  sttMeta: currentAnswer.sttMeta,
+                  audioRef: currentAnswer.audioRef
+                }
+              : null
+          }
+          chapterKey={chapter.chapterKey}
+        />
+      </form>
       </WizardShell>
     </>
   );

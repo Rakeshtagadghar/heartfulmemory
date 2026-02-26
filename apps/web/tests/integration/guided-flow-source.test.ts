@@ -26,5 +26,26 @@ describe("Sprint 17 guided flow Convex source contracts", () => {
     expect(source).toContain(".eq(\"questionId\", args.questionId)");
     expect(source).toContain("version: existing.version + 1");
   });
-});
 
+  it("chapterAnswers voice path persists sttMeta and exposes upsertVoice", () => {
+    const source = readRepoFile("convex/chapterAnswers.ts");
+
+    expect(source).toContain("sttMetaValidator");
+    expect(source).toContain("audioRef");
+    expect(source).toContain("export const upsertVoice");
+    expect(source).toContain('source: "voice"');
+  });
+
+  it("Sprint 18 STT foundation files exist with provider/error contracts", () => {
+    const sttAction = readRepoFile("convex/stt.ts");
+    const providerRegistry = readRepoFile("lib/stt/providerRegistry.ts");
+    const errorMap = readRepoFile("lib/stt/errorMap.ts");
+
+    expect(sttAction).toContain("export const transcribe = action");
+    expect(sttAction).toContain("export const healthcheck = action");
+    expect(providerRegistry).toContain("createSttProviderRegistry");
+    expect(providerRegistry).toContain("transcribe(input: SttTranscribeInput)");
+    expect(errorMap).toContain("PROVIDER_RATE_LIMIT");
+    expect(errorMap).toContain("UNSUPPORTED_MIME");
+  });
+});

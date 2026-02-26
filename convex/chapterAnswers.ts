@@ -11,6 +11,34 @@ import { getTemplateQuestionsForChapter, loadTemplateV2ByIdFromDbOrSeed } from "
 
 type ConvexCtx = MutationCtx | QueryCtx;
 type ChapterAnswerDoc = Doc<"chapterAnswers">;
+const sttMetaValidator = v.object({
+  provider: v.union(v.literal("groq"), v.literal("elevenlabs")),
+  confidence: v.optional(v.union(v.number(), v.null())),
+  durationMs: v.optional(v.union(v.number(), v.null())),
+  providerRequestId: v.optional(v.union(v.string(), v.null())),
+  mimeType: v.optional(v.union(v.string(), v.null())),
+  bytes: v.optional(v.union(v.number(), v.null()))
+});
+
+type UpsertAnswerArgs = {
+  viewerSubject?: string;
+  storybookId: Id<"storybooks">;
+  chapterInstanceId: Id<"storybookChapters">;
+  questionId: string;
+  answerText?: string | null;
+  answerJson?: unknown | null;
+  sttMeta?: {
+    provider: "groq" | "elevenlabs";
+    confidence?: number | null;
+    durationMs?: number | null;
+    providerRequestId?: string | null;
+    mimeType?: string | null;
+    bytes?: number | null;
+  } | null;
+  audioRef?: string | null;
+  skipped?: boolean;
+  source?: "text" | "voice";
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -24,6 +52,8 @@ function toAnswerDto(doc: ChapterAnswerDoc) {
     questionId: doc.questionId,
     answerText: doc.answerText ?? null,
     answerJson: doc.answerJson ?? null,
+    sttMeta: doc.sttMeta ?? null,
+    audioRef: doc.audioRef ?? null,
     skipped: doc.skipped,
     source: doc.source,
     version: doc.version,
@@ -47,6 +77,75 @@ async function getStorybookChapterOrThrow(ctx: ConvexCtx, chapterInstanceId: Id<
   const chapter = await ctx.db.get(chapterInstanceId);
   if (!chapter) throw new Error("Chapter instance not found");
   return chapter;
+}
+
+async function upsertAnswerInternal(ctx: MutationCtx, args: UpsertAnswerArgs) {
+  const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+  const chapter = await getStorybookChapterOrThrow(ctx, args.chapterInstanceId);
+  if (String(chapter.storybookId) !== String(args.storybookId)) {
+    throw new Error("Chapter does not belong to storybook");
+  }
+
+  const existing = await ctx.db
+    .query("chapterAnswers")
+    .withIndex("by_chapterInstanceId_questionId", (q) =>
+      q.eq("chapterInstanceId", args.chapterInstanceId).eq("questionId", args.questionId)
+    )
+    .unique();
+
+  const now = Date.now();
+  const payload = {
+    storybookId: args.storybookId,
+    chapterInstanceId: args.chapterInstanceId,
+    questionId: args.questionId,
+    answerText: "answerText" in args ? (args.answerText ?? null) : null,
+    answerJson: "answerJson" in args ? (args.answerJson ?? null) : null,
+    sttMeta: "sttMeta" in args ? (args.sttMeta ?? null) : null,
+    audioRef: "audioRef" in args ? (args.audioRef ?? null) : null,
+    skipped: args.skipped ?? false,
+    source: args.source ?? "text"
+  } as const;
+
+  let row: ChapterAnswerDoc | null = null;
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      answerText: payload.answerText,
+      answerJson: payload.answerJson,
+      sttMeta: payload.sttMeta,
+      audioRef: payload.audioRef,
+      skipped: payload.skipped,
+      source: payload.source,
+      version: existing.version + 1,
+      updatedAt: now
+    });
+    row = await ctx.db.get(existing._id);
+  } else {
+    const id = await ctx.db.insert("chapterAnswers", {
+      ...payload,
+      version: 1,
+      createdAt: now,
+      updatedAt: now
+    });
+    row = await ctx.db.get(id);
+  }
+
+  if (!row) throw new Error("Failed to save answer");
+
+  const shouldMarkInProgress = hasMeaningfulAnswer(payload) && chapter.status === "not_started";
+  if (shouldMarkInProgress) {
+    await ctx.db.patch(chapter._id, {
+      status: "in_progress",
+      updatedAt: now
+    });
+  }
+
+  await ctx.db.patch(access.storybook._id, { updatedAt: now });
+
+  return {
+    ok: true as const,
+    answer: toAnswerDto(row),
+    chapterStatus: shouldMarkInProgress ? "in_progress" : chapter.status
+  };
 }
 
 async function getProgressTotalsForChapter(
@@ -147,72 +246,35 @@ export const upsert = mutationGeneric({
     questionId: v.string(),
     answerText: v.optional(v.union(v.string(), v.null())),
     answerJson: v.optional(v.union(v.any(), v.null())),
+    sttMeta: v.optional(v.union(sttMetaValidator, v.null())),
+    audioRef: v.optional(v.union(v.string(), v.null())),
     skipped: v.optional(v.boolean()),
     source: v.optional(v.union(v.literal("text"), v.literal("voice")))
   },
-  handler: async (ctx, args) => {
-    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
-    const chapter = await getStorybookChapterOrThrow(ctx, args.chapterInstanceId);
-    if (String(chapter.storybookId) !== String(args.storybookId)) {
-      throw new Error("Chapter does not belong to storybook");
-    }
+  handler: async (ctx, args) => await upsertAnswerInternal(ctx, args)
+});
 
-    const existing = await ctx.db
-      .query("chapterAnswers")
-      .withIndex("by_chapterInstanceId_questionId", (q) =>
-        q.eq("chapterInstanceId", args.chapterInstanceId).eq("questionId", args.questionId)
-      )
-      .unique();
-
-    const now = Date.now();
-    const payload = {
+export const upsertVoice = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    questionId: v.string(),
+    transcriptText: v.string(),
+    sttMeta: sttMetaValidator,
+    audioRef: v.optional(v.union(v.string(), v.null())),
+    skipped: v.optional(v.boolean())
+  },
+  handler: async (ctx, args) =>
+    await upsertAnswerInternal(ctx, {
+      viewerSubject: args.viewerSubject,
       storybookId: args.storybookId,
       chapterInstanceId: args.chapterInstanceId,
       questionId: args.questionId,
-      answerText: "answerText" in args ? (args.answerText ?? null) : null,
-      answerJson: "answerJson" in args ? (args.answerJson ?? null) : null,
+      answerText: args.transcriptText,
       skipped: args.skipped ?? false,
-      source: args.source ?? "text"
-    } as const;
-
-    let row: ChapterAnswerDoc | null = null;
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        answerText: payload.answerText,
-        answerJson: payload.answerJson,
-        skipped: payload.skipped,
-        source: payload.source,
-        version: existing.version + 1,
-        updatedAt: now
-      });
-      row = await ctx.db.get(existing._id);
-    } else {
-      const id = await ctx.db.insert("chapterAnswers", {
-        ...payload,
-        version: 1,
-        createdAt: now,
-        updatedAt: now
-      });
-      row = await ctx.db.get(id);
-    }
-
-    if (!row) throw new Error("Failed to save answer");
-
-    const shouldMarkInProgress = hasMeaningfulAnswer(payload) && chapter.status === "not_started";
-    if (shouldMarkInProgress) {
-      await ctx.db.patch(chapter._id, {
-        status: "in_progress",
-        updatedAt: now
-      });
-    }
-
-    await ctx.db.patch(access.storybook._id, { updatedAt: now });
-
-    return {
-      ok: true as const,
-      answer: toAnswerDto(row),
-      chapterStatus: shouldMarkInProgress ? "in_progress" : chapter.status
-    };
-  }
+      source: "voice",
+      sttMeta: args.sttMeta,
+      audioRef: args.audioRef ?? null
+    } as never)
 });
-

@@ -104,6 +104,20 @@ export default defineSchema({
     questionId: v.string(),
     answerText: v.optional(v.union(v.string(), v.null())),
     answerJson: v.optional(v.union(v.any(), v.null())),
+    sttMeta: v.optional(
+      v.union(
+        v.object({
+          provider: v.union(v.literal("groq"), v.literal("elevenlabs")),
+          confidence: v.optional(v.union(v.number(), v.null())),
+          durationMs: v.optional(v.union(v.number(), v.null())),
+          providerRequestId: v.optional(v.union(v.string(), v.null())),
+          mimeType: v.optional(v.union(v.string(), v.null())),
+          bytes: v.optional(v.union(v.number(), v.null()))
+        }),
+        v.null()
+      )
+    ),
+    audioRef: v.optional(v.union(v.string(), v.null())),
     skipped: v.boolean(),
     source: v.union(v.literal("text"), v.literal("voice")),
     version: v.number(),

@@ -61,6 +61,15 @@ export type GuidedChapterAnswer = {
   questionId: string;
   answerText: string | null;
   answerJson: unknown | null;
+  sttMeta: {
+    provider: "groq" | "elevenlabs";
+    confidence?: number | null;
+    durationMs?: number | null;
+    providerRequestId?: string | null;
+    mimeType?: string | null;
+    bytes?: number | null;
+  } | null;
+  audioRef: string | null;
   skipped: boolean;
   source: "text" | "voice";
   version: number;
@@ -195,6 +204,8 @@ export async function upsertGuidedChapterAnswerForUser(
     questionId: string;
     answerText?: string | null;
     answerJson?: unknown | null;
+    sttMeta?: GuidedChapterAnswer["sttMeta"];
+    audioRef?: string | null;
     skipped?: boolean;
     source?: "text" | "voice";
   }
