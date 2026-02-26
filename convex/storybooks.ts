@@ -1,6 +1,9 @@
+import type { Id } from "./_generated/dataModel";
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 import { assertCanAccessStorybook, requireUser } from "./authz";
+import { createDefaultGuidedChapter, instantiateGuidedChaptersFromTemplate } from "./storybookChapters";
+import { loadTemplateV2ByIdFromDbOrSeed } from "./templates";
 
 const bookModeValidator = v.union(v.literal("DIGITAL"), v.literal("PRINT"));
 const bookStatusValidator = v.union(
@@ -47,6 +50,15 @@ function defaultExportSettings(pageSize: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK
   };
 }
 
+function defaultNarrationSettings() {
+  return {
+    voice: "third_person" as const,
+    tense: "past" as const,
+    tone: "warm" as const,
+    length: "medium" as const
+  };
+}
+
 function toStorybookDto(doc: {
   _id: unknown;
   ownerId: string;
@@ -90,8 +102,10 @@ export const create = mutationGeneric({
     const id = await ctx.db.insert("storybooks", {
       ownerId: viewer.subject,
       title: normalizeTitle(args.title),
+      templateId: args.templateId ?? null,
       bookMode: args.bookMode ?? "DIGITAL",
       status: "DRAFT",
+      narration: defaultNarrationSettings(),
       settings:
         args.templateId || args.templateVersion
           ? {
@@ -106,6 +120,90 @@ export const create = mutationGeneric({
     const created = await ctx.db.get(id);
     if (!created) throw new Error("Failed to create storybook");
     return toStorybookDto(created as never);
+  }
+});
+
+export const createGuided = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    templateId: v.optional(v.union(v.string(), v.null())),
+    optionalTitle: v.optional(v.union(v.string(), v.null())),
+    clientRequestId: v.string()
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+
+    const existing = await ctx.db
+      .query("storybooks")
+      .withIndex("by_ownerId_guidedClientRequestId", (q) =>
+        q.eq("ownerId", viewer.subject).eq("guidedClientRequestId", args.clientRequestId)
+      )
+      .unique();
+
+    if (existing) {
+      const chapters = await ctx.db
+        .query("storybookChapters")
+        .withIndex("by_storybookId_orderIndex", (q) => q.eq("storybookId", existing._id as Id<"storybooks">))
+        .collect();
+      return {
+        storybookId: String(existing._id),
+        templateId: existing.templateId ?? null,
+        chapters: chapters
+          .sort((a, b) => a.orderIndex - b.orderIndex)
+          .map((chapter) => ({
+            id: String(chapter._id),
+            chapterKey: chapter.chapterKey,
+            title: chapter.title,
+            orderIndex: chapter.orderIndex,
+            status: chapter.status
+          }))
+      };
+    }
+
+    let resolvedTemplate = null;
+    if (args.templateId) {
+      resolvedTemplate = await loadTemplateV2ByIdFromDbOrSeed(ctx, args.templateId);
+      if (!resolvedTemplate) throw new Error("Template not found");
+    }
+
+    const now = Date.now();
+    const providedTitle = args.optionalTitle?.trim();
+    const title = providedTitle
+      ? normalizeTitle(providedTitle)
+      : normalizeTitle(resolvedTemplate?.title ?? (args.templateId ? "New Storybook" : "My Storybook"));
+
+    const storybookId = await ctx.db.insert("storybooks", {
+      ownerId: viewer.subject,
+      title,
+      templateId: args.templateId ?? null,
+      bookMode: "DIGITAL",
+      status: "DRAFT",
+      narration: defaultNarrationSettings(),
+      guidedClientRequestId: args.clientRequestId,
+      settings: {
+        ...defaultExportSettings(),
+        guidedFlow: {
+          path: args.templateId ? "template" : "freeform",
+          templateId: args.templateId ?? null,
+          templateVersion: resolvedTemplate?.version ?? null
+        }
+      },
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const chapters = resolvedTemplate
+      ? await instantiateGuidedChaptersFromTemplate(ctx, {
+          storybookId,
+          template: resolvedTemplate
+        })
+      : [await createDefaultGuidedChapter(ctx, storybookId)];
+
+    return {
+      storybookId: String(storybookId),
+      templateId: args.templateId ?? null,
+      chapters
+    };
   }
 });
 
@@ -135,6 +233,39 @@ export const get = queryGeneric({
   handler: async (ctx, args) => {
     const access = await assertCanAccessStorybook(ctx, args.storybookId, "VIEWER", args.viewerSubject);
     return toStorybookDto(access.storybook as never);
+  }
+});
+
+export const getGuidedById = queryGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks")
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "VIEWER", args.viewerSubject);
+    let templateTitle: string | null = null;
+    let templateSubtitle: string | null = null;
+
+    if (access.storybook.templateId) {
+      const template = await loadTemplateV2ByIdFromDbOrSeed(ctx, access.storybook.templateId);
+      templateTitle = template?.title ?? null;
+      templateSubtitle = template?.subtitle ?? null;
+    }
+
+    return {
+      id: String(access.storybook._id),
+      title: access.storybook.title,
+      status: access.storybook.status,
+      templateId: access.storybook.templateId ?? null,
+      templateTitle,
+      templateSubtitle,
+      narration:
+        access.storybook.narration && typeof access.storybook.narration === "object"
+          ? access.storybook.narration
+          : defaultNarrationSettings(),
+      createdAt: access.storybook.createdAt,
+      updatedAt: access.storybook.updatedAt
+    };
   }
 });
 
@@ -244,6 +375,33 @@ export const updateSettings = mutationGeneric({
     const updated = await ctx.db.get(access.storybook._id as never);
     if (!updated) throw new Error("Not found");
     return toStorybookDto(updated as never);
+  }
+});
+
+export const updateNarration = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    narration: v.object({
+      voice: v.union(v.literal("first_person"), v.literal("third_person")),
+      tense: v.union(v.literal("past"), v.literal("present")),
+      tone: v.union(v.literal("warm"), v.literal("formal"), v.literal("playful"), v.literal("poetic")),
+      length: v.union(v.literal("short"), v.literal("medium"), v.literal("long"))
+    })
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    await ctx.db.patch(access.storybook._id as never, {
+      narration: args.narration,
+      updatedAt: Date.now()
+    });
+    const updated = await ctx.db.get(access.storybook._id as never);
+    if (!updated) throw new Error("Not found");
+    return {
+      ok: true,
+      storybookId: String(updated._id),
+      narration: updated.narration ?? defaultNarrationSettings()
+    };
   }
 });
 

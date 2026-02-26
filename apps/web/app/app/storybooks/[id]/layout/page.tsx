@@ -10,10 +10,21 @@ import type { FrameDTO } from "../../../../../lib/dto/frame";
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
-export default async function StorybookLayoutPage({ params }: Props) {
+function getSearchString(
+  searchParams: Record<string, string | string[] | undefined> | undefined,
+  key: string
+) {
+  const value = searchParams?.[key];
+  if (Array.isArray(value)) return value[0];
+  return typeof value === "string" ? value : undefined;
+}
+
+export default async function StorybookLayoutPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(`/app/storybooks/${id}/layout`);
   const profile = await getOrCreateProfileForUser(user);
 
@@ -71,11 +82,21 @@ export default async function StorybookLayoutPage({ params }: Props) {
   }
 
   return (
-    <Editor2Shell
-      storybook={storybook.data}
-      initialPages={pages.data}
-      initialFramesByPageId={framesByPageId}
-      fullscreen
-    />
+    <div className="space-y-4">
+      {getSearchString(resolvedSearchParams, "chapter") ? (
+        <Card className="p-4">
+          <p className="text-xs uppercase tracking-[0.16em] text-gold/75">Guided Chapter Context</p>
+          <p className="mt-2 text-sm text-white/75">
+            Chapter context is attached to this Studio session (populate hook stub for a later sprint).
+          </p>
+        </Card>
+      ) : null}
+      <Editor2Shell
+        storybook={storybook.data}
+        initialPages={pages.data}
+        initialFramesByPageId={framesByPageId}
+        fullscreen
+      />
+    </div>
   );
 }

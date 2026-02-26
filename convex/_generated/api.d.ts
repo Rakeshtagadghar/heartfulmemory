@@ -11,10 +11,12 @@
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
 import type * as blocks from "../blocks.js";
+import type * as chapterAnswers from "../chapterAnswers.js";
 import type * as chapters from "../chapters.js";
 import type * as exports from "../exports.js";
 import type * as frames from "../frames.js";
 import type * as pages from "../pages.js";
+import type * as storybookChapters from "../storybookChapters.js";
 import type * as storybooks from "../storybooks.js";
 import type * as templateSeeds from "../templateSeeds.js";
 import type * as templates from "../templates.js";
@@ -31,10 +33,12 @@ declare const fullApi: ApiFromModules<{
   assets: typeof assets;
   authz: typeof authz;
   blocks: typeof blocks;
+  chapterAnswers: typeof chapterAnswers;
   chapters: typeof chapters;
   exports: typeof exports;
   frames: typeof frames;
   pages: typeof pages;
+  storybookChapters: typeof storybookChapters;
   storybooks: typeof storybooks;
   templateSeeds: typeof templateSeeds;
   templates: typeof templates;

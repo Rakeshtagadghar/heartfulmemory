@@ -36,10 +36,21 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number()
   }).index("by_monthKey", ["monthKey"]),
+  templates: defineTable({
+    templateId: v.string(),
+    title: v.string(),
+    subtitle: v.string(),
+    templateJson: v.any(),
+    isActive: v.boolean(),
+    createdAt: v.number()
+  })
+    .index("by_templateId", ["templateId"])
+    .index("by_isActive", ["isActive"]),
   storybooks: defineTable({
     ownerId: v.string(),
     title: v.string(),
     subtitle: v.optional(v.string()),
+    templateId: v.optional(v.union(v.string(), v.null())),
     bookMode: v.union(v.literal("DIGITAL"), v.literal("PRINT")),
     status: v.union(
       v.literal("DRAFT"),
@@ -48,12 +59,16 @@ export default defineSchema({
       v.literal("DELETED")
     ),
     coverAssetId: v.optional(v.id("assets")),
+    narration: v.optional(v.any()),
+    guidedClientRequestId: v.optional(v.string()),
     settings: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number()
   })
     .index("by_ownerId", ["ownerId"])
-    .index("by_ownerId_updatedAt", ["ownerId", "updatedAt"]),
+    .index("by_ownerId_updatedAt", ["ownerId", "updatedAt"])
+    .index("by_templateId", ["templateId"])
+    .index("by_ownerId_guidedClientRequestId", ["ownerId", "guidedClientRequestId"]),
   chapters: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),
@@ -66,6 +81,38 @@ export default defineSchema({
   })
     .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"])
     .index("by_ownerId", ["ownerId"]),
+  storybookChapters: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterKey: v.string(),
+    title: v.string(),
+    orderIndex: v.number(),
+    status: v.union(
+      v.literal("not_started"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    completedAt: v.optional(v.union(v.number(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_storybookId", ["storybookId"])
+    .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"])
+    .index("by_storybookId_status", ["storybookId", "status"]),
+  chapterAnswers: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    questionId: v.string(),
+    answerText: v.optional(v.union(v.string(), v.null())),
+    answerJson: v.optional(v.union(v.any(), v.null())),
+    skipped: v.boolean(),
+    source: v.union(v.literal("text"), v.literal("voice")),
+    version: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_chapterInstanceId_questionId", ["chapterInstanceId", "questionId"])
+    .index("by_storybookId", ["storybookId"])
+    .index("by_chapterInstanceId", ["chapterInstanceId"]),
   pages: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),

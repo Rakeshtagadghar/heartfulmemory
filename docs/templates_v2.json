@@ -1,0 +1,304 @@
+[
+  {
+    "templateId": "tpl_childhood_roots_v2",
+    "version": 2,
+    "title": "Childhood & Roots",
+    "subtitle": "Trace the places, people, and rituals that shaped your early years.",
+    "isActive": true,
+    "chapters": [
+      {
+        "chapterKey": "ch_origins",
+        "title": "Origins",
+        "subtitle": "Family beginnings and where your story starts"
+      },
+      {
+        "chapterKey": "ch_childhood_home",
+        "title": "Childhood Home",
+        "subtitle": "A tour of the home, neighborhood, and daily life"
+      },
+      {
+        "chapterKey": "ch_school_days",
+        "title": "School Days",
+        "subtitle": "Teachers, friends, and moments that stayed with you"
+      }
+    ],
+    "questionFlow": {
+      "ch_origins": [
+        {
+          "questionId": "q_origins_where_family_from",
+          "prompt": "Where was your family from, and what do you remember hearing about those roots?",
+          "helpText": "Include places, cultural background, or stories passed down.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "origins.family_roots"
+        },
+        {
+          "questionId": "q_origins_birth_place",
+          "prompt": "Where were you born, and what do you know about that day or time in your life?",
+          "helpText": "You can include what others told you if you do not remember it yourself.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "origins.birth_place_story"
+        },
+        {
+          "questionId": "q_origins_family_members",
+          "prompt": "Who were the important people in your early home?",
+          "helpText": "Parents, siblings, grandparents, or anyone who helped raise you.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "origins.early_family"
+        }
+      ],
+      "ch_childhood_home": [
+        {
+          "questionId": "q_home_house_description",
+          "prompt": "What did your childhood home look and feel like?",
+          "helpText": "Describe rooms, smells, sounds, or a favorite corner.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "childhood_home.description"
+        },
+        {
+          "questionId": "q_home_neighborhood",
+          "prompt": "What was your neighborhood or community like?",
+          "helpText": "Think about neighbors, local shops, streets, or landmarks.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "childhood_home.neighborhood"
+        },
+        {
+          "questionId": "q_home_daily_routine",
+          "prompt": "What did an ordinary day in childhood feel like?",
+          "helpText": "Morning routines, chores, playtime, meals, and evenings.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "childhood_home.daily_routine"
+        }
+      ],
+      "ch_school_days": [
+        {
+          "questionId": "q_school_first_memories",
+          "prompt": "What are your earliest memories of school?",
+          "helpText": "First day feelings, classroom details, or what surprised you.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "school_days.early_memories"
+        },
+        {
+          "questionId": "q_school_people",
+          "prompt": "Which teachers or friends had the biggest impact on you?",
+          "helpText": "Share names if you want, and what made them memorable.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "school_days.people"
+        },
+        {
+          "questionId": "q_school_lessons",
+          "prompt": "What lessons from those years stayed with you?",
+          "helpText": "These can be academic, personal, or life lessons.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "school_days.lessons"
+        }
+      ]
+    },
+    "slotMap": {
+      "origins.family_roots": {
+        "chapterKey": "ch_origins",
+        "questionId": "q_origins_where_family_from",
+        "slotPath": "chapters.origins.family_roots"
+      },
+      "origins.birth_place_story": {
+        "chapterKey": "ch_origins",
+        "questionId": "q_origins_birth_place",
+        "slotPath": "chapters.origins.birth_place_story"
+      },
+      "origins.early_family": {
+        "chapterKey": "ch_origins",
+        "questionId": "q_origins_family_members",
+        "slotPath": "chapters.origins.early_family"
+      },
+      "childhood_home.description": {
+        "chapterKey": "ch_childhood_home",
+        "questionId": "q_home_house_description",
+        "slotPath": "chapters.childhood_home.description"
+      },
+      "childhood_home.neighborhood": {
+        "chapterKey": "ch_childhood_home",
+        "questionId": "q_home_neighborhood",
+        "slotPath": "chapters.childhood_home.neighborhood"
+      },
+      "childhood_home.daily_routine": {
+        "chapterKey": "ch_childhood_home",
+        "questionId": "q_home_daily_routine",
+        "slotPath": "chapters.childhood_home.daily_routine"
+      },
+      "school_days.early_memories": {
+        "chapterKey": "ch_school_days",
+        "questionId": "q_school_first_memories",
+        "slotPath": "chapters.school_days.early_memories"
+      },
+      "school_days.people": {
+        "chapterKey": "ch_school_days",
+        "questionId": "q_school_people",
+        "slotPath": "chapters.school_days.people"
+      },
+      "school_days.lessons": {
+        "chapterKey": "ch_school_days",
+        "questionId": "q_school_lessons",
+        "slotPath": "chapters.school_days.lessons"
+      }
+    }
+  },
+  {
+    "templateId": "tpl_love_family_v2",
+    "version": 2,
+    "title": "Love & Family",
+    "subtitle": "Capture the moments, milestones, and values that shaped your family life.",
+    "isActive": true,
+    "chapters": [
+      {
+        "chapterKey": "ch_how_we_met",
+        "title": "How We Met",
+        "subtitle": "The beginning of a relationship story"
+      },
+      {
+        "chapterKey": "ch_building_home",
+        "title": "Building a Home",
+        "subtitle": "Starting a shared life and home routines"
+      },
+      {
+        "chapterKey": "ch_family_lessons",
+        "title": "Family Lessons",
+        "subtitle": "Values, traditions, and wisdom passed forward"
+      }
+    ],
+    "questionFlow": {
+      "ch_how_we_met": [
+        {
+          "questionId": "q_met_when_where",
+          "prompt": "How and where did you meet?",
+          "helpText": "Tell the story in your own words, including your first impressions.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "how_we_met.story"
+        },
+        {
+          "questionId": "q_met_early_days",
+          "prompt": "What were the early days of your relationship like?",
+          "helpText": "Dates, conversations, challenges, or funny memories.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "how_we_met.early_days"
+        },
+        {
+          "questionId": "q_met_turning_point",
+          "prompt": "Was there a turning point when you knew this relationship mattered deeply?",
+          "helpText": "A specific moment, decision, or realization.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "how_we_met.turning_point"
+        }
+      ],
+      "ch_building_home": [
+        {
+          "questionId": "q_home_first_home",
+          "prompt": "What was your first home together like?",
+          "helpText": "Describe the place, the mood, and what made it feel like home.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "building_home.first_home"
+        },
+        {
+          "questionId": "q_home_family_routines",
+          "prompt": "What routines or traditions defined your family life?",
+          "helpText": "Meals, holidays, weekend habits, or special sayings.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "building_home.routines"
+        },
+        {
+          "questionId": "q_home_hard_times",
+          "prompt": "How did your family handle difficult seasons together?",
+          "helpText": "Share strengths, support systems, or lessons learned.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "building_home.hard_times"
+        }
+      ],
+      "ch_family_lessons": [
+        {
+          "questionId": "q_lessons_values",
+          "prompt": "What values mattered most in your family?",
+          "helpText": "Examples often make this easier: what did you teach by doing?",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "family_lessons.values"
+        },
+        {
+          "questionId": "q_lessons_advice",
+          "prompt": "What advice or wisdom would you want future generations to remember?",
+          "helpText": "This can be practical, emotional, or spiritual.",
+          "required": true,
+          "inputType": "textarea",
+          "slotKey": "family_lessons.advice"
+        },
+        {
+          "questionId": "q_lessons_gratitude",
+          "prompt": "Who or what are you most grateful for in your family story?",
+          "helpText": "A person, a moment, or a season of life.",
+          "required": false,
+          "inputType": "textarea",
+          "slotKey": "family_lessons.gratitude"
+        }
+      ]
+    },
+    "slotMap": {
+      "how_we_met.story": {
+        "chapterKey": "ch_how_we_met",
+        "questionId": "q_met_when_where",
+        "slotPath": "chapters.how_we_met.story"
+      },
+      "how_we_met.early_days": {
+        "chapterKey": "ch_how_we_met",
+        "questionId": "q_met_early_days",
+        "slotPath": "chapters.how_we_met.early_days"
+      },
+      "how_we_met.turning_point": {
+        "chapterKey": "ch_how_we_met",
+        "questionId": "q_met_turning_point",
+        "slotPath": "chapters.how_we_met.turning_point"
+      },
+      "building_home.first_home": {
+        "chapterKey": "ch_building_home",
+        "questionId": "q_home_first_home",
+        "slotPath": "chapters.building_home.first_home"
+      },
+      "building_home.routines": {
+        "chapterKey": "ch_building_home",
+        "questionId": "q_home_family_routines",
+        "slotPath": "chapters.building_home.routines"
+      },
+      "building_home.hard_times": {
+        "chapterKey": "ch_building_home",
+        "questionId": "q_home_hard_times",
+        "slotPath": "chapters.building_home.hard_times"
+      },
+      "family_lessons.values": {
+        "chapterKey": "ch_family_lessons",
+        "questionId": "q_lessons_values",
+        "slotPath": "chapters.family_lessons.values"
+      },
+      "family_lessons.advice": {
+        "chapterKey": "ch_family_lessons",
+        "questionId": "q_lessons_advice",
+        "slotPath": "chapters.family_lessons.advice"
+      },
+      "family_lessons.gratitude": {
+        "chapterKey": "ch_family_lessons",
+        "questionId": "q_lessons_gratitude",
+        "slotPath": "chapters.family_lessons.gratitude"
+      }
+    }
+  }
+]
