@@ -60,7 +60,7 @@ export type GuidedChapterAnswer = {
   chapterInstanceId: string;
   questionId: string;
   answerText: string | null;
-  answerJson: unknown | null;
+  answerJson: unknown;
   sttMeta: {
     provider: "groq" | "elevenlabs";
     confidence?: number | null;
@@ -337,7 +337,7 @@ export async function upsertGuidedChapterAnswerForUser(
     chapterInstanceId: string;
     questionId: string;
     answerText?: string | null;
-    answerJson?: unknown | null;
+    answerJson?: unknown;
     sttMeta?: GuidedChapterAnswer["sttMeta"];
     audioRef?: string | null;
     skipped?: boolean;

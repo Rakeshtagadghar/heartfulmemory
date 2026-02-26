@@ -29,14 +29,14 @@ export function resolveNextChapterRoute(input: NextChapterRouteInput) {
     };
   }
 
-  if (!input.latestDraft || input.latestDraft.status !== "ready") {
+  if (input.latestDraft?.status !== "ready") {
     return {
       kind: "draft" as const,
       href: `/book/${input.storybookId}/chapters/${chapter.id}/draft`
     };
   }
 
-  if (!input.latestIllustration || input.latestIllustration.status !== "ready") {
+  if (input.latestIllustration?.status !== "ready") {
     return {
       kind: "illustrations" as const,
       href: `/book/${input.storybookId}/chapters/${chapter.id}/illustrations`

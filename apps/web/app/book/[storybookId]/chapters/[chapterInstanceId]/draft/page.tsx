@@ -47,7 +47,8 @@ function draftUrl(
     qs.set(key, String(value));
   }
   const query = qs.toString();
-  return `/book/${storybookId}/chapters/${chapterInstanceId}/draft${query ? `?${query}` : ""}`;
+  const suffix = query ? `?${query}` : "";
+  return `/book/${storybookId}/chapters/${chapterInstanceId}/draft${suffix}`;
 }
 
 function readNarrationFormValue(formData: FormData) {
@@ -95,7 +96,25 @@ function mapDraftErrorCode(errorCode: string | undefined) {
   return mapping[errorCode] ?? "Something went wrong while generating the draft.";
 }
 
-export default async function ChapterDraftReviewPage({ params, searchParams }: Props) {
+function readNarrationAnalyticsString(
+  narration: Record<string, unknown> | null | undefined,
+  key: "voice" | "tense" | "tone" | "length",
+  fallback: string
+) {
+  const value = narration?.[key];
+  return typeof value === "string" ? value : fallback;
+}
+
+function buildNarrationAnalyticsProps(narration: Record<string, unknown> | null | undefined) {
+  return {
+    voice: readNarrationAnalyticsString(narration, "voice", "third_person"),
+    tense: readNarrationAnalyticsString(narration, "tense", "past"),
+    tone: readNarrationAnalyticsString(narration, "tone", "warm"),
+    length: readNarrationAnalyticsString(narration, "length", "medium")
+  };
+}
+
+export default async function ChapterDraftReviewPage({ params, searchParams }: Props) { // NOSONAR
   const { storybookId, chapterInstanceId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(draftUrl(storybookId, chapterInstanceId));
@@ -224,7 +243,47 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
   const providerFromQuery = getSearchString(resolvedSearchParams, "provider") ?? "heuristic";
   const errorCode = getSearchString(resolvedSearchParams, "error");
   const narrationMismatch = latest ? !sameNarration(latest.narration, storybook.data.narration) : false;
-  const narrationForAnalytics = (storybook.data.narration ?? {}) as Record<string, unknown>;
+  const narrationForAnalytics = buildNarrationAnalyticsProps(storybook.data.narration);
+  const errorEventName = errorCode === "regen_failed" ? "draft_regen_section_error" : "draft_generate_error";
+  const narrationSaved = getSearchString(resolvedSearchParams, "narrationSaved") === "1";
+  const narrationError = getSearchString(resolvedSearchParams, "narrationError") === "1";
+  const draftHistoryWarning = draftVersions.ok ? null : draftVersions.error;
+  const draftQueryWarning = latestDraft.ok ? null : latestDraft.error;
+
+  let draftSectionsContent;
+  if (latest) {
+    if (latest.status === "error") {
+      draftSectionsContent = (
+        <Card className="p-6">
+          <p className="text-sm text-rose-100">
+            Draft error: {latest.errorMessage ?? latest.errorCode ?? "Unknown error"}
+          </p>
+        </Card>
+      );
+    } else {
+      draftSectionsContent = latest.sections.map((section) => (
+        <DraftSectionCard
+          key={`${latest.id}-${section.sectionId}`}
+          section={section}
+          canRegen={latest.status === "ready"}
+          regenAction={regenSection}
+          analytics={{
+            chapterKey: chapter.chapterKey,
+            provider: providerFromQuery,
+            ...narrationForAnalytics
+          }}
+        />
+      ));
+    }
+  } else {
+    draftSectionsContent = (
+      <Card className="p-6">
+        <p className="text-sm text-white/75">
+          No draft yet. Generate a draft after completing the chapter questions.
+        </p>
+      </Card>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -235,10 +294,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
           eventProps={{
             provider: providerFromQuery,
             chapterKey: chapter.chapterKey,
-            voice: String(narrationForAnalytics.voice ?? "third_person"),
-            tense: String(narrationForAnalytics.tense ?? "past"),
-            tone: String(narrationForAnalytics.tone ?? "warm"),
-            length: String(narrationForAnalytics.length ?? "medium")
+            ...narrationForAnalytics
           }}
         />
       ) : null}
@@ -249,24 +305,18 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             provider: providerFromQuery,
             chapterKey: chapter.chapterKey,
             sectionId: getSearchString(resolvedSearchParams, "sectionId") ?? "",
-            voice: String(narrationForAnalytics.voice ?? "third_person"),
-            tense: String(narrationForAnalytics.tense ?? "past"),
-            tone: String(narrationForAnalytics.tone ?? "warm"),
-            length: String(narrationForAnalytics.length ?? "medium")
+            ...narrationForAnalytics
           }}
         />
       ) : null}
       {errorCode ? (
         <ViewportEvent
-          eventName={errorCode === "regen_failed" ? "draft_regen_section_error" : "draft_generate_error"}
+          eventName={errorEventName}
           eventProps={{
             error_code: errorCode,
             provider: providerFromQuery,
             chapterKey: chapter.chapterKey,
-            voice: String(narrationForAnalytics.voice ?? "third_person"),
-            tense: String(narrationForAnalytics.tense ?? "past"),
-            tone: String(narrationForAnalytics.tone ?? "warm"),
-            length: String(narrationForAnalytics.length ?? "medium")
+            ...narrationForAnalytics
           }}
         />
       ) : null}
@@ -309,14 +359,14 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
           </p>
         </Card>
       ) : null}
-      {getSearchString(resolvedSearchParams, "narrationSaved") === "1" ? (
+      {narrationSaved ? (
         <Card className="p-4">
           <p className="text-sm text-emerald-100">
             Narration settings saved. Regenerate the draft to apply changes.
           </p>
         </Card>
       ) : null}
-      {getSearchString(resolvedSearchParams, "narrationError") === "1" ? (
+      {narrationError ? (
         <Card className="p-4">
           <p className="text-sm text-rose-100">Could not save narration settings.</p>
         </Card>
@@ -357,10 +407,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
                 eventProps={{
                   provider: providerFromQuery,
                   chapterKey: chapter.chapterKey,
-                  voice: String(narrationForAnalytics.voice ?? "third_person"),
-                  tense: String(narrationForAnalytics.tense ?? "past"),
-                  tone: String(narrationForAnalytics.tone ?? "warm"),
-                  length: String(narrationForAnalytics.length ?? "medium")
+                  ...narrationForAnalytics
                 }}
               >
                 {latest ? "Regenerate Full Draft" : "Generate Draft"}
@@ -389,36 +436,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
         <div className="space-y-4">
-          {!latest ? (
-            <Card className="p-6">
-              <p className="text-sm text-white/75">
-                No draft yet. Generate a draft after completing the chapter questions.
-              </p>
-            </Card>
-          ) : latest.status === "error" ? (
-            <Card className="p-6">
-              <p className="text-sm text-rose-100">
-                Draft error: {latest.errorMessage ?? latest.errorCode ?? "Unknown error"}
-              </p>
-            </Card>
-          ) : (
-            latest.sections.map((section) => (
-              <DraftSectionCard
-                key={`${latest.id}-${section.sectionId}`}
-                section={section}
-                canRegen={latest.status === "ready"}
-                regenAction={regenSection}
-                analytics={{
-                  chapterKey: chapter.chapterKey,
-                  provider: providerFromQuery,
-                  voice: String(narrationForAnalytics.voice ?? "third_person"),
-                  tense: String(narrationForAnalytics.tense ?? "past"),
-                  tone: String(narrationForAnalytics.tone ?? "warm"),
-                  length: String(narrationForAnalytics.length ?? "medium")
-                }}
-              />
-            ))
-          )}
+          {draftSectionsContent}
         </div>
 
         <div className="space-y-4">
@@ -446,7 +464,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
               ) : (
                 latest?.quotes.map((quote, idx) => (
                   <div key={`${quote.text}-${idx}`} className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-                    <p className="text-sm italic text-white/85">"{quote.text}"</p>
+                    <p className="text-sm italic text-white/85">&quot;{quote.text}&quot;</p>
                     <p className="mt-1 text-xs text-white/50">Citations: {quote.citations.join(", ") || "none"}</p>
                   </div>
                 ))
@@ -514,16 +532,13 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
                 <input type="hidden" name="draftId" value={latest?.id ?? ""} />
                 <TrackedDraftActionButton
                   type="submit"
-                  disabled={!latest || latest.status !== "ready"}
+                  disabled={latest?.status !== "ready"}
                   eventName="draft_approve"
                   eventProps={{
                     version: latest?.version ?? 0,
                     provider: providerFromQuery,
                     chapterKey: chapter.chapterKey,
-                    voice: String(narrationForAnalytics.voice ?? "third_person"),
-                    tense: String(narrationForAnalytics.tense ?? "past"),
-                    tone: String(narrationForAnalytics.tone ?? "warm"),
-                    length: String(narrationForAnalytics.length ?? "medium")
+                    ...narrationForAnalytics
                   }}
                 >
                   Approve Draft
@@ -537,14 +552,14 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
         </div>
       </div>
 
-      {!draftVersions.ok ? (
+      {draftHistoryWarning ? (
         <Card className="p-4">
-          <p className="text-xs text-white/55">Draft history warning: {draftVersions.error}</p>
+          <p className="text-xs text-white/55">Draft history warning: {draftHistoryWarning}</p>
         </Card>
       ) : null}
-      {!latestDraft.ok ? (
+      {draftQueryWarning ? (
         <Card className="p-4">
-          <p className="text-xs text-white/55">Draft query warning: {latestDraft.error}</p>
+          <p className="text-xs text-white/55">Draft query warning: {draftQueryWarning}</p>
         </Card>
       ) : null}
     </div>

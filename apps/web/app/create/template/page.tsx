@@ -48,6 +48,36 @@ export default async function CreateTemplatePage() {
     redirect(`/book/${created.data.storybookId}/chapters`);
   }
 
+  let templatesContent;
+  if (templatesResult.ok) {
+    if (templatesResult.data.length > 0) {
+      templatesContent = (
+        <div className="grid gap-5 lg:grid-cols-2">
+          {templatesResult.data.map((template) => (
+            <TemplateCard
+              key={template.templateId}
+              template={template}
+              clientRequestId={createClientRequestId(`template_${template.templateId}`)}
+              action={startTemplateFlow}
+            />
+          ))}
+        </div>
+      );
+    } else {
+      templatesContent = (
+        <Card className="p-6">
+          <p className="text-sm text-white/75">No active templates found yet.</p>
+        </Card>
+      );
+    }
+  } else {
+    templatesContent = (
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load templates: {templatesResult.error}</p>
+      </Card>
+    );
+  }
+
   return (
     <AppShell email={user.email} profile={profile}>
       <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
@@ -78,26 +108,7 @@ export default async function CreateTemplatePage() {
           </div>
         </Card>
 
-        {!templatesResult.ok ? (
-          <Card className="p-6">
-            <p className="text-sm text-rose-100">Could not load templates: {templatesResult.error}</p>
-          </Card>
-        ) : templatesResult.data.length === 0 ? (
-          <Card className="p-6">
-            <p className="text-sm text-white/75">No active templates found yet.</p>
-          </Card>
-        ) : (
-          <div className="grid gap-5 lg:grid-cols-2">
-            {templatesResult.data.map((template) => (
-              <TemplateCard
-                key={template.templateId}
-                template={template}
-                clientRequestId={createClientRequestId(`template_${template.templateId}`)}
-                action={startTemplateFlow}
-              />
-            ))}
-          </div>
-        )}
+        {templatesContent}
       </div>
     </AppShell>
   );

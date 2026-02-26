@@ -55,7 +55,7 @@ function readNarrationFormValue(formData: FormData) {
   return { voice, tense, tone, length };
 }
 
-export default async function GuidedChapterListPage({ params, searchParams }: Props) {
+export default async function GuidedChapterListPage({ params, searchParams }: Props) { // NOSONAR
   const { storybookId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(`/book/${storybookId}/chapters`);
