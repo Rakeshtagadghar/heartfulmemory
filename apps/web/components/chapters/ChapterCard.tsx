@@ -42,7 +42,7 @@ export function ChapterCard({
           <h3 className="text-lg font-semibold text-parchment">{chapter.title}</h3>
           <p className="text-sm text-white/65">
             Progress: {answeredCount}/{totalQuestions}
-            {typeof progress?.requiredQuestions === "number" ? ` â€¢ Required ${progress.requiredQuestions}` : ""}
+            {typeof progress?.requiredQuestions === "number" ? ` • Required ${progress.requiredQuestions}` : ""}
           </p>
         </div>
 
@@ -55,14 +55,24 @@ export function ChapterCard({
           </ButtonLink>
 
           {chapter.status === "completed" ? (
-            <TrackedLink
-              href={`/studio/${storybookId}?chapter=${chapter.id}`}
-              eventName="open_studio_from_chapter"
-              eventProps={{ chapterKey: chapter.chapterKey }}
-              className="text-xs font-semibold text-cyan-100 hover:text-cyan-50"
-            >
-              Open in Studio
-            </TrackedLink>
+            <div className="flex flex-col items-start gap-1 sm:items-end">
+              <TrackedLink
+                href={`/book/${storybookId}/chapters/${chapter.id}/draft`}
+                eventName="draft_review_open"
+                eventProps={{ chapterKey: chapter.chapterKey }}
+                className="text-xs font-semibold text-gold hover:text-[#e6c77f]"
+              >
+                Review Draft
+              </TrackedLink>
+              <TrackedLink
+                href={`/studio/${storybookId}?chapter=${chapter.id}`}
+                eventName="open_studio_from_chapter"
+                eventProps={{ chapterKey: chapter.chapterKey }}
+                className="text-xs font-semibold text-cyan-100 hover:text-cyan-50"
+              >
+                Open in Studio
+              </TrackedLink>
+            </div>
           ) : (
             <span className="text-xs text-white/35">Complete chapter to open in Studio</span>
           )}
@@ -71,3 +81,4 @@ export function ChapterCard({
     </Card>
   );
 }
+

@@ -127,6 +127,88 @@ export default defineSchema({
     .index("by_chapterInstanceId_questionId", ["chapterInstanceId", "questionId"])
     .index("by_storybookId", ["storybookId"])
     .index("by_chapterInstanceId", ["chapterInstanceId"]),
+  chapterDrafts: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    chapterKey: v.string(),
+    version: v.number(),
+    status: v.union(v.literal("generating"), v.literal("ready"), v.literal("error")),
+    narration: v.object({
+      voice: v.union(v.literal("first_person"), v.literal("third_person")),
+      tense: v.union(v.literal("past"), v.literal("present")),
+      tone: v.union(v.literal("warm"), v.literal("formal"), v.literal("playful"), v.literal("poetic")),
+      length: v.union(v.literal("short"), v.literal("medium"), v.literal("long"))
+    }),
+    sections: v.array(
+      v.object({
+        sectionId: v.string(),
+        title: v.string(),
+        text: v.string(),
+        wordCount: v.number(),
+        citations: v.array(v.string()),
+        uncertain: v.optional(v.boolean())
+      })
+    ),
+    summary: v.string(),
+    keyFacts: v.array(
+      v.object({
+        text: v.string(),
+        citations: v.array(v.string()),
+        uncertain: v.optional(v.boolean())
+      })
+    ),
+    quotes: v.array(
+      v.object({
+        text: v.string(),
+        speaker: v.optional(v.string()),
+        citations: v.array(v.string()),
+        uncertain: v.optional(v.boolean())
+      })
+    ),
+    entities: v.object({
+      people: v.array(v.string()),
+      places: v.array(v.string()),
+      dates: v.array(v.string())
+    }),
+    imageIdeas: v.array(
+      v.object({
+        query: v.string(),
+        reason: v.string(),
+        slotHint: v.optional(v.string())
+      })
+    ),
+    sourceAnswerIds: v.array(v.string()),
+    warnings: v.optional(
+      v.array(
+        v.object({
+          code: v.string(),
+          message: v.string(),
+          severity: v.union(v.literal("info"), v.literal("warning"), v.literal("error")),
+          sectionId: v.optional(v.string())
+        })
+      )
+    ),
+    generationScope: v.optional(
+      v.union(
+        v.object({
+          kind: v.literal("full")
+        }),
+        v.object({
+          kind: v.literal("section"),
+          targetSectionId: v.string()
+        })
+      )
+    ),
+    errorCode: v.optional(v.union(v.string(), v.null())),
+    errorMessage: v.optional(v.union(v.string(), v.null())),
+    approvedAt: v.optional(v.union(v.number(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_storybookId", ["storybookId"])
+    .index("by_chapterInstanceId", ["chapterInstanceId"])
+    .index("by_storybookId_chapterKey", ["storybookId", "chapterKey"])
+    .index("by_chapterInstanceId_version", ["chapterInstanceId", "version"]),
   pages: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),

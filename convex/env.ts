@@ -1,4 +1,5 @@
 import { getSttConfig } from "../lib/config/stt";
+import { getAiConfig } from "../lib/config/ai";
 
 function readRawEnv(name: string) {
   const maybeProcess = globalThis as typeof globalThis & {
@@ -23,4 +24,8 @@ export function getConvexSttEnv() {
     elevenLabsApiKey: readEnv("ELEVENLABS_API_KEY"),
     actionTimeoutMs: Number.parseInt(readRawEnv("STT_ACTION_TIMEOUT_MS") ?? "45000", 10) || 45000
   };
+}
+
+export function getConvexAiEnv() {
+  return getAiConfig();
 }

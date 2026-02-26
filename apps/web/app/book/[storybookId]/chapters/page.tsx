@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { ChapterCard } from "../../../../components/chapters/ChapterCard";
-import { NarrationSettings } from "../../../../components/create/NarrationSettings";
+import { NarrationSettingsPanel } from "../../../../components/story/NarrationSettingsPanel";
 import { TrackedLink } from "../../../../components/tracked-link";
 import { ViewportEvent } from "../../../../components/viewport-event";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
@@ -121,7 +121,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
               <h1 className="mt-2 font-display text-3xl text-parchment sm:text-4xl">{storybook.data.title}</h1>
               <p className="mt-2 text-sm text-white/70">
                 {storybook.data.templateTitle ?? "Freeform story"}
-                {storybook.data.templateSubtitle ? ` â€¢ ${storybook.data.templateSubtitle}` : ""}
+                {storybook.data.templateSubtitle ? ` • ${storybook.data.templateSubtitle}` : ""}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -204,7 +204,11 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
         </Card>
       ) : null}
 
-      <NarrationSettings narration={storybook.data.narration} action={saveNarrationSettings} />
+      <NarrationSettingsPanel
+        narration={storybook.data.narration}
+        action={saveNarrationSettings}
+        subtitle="These settings are applied when generating chapter drafts in Sprint 19."
+      />
 
       {!storybook.data.templateId ? (
         <Card className="p-4">
@@ -243,3 +247,4 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
     </div>
   );
 }
+

@@ -8,10 +8,13 @@
  * @module
  */
 
+import type * as ai_chapterDrafts from "../ai/chapterDrafts.js";
+import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
 import type * as blocks from "../blocks.js";
 import type * as chapterAnswers from "../chapterAnswers.js";
+import type * as chapterDrafts from "../chapterDrafts.js";
 import type * as chapters from "../chapters.js";
 import type * as env from "../env.js";
 import type * as exports from "../exports.js";
@@ -32,10 +35,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "ai/chapterDrafts": typeof ai_chapterDrafts;
+  "ai/rateLimit": typeof ai_rateLimit;
   assets: typeof assets;
   authz: typeof authz;
   blocks: typeof blocks;
   chapterAnswers: typeof chapterAnswers;
+  chapterDrafts: typeof chapterDrafts;
   chapters: typeof chapters;
   env: typeof env;
   exports: typeof exports;

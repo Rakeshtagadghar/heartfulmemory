@@ -1,4 +1,4 @@
-import { anyApi, convexMutation, convexQuery, getConvexUrl } from "../convex/ops";
+import { anyApi, convexAction, convexMutation, convexQuery, getConvexUrl } from "../convex/ops";
 import type {
   GuidedTemplateSummary,
   GuidedTemplateV2
@@ -100,6 +100,43 @@ export type GuidedNarrationSettings = {
   tone: "warm" | "formal" | "playful" | "poetic";
   length: "short" | "medium" | "long";
 };
+
+export type ChapterDraftSection = {
+  sectionId: string;
+  title: string;
+  text: string;
+  wordCount: number;
+  citations: string[];
+  uncertain?: boolean;
+};
+
+export type ChapterDraftRecord = {
+  id: string;
+  storybookId: string;
+  chapterInstanceId: string;
+  chapterKey: string;
+  version: number;
+  status: "generating" | "ready" | "error";
+  narration: GuidedNarrationSettings;
+  sections: ChapterDraftSection[];
+  summary: string;
+  keyFacts: Array<{ text: string; citations: string[]; uncertain?: boolean }>;
+  quotes: Array<{ text: string; speaker?: string; citations: string[]; uncertain?: boolean }>;
+  entities: { people: string[]; places: string[]; dates: string[] };
+  imageIdeas: Array<{ query: string; reason: string; slotHint?: string }>;
+  sourceAnswerIds: string[];
+  warnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>;
+  generationScope: { kind: "full" } | { kind: "section"; targetSectionId: string } | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  approvedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type ChapterDraftActionResult =
+  | { ok: true; draft: ChapterDraftRecord; provider: string }
+  | { ok: false; errorCode: string; message: string; retryable?: boolean };
 
 export async function listActiveGuidedTemplates(): Promise<DataResult<GuidedTemplateForCreate[]>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
@@ -244,5 +281,74 @@ export async function updateGuidedNarrationForUser(
       narration
     }
   );
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function getLatestChapterDraftForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterDraftRecord | null>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterDraftRecord | null>(anyApi.chapterDrafts.getLatestByChapter, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function listChapterDraftVersionsForUser(
+  viewerSubject: string,
+  chapterInstanceId: string
+): Promise<DataResult<ChapterDraftRecord[]>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<ChapterDraftRecord[]>(anyApi.chapterDrafts.listByChapter, {
+    viewerSubject,
+    chapterInstanceId
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function generateChapterDraftForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string }
+): Promise<DataResult<ChapterDraftActionResult>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { generate: unknown }>)[
+    "ai/chapterDrafts"
+  ];
+  const result = await convexAction<ChapterDraftActionResult>(aiChapterDraftsApi.generate, {
+    viewerSubject,
+    ...input
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function regenChapterDraftSectionForUser(
+  viewerSubject: string,
+  input: { storybookId: string; chapterInstanceId: string; sectionId: string }
+): Promise<DataResult<ChapterDraftActionResult & { regeneratedSectionId?: string }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const aiChapterDraftsApi = (anyApi as unknown as Record<string, { regenSection: unknown }>)[
+    "ai/chapterDrafts"
+  ];
+  const result = await convexAction<ChapterDraftActionResult & { regeneratedSectionId?: string }>(
+    aiChapterDraftsApi.regenSection,
+    {
+      viewerSubject,
+      ...input
+    }
+  );
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function approveChapterDraftForUser(
+  viewerSubject: string,
+  draftId: string
+): Promise<DataResult<{ ok: true; draftId: string; approvedAt: number }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true; draftId: string; approvedAt: number }>(anyApi.chapterDrafts.approve, {
+    viewerSubject,
+    draftId
+  });
   return result.ok ? result : { ok: false, error: result.error };
 }
