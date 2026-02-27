@@ -1,39 +1,103 @@
 import { NextResponse } from "next/server";
-import { anyApi, convexQuery } from "../../../../lib/convex/ops";
+import type Stripe from "stripe";
+import { anyApi, convexMutation, convexQuery } from "../../../../lib/convex/ops";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
+import { getStripeClientForBilling } from "../../../../lib/stripe/stripeClientFactory";
+import { mapStripeSubscriptionForUpsert } from "../../../../lib/stripe/webhookMapper";
 
 export const runtime = "nodejs";
 
+type EntitlementsResponseData = {
+  customer?: {
+    stripeCustomerId: string;
+  } | null;
+  entitlements: {
+    planId: "free" | "pro";
+    subscriptionStatus: "none" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+    canExportDigital: boolean;
+    canExportHardcopy: boolean;
+    exportsRemaining: number | null;
+  };
+  subscription: {
+    stripeSubscriptionId: string;
+    planId: string;
+    status: string;
+    currentPeriodStart: number | null;
+    currentPeriodEnd: number | null;
+    cancelAtPeriodEnd: boolean;
+  } | null;
+  usage?: {
+    used: number;
+    periodStart: number;
+    periodEnd: number;
+    periodSource: "subscription" | "calendar";
+  };
+};
+
+function pickSubscriptionForRecovery(subscriptions: Stripe.Subscription[]) {
+  if (subscriptions.length === 0) return null;
+  const statusRank: Record<string, number> = {
+    active: 5,
+    trialing: 4,
+    past_due: 3,
+    unpaid: 2,
+    incomplete: 1,
+    canceled: 0
+  };
+  return subscriptions
+    .slice()
+    .sort((a, b) => {
+      const rankA = statusRank[a.status] ?? 0;
+      const rankB = statusRank[b.status] ?? 0;
+      if (rankA !== rankB) return rankB - rankA;
+      return b.created - a.created;
+    })[0] ?? null;
+}
+
+async function tryRecoverSubscription(userId: string, stripeCustomerId: string) {
+  const stripeFactory = getStripeClientForBilling();
+  if (!stripeFactory.ok) return;
+
+  const stripeSubscriptions = await stripeFactory.stripe.subscriptions.list({
+    customer: stripeCustomerId,
+    status: "all",
+    limit: 10
+  });
+  const candidate = pickSubscriptionForRecovery(stripeSubscriptions.data);
+  if (!candidate) return;
+
+  const mapped = mapStripeSubscriptionForUpsert({
+    subscription: candidate,
+    fallbackUserId: userId
+  });
+  if (!mapped) return;
+
+  await convexMutation(anyApi.billing.upsertSubscriptionFromStripeInternal, {
+    stripeEventType: "billing.entitlements.recovery",
+    ...mapped
+  });
+}
+
 export async function GET() {
   const user = await requireAuthenticatedUser("/app");
-  const result = await convexQuery<{
-    entitlements: {
-      planId: "free" | "pro";
-      subscriptionStatus: "none" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
-      canExportDigital: boolean;
-      canExportHardcopy: boolean;
-      exportsRemaining: number | null;
-    };
-    subscription: {
-      stripeSubscriptionId: string;
-      planId: string;
-      status: string;
-      currentPeriodStart: number | null;
-      currentPeriodEnd: number | null;
-      cancelAtPeriodEnd: boolean;
-    } | null;
-    usage?: {
-      used: number;
-      periodStart: number;
-      periodEnd: number;
-      periodSource: "subscription" | "calendar";
-    };
-  }>(anyApi.billing.getEntitlementsForViewer, {
+  let result = await convexQuery<EntitlementsResponseData>(anyApi.billing.getEntitlementsForViewer, {
     viewerSubject: user.id
   });
 
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
   }
+
+  const stripeCustomerId = result.data.customer?.stripeCustomerId ?? null;
+  if (!result.data.subscription && stripeCustomerId) {
+    await tryRecoverSubscription(user.id, stripeCustomerId);
+    result = await convexQuery<EntitlementsResponseData>(anyApi.billing.getEntitlementsForViewer, {
+      viewerSubject: user.id
+    });
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({ ok: true, data: result.data });
 }
