@@ -21,21 +21,38 @@ export function PlanStatusBanner({ compact = false }: { compact?: boolean }) {
     ? "border-emerald-300/30 bg-emerald-500/10 text-emerald-100"
     : "border-amber-300/30 bg-amber-500/10 text-amber-100";
   const wrapperClassName = compact
-    ? "flex flex-wrap items-center gap-2 text-[11px]"
+    ? "flex items-center gap-2 whitespace-nowrap text-[11px]"
     : "mt-3 flex flex-wrap items-center gap-2 text-xs";
 
   return (
     <>
       <div className={wrapperClassName}>
-        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-semibold uppercase tracking-[0.14em] ${labelClassName}`}>
-          {isPro ? "Pro" : "Free"}
-        </span>
-        <span className="text-white/70">{quotaLabel(data.quota)}</span>
-        {data.billingMode === "test" ? (
-          <span className="rounded-full border border-cyan-300/30 bg-cyan-500/10 px-2 py-0.5 text-cyan-100">
-            Payments sandbox
+        <div className="group relative">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-semibold uppercase tracking-[0.14em] ${labelClassName}`}
+          >
+            {isPro ? "Pro" : "Free"}
+            {data.billingMode === "test" ? (
+              <svg
+                viewBox="0 0 24 24"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-label="Payments sandbox"
+              >
+                <path d="M10 3h4" />
+                <path d="M10 3v4l-4.5 8.2A4 4 0 0 0 9 21h6a4 4 0 0 0 3.5-5.8L14 7V3" />
+                <path d="M8.5 14h7" />
+              </svg>
+            ) : null}
           </span>
-        ) : null}
+          <span className="pointer-events-none absolute left-1/2 top-[calc(100%+6px)] z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/10 bg-[#0a111d]/95 px-2 py-1 text-[10px] text-white/90 opacity-0 shadow-lg transition group-hover:opacity-100">
+            {quotaLabel(data.quota)}
+          </span>
+        </div>
         {isPro ? (
           <>
             <Link href="/app/account/billing" className="rounded-lg border border-white/20 bg-white/[0.03] px-2 py-1 text-white/85 hover:bg-white/[0.06]">
@@ -59,4 +76,3 @@ export function PlanStatusBanner({ compact = false }: { compact?: boolean }) {
     </>
   );
 }
-

@@ -1897,6 +1897,9 @@ export function Editor2Shell({// NOSONAR
                   }, "start")
                 }
               />
+              <div className="hidden lg:block">
+                <PlanStatusBanner compact />
+              </div>
               <div ref={userMenuRef} className="relative ml-1">
                 <button
                   type="button"
@@ -1961,9 +1964,6 @@ export function Editor2Shell({// NOSONAR
                 ) : null}
               </div>
             </div>
-          </div>
-          <div className="relative border-t border-white/10 px-3 py-2 sm:px-4">
-            <PlanStatusBanner compact />
           </div>
         </div>
       </div>
