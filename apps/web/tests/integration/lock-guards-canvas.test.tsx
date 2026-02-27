@@ -77,4 +77,20 @@ describe("lock guard interactions in canvas frame renderer", () => {
 
     expect(onStartTextEdit).not.toHaveBeenCalled();
   });
+
+  it("starts drag from the text frame surface on pointer down", () => {
+    const frame = buildFrame({
+      type: "TEXT",
+      locked: false,
+      content: { text: "Move me" },
+      style: {}
+    });
+    const { onDragStart, onSelect } = renderFrame(frame);
+
+    const textSurface = screen.getByRole("button", { name: /move.*edit text frame/i });
+    fireEvent.pointerDown(textSurface);
+
+    expect(onSelect).toHaveBeenCalled();
+    expect(onDragStart).toHaveBeenCalled();
+  });
 });

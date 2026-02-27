@@ -1,0 +1,482 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 17,
+      "title": "Template + Chapter Wizard v1 (Guided Story Flow)",
+      "duration": "1 week",
+      "goal": "Ship a guided story creation flow: user chooses Template or No-Template, sees chapter list, completes a per-chapter Q&A wizard (voice-ready but text-only OK for v1), progress is saved/resumable, and on chapter completion user is routed into Studio (population happens later).",
+      "definitionOfDone": [
+        "make sure the UI is visually polished and the flow is smooth and intuitive (especially for elders), visually appealing, stunning, modern, sleek, animated etc",
+        "Two creation paths exist: Template-guided and No-template",
+        "Template selection screen shows template cards + chapter previews",
+        "After selecting template, user sees a chapter list with statuses (Not started/In progress/Done)",
+        "Chapter wizard runs a question flow, supports save/resume, skip, back/next",
+        "All answers are persisted (per question) and can be edited before marking chapter complete",
+        "Chapter completion updates chapter status and unlocks 'Open in Studio' entry point",
+        "Routing: TemplateSelect -> ChapterList -> ChapterWizard -> Studio (stub populate hook)",
+        "Basic analytics events recorded for funnel steps",
+        "No regressions to Studio/editor/export functionality"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (queries/mutations/actions) + Convex Auth integration",
+      "storage": "Use existing storage strategy (no new media work this sprint)",
+      "editor": "Studio already shipped through Sprint 16; wizard will route into it"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S17-T01",
+      "title": "Define Convex data model + types and seed the 2 templates v2",
+      "skill": ["Architecture", "Convex", "Frontend Types"],
+      "priority": "P0",
+      "requirements": {
+        "convexTables": [
+          {
+            "name": "templates",
+            "fields": [
+              "id (Convex _id)",
+              "templateId (string, unique, e.g. tpl_childhood_roots_v2)",
+              "title",
+              "subtitle",
+              "templateJson (any/json)",
+              "isActive (boolean)",
+              "createdAt (number)"
+            ],
+            "indexes": ["by_templateId", "by_isActive"]
+          },
+          {
+            "name": "storybooks",
+            "fields": [
+              "id (Convex _id)",
+              "ownerUserId (string)",
+              "templateId (string|null)",
+              "title (string|null)",
+              "status ('draft'|'ready'|'published')",
+              "narration (object nullable)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_ownerUserId", "by_templateId"]
+          },
+          {
+            "name": "storybookChapters",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "chapterKey (string from template, e.g. ch_origins)",
+              "title",
+              "orderIndex (number)",
+              "status ('not_started'|'in_progress'|'completed')",
+              "completedAt (number|null)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": [
+              "by_storybookId",
+              "by_storybookId_orderIndex",
+              "by_storybookId_status"
+            ]
+          },
+          {
+            "name": "chapterAnswers",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "chapterInstanceId (Id<'storybookChapters'>)",
+              "questionId (string)",
+              "answerText (string|null)",
+              "answerJson (any/json|null)",
+              "skipped (boolean)",
+              "source ('text'|'voice')",
+              "version (number)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": [
+              "by_chapterInstanceId_questionId",
+              "by_storybookId",
+              "by_chapterInstanceId"
+            ]
+          }
+        ],
+        "authzRules": [
+          "templates: public read (isActive=true), write restricted to admin/dev",
+          "storybooks/storybookChapters/chapterAnswers: only ownerUserId can read/write"
+        ],
+        "seed": [
+          "Insert tpl_childhood_roots_v2 templateJson",
+          "Insert tpl_love_family_v2 templateJson"
+        ],
+        "constraints": [
+          "No breaking changes to existing Studio doc model",
+          "Template JSON includes chapters + questionFlow + slot map (from your earlier spec)"
+        ]
+      },
+      "acceptanceTests": [
+        "Convex schema compiles and tables/indexes exist",
+        "Two templates appear via query getActiveTemplates",
+        "Owner checks block cross-user access in queries/mutations"
+      ],
+      "deliverables": [
+        "convex/schema.ts (tables + indexes)",
+        "convex/templates.ts (seed + queries)",
+        "packages/shared/templates/templateTypes.ts (TS types)",
+        "docs/templates_v2.json (source of truth for seeding)"
+      ]
+    },
+    {
+      "id": "S17-T02",
+      "title": "Template selection screen (Template vs No-template) with chapter previews",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "routes": [
+          "/create (entry)",
+          "/create/template (template selection)",
+          "/create/freeform (no-template start)"
+        ],
+        "ui": [
+          "Template cards: title, subtitle, bullet list of chapters (like your screenshot)",
+          "CTA: Use Template",
+          "Secondary: Start without template"
+        ],
+        "data": [
+          "Fetch active templates from Convex query (templates.getActive)",
+          "Render chapter preview from templateJson"
+        ],
+        "constraints": [
+          "Mobile-first responsive cards",
+          "Skeleton loading + empty/error states"
+        ]
+      },
+      "acceptanceTests": [
+        "User can select a template and proceed",
+        "User can choose no-template path",
+        "Template cards show correct chapter bullets from templateJson"
+      ],
+      "deliverables": [
+        "app/create/page.tsx",
+        "app/create/template/page.tsx",
+        "app/create/freeform/page.tsx",
+        "components/create/TemplateCard.tsx"
+      ]
+    },
+    {
+      "id": "S17-T03",
+      "title": "Create storybook instance from template (instantiate chapters + statuses)",
+      "skill": ["Convex", "Backend logic", "Frontend Integration"],
+      "priority": "P0",
+      "requirements": {
+        "convexMutation": "storybooks.create",
+        "inputs": [
+          "templateId (string|null)",
+          "optionalTitle (string|null)",
+          "clientRequestId (string) for idempotency"
+        ],
+        "behavior": [
+          "Create storybook with ownerUserId from auth identity",
+          "If templateId: load templateJson, create storybookChapters in orderIndex",
+          "If freeform: create a default chapter (Chapter 1) OR create none and route to chapters screen with add-chapter stub"
+        ],
+        "constraints": [
+          "Idempotency: if same clientRequestId already used by this user, return existing storybookId",
+          "Return storybookId + instantiated chapters"
+        ]
+      },
+      "acceptanceTests": [
+        "Creating with template instantiates all chapters",
+        "Creating without template works and does not crash navigation",
+        "Non-owner cannot create chapters for someone else"
+      ],
+      "deliverables": [
+        "convex/storybooks.ts (create mutation + helpers)",
+        "convex/storybookChapters.ts (batch insert helper)",
+        "lib/createFlow/clientRequestId.ts"
+      ]
+    },
+    {
+      "id": "S17-T04",
+      "title": "Chapter list screen (progress + resume) for a storybook",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/book/{storybookId}/chapters",
+        "convexQueries": [
+          "storybooks.getById",
+          "storybookChapters.listByStorybook",
+          "chapterAnswers.progressByChapter (computed)"
+        ],
+        "ui": [
+          "Header: template name + story title",
+          "Chapter cards with status badge (Not started/In progress/Done)",
+          "CTA per chapter: Start / Resume / Review",
+          "Secondary CTA: Open in Studio (enabled when completed; routes with chapter context)"
+        ],
+        "behavior": [
+          "Start/Resume opens wizard at first unanswered required question",
+          "Progress indicator: answered/total"
+        ],
+        "constraints": [
+          "All status and progress must come from Convex (no only-client state)"
+        ]
+      },
+      "acceptanceTests": [
+        "Chapter statuses reflect persisted state",
+        "Resume opens correct step",
+        "Completed chapter shows Open in Studio"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/chapters/page.tsx",
+        "components/chapters/ChapterCard.tsx",
+        "convex/storybookChapters.ts (list query)",
+        "convex/chapterAnswers.ts (progress query)"
+      ]
+    },
+    {
+      "id": "S17-T05",
+      "title": "Chapter Wizard runner v1 (question flow engine + navigation)",
+      "skill": ["Frontend", "State Management"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/book/{storybookId}/chapters/{chapterInstanceId}/wizard",
+        "behavior": [
+          "Load template questionFlow for chapterKey (from templateJson)",
+          "Render one question per step",
+          "Controls: Back, Next, Skip, Save",
+          "Autosave on Next",
+          "Text input enabled; voice button can be placeholder for Sprint 18"
+        ],
+        "state": [
+          "currentStepIndex",
+          "answers cache",
+          "saving status",
+          "resumeIndex computed from persisted answers"
+        ],
+        "constraints": [
+          "Elder-friendly: big controls, clear question text, optional help text",
+          "Wizard must work even if user reloads the page mid-chapter"
+        ]
+      },
+      "acceptanceTests": [
+        "Wizard renders questions in correct order",
+        "Next/Back works and answers persist",
+        "Skip works and is persisted as skipped=true",
+        "Reloading resumes at the right step"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/chapters/[chapterInstanceId]/wizard/page.tsx",
+        "components/wizard/WizardShell.tsx",
+        "components/wizard/QuestionStep.tsx",
+        "lib/wizard/resumeIndex.ts"
+      ]
+    },
+    {
+      "id": "S17-T06",
+      "title": "Persist answers (upsert) + chapter status transitions (in_progress/completed)",
+      "skill": ["Convex", "Backend logic"],
+      "priority": "P0",
+      "requirements": {
+        "convexMutations": [
+          "chapterAnswers.upsert",
+          "storybookChapters.markInProgress",
+          "storybookChapters.complete"
+        ],
+        "upsertRules": [
+          "Unique key: (chapterInstanceId, questionId)",
+          "Store answerText + skipped + source",
+          "Increment version on updates"
+        ],
+        "statusRules": [
+          "On first saved answer => set chapter status to in_progress",
+          "On Finish chapter => validate required questions: answered OR explicitly skipped",
+          "If valid => set completed + completedAt"
+        ],
+        "constraints": [
+          "No AI generation yet; only collection and persistence",
+          "Must return structured validation errors for missing required answers"
+        ]
+      },
+      "acceptanceTests": [
+        "Answers persist and reload correctly",
+        "Chapter flips to in_progress after first answer",
+        "Finish chapter validates and sets completed"
+      ],
+      "deliverables": [
+        "convex/chapterAnswers.ts (upsert mutation + getByChapter query)",
+        "convex/storybookChapters.ts (status mutations)",
+        "lib/chapters/validateChapterCompletion.ts"
+      ]
+    },
+    {
+      "id": "S17-T07",
+      "title": "No-template (freeform) path v1 — minimal scaffolding",
+      "skill": ["Frontend", "Convex"],
+      "priority": "P1",
+      "requirements": {
+        "behavior": [
+          "User can create a storybook without template",
+          "Create a default chapter (Chapter 1) with a generic starter question flow OR route to Studio directly (choose one)",
+          "Allow adding more chapters later (stub UI acceptable)"
+        ],
+        "constraints": [
+          "Do not degrade the template path quality",
+          "Keep freeform scope small"
+        ]
+      },
+      "acceptanceTests": [
+        "Freeform storybook creation works end-to-end",
+        "User can open Chapter 1 wizard or Studio without errors"
+      ],
+      "deliverables": [
+        "app/create/freeform/page.tsx updated",
+        "convex/storybooks.ts (freeform branch)",
+        "convex/storybookChapters.ts (createDefaultChapter helper)"
+      ]
+    },
+    {
+      "id": "S17-T08",
+      "title": "Route into Studio for a completed chapter (stub population hook)",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/studio/{storybookId}?chapter={chapterInstanceId}",
+        "behavior": [
+          "Allow Open in Studio only when chapter status=completed",
+          "Ensure a Studio document exists for storybook (create if missing)",
+          "Pass chapter context for later population (Sprint 21)"
+        ],
+        "constraints": [
+          "Do not implement AI population now",
+          "If no content exists yet, add a placeholder block or open blank"
+        ]
+      },
+      "acceptanceTests": [
+        "Completed chapter opens Studio without error",
+        "Context (storybookId + chapterInstanceId) is available to Studio"
+      ],
+      "deliverables": [
+        "app/studio/[storybookId]/page.tsx updated",
+        "lib/studio/ensureStorybookDoc.ts"
+      ]
+    },
+    {
+      "id": "S17-T09",
+      "title": "Narration settings capture v0 (stored on storybook for later sprints)",
+      "skill": ["Frontend", "Convex"],
+      "priority": "P1",
+      "requirements": {
+        "fields": [
+          "voice (first_person|third_person)",
+          "tense (past|present)",
+          "tone (warm|formal|playful|poetic)",
+          "length (short|medium|long)"
+        ],
+        "ui": [
+          "Simple settings panel after template selection OR in Chapter List header",
+          "Defaults: third_person, past, warm, medium"
+        ],
+        "storage": ["Save to storybooks.narration object"],
+        "constraints": ["Used by Sprint 19 story generation; store now"]
+      },
+      "acceptanceTests": [
+        "Settings persist and reload correctly",
+        "Defaults apply if user skips"
+      ],
+      "deliverables": [
+        "components/create/NarrationSettings.tsx",
+        "convex/storybooks.ts (updateNarration mutation)"
+      ]
+    },
+    {
+      "id": "S17-T10",
+      "title": "Analytics + funnel instrumentation for guided flow",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "create_entry_view",
+          "template_select_view",
+          "template_select_choose (templateId)",
+          "create_freeform_choose",
+          "chapters_view (storybookId)",
+          "chapter_start (chapterKey)",
+          "wizard_step_next (questionId)",
+          "wizard_step_skip (questionId)",
+          "chapter_complete (chapterKey)",
+          "open_studio_from_chapter (chapterKey)"
+        ],
+        "constraints": [
+          "No PII in event payloads",
+          "Avoid duplicates on rerender"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per action",
+        "templateId/chapterKey included"
+      ],
+      "deliverables": [
+        "lib/analytics/createFlow.ts",
+        "components/* instrumented"
+      ]
+    },
+    {
+      "id": "S17-T11",
+      "title": "QA checklist + minimal automated tests for Template + Wizard flow",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Select each of the 2 templates and verify chapter preview matches spec",
+          "Create storybook and verify chapters instantiated in correct order",
+          "Start chapter wizard, answer 2 questions, exit, resume, verify answers persist",
+          "Skip a required question and verify completion validation behavior",
+          "Complete chapter and open Studio route",
+          "Reload pages and verify state persists"
+        ],
+        "automation": [
+          "Convex test: storybooks.create instantiates chapters",
+          "Convex test: chapterAnswers.upsert upserts by (chapterInstanceId, questionId)",
+          "Unit test: resumeIndex picks first unanswered required question"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues found",
+        "At least 3 automated tests added (create + upsert + resume)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint17_guided_flow.md",
+        "tests/guidedFlow/*",
+        "convex/_generated/test/* (or your Convex testing setup)"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S17-T01",
+      "S17-T02",
+      "S17-T03",
+      "S17-T04",
+      "S17-T05",
+      "S17-T06",
+      "S17-T08",
+      "S17-T09",
+      "S17-T10",
+      "S17-T11",
+      "S17-T07"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Sprint 17 builds the durable guided-flow backbone; STT is Sprint 18 and story generation is Sprint 19.",
+      "Keep templateJson as the single source of truth for chapter order + question flow.",
+      "If you already have storybook/studio persistence in Convex, adapt the table names/fields to match—don’t duplicate models."
+    ]
+  }
+}

@@ -177,7 +177,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="border-white/15 bg-white/[0.03] text-white/80">{storybook.data.status}</Badge>
               <Link
-                href={`/app/storybooks/${storybookId}`}
+                href={`/app/storybooks/${storybookId}/layout`}
                 className="inline-flex h-10 items-center rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15"
               >
                 Open Studio
@@ -217,48 +217,37 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
             </div>
             <p className="mt-2 text-xs text-white/55">Chapter completion: {chapterCompletionPercent}%</p>
           </div>
+
+          {completedChapter ? (
+            <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-emerald-100">
+                  Chapter completed: {completedChapter.title}
+                </p>
+                <p className="text-xs text-white/60">
+                  Continue into Studio now or keep filling out other chapters.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-6 border-t border-white/10 pt-6">
+            <NarrationSettingsPanel
+              narration={storybook.data.narration}
+              action={saveNarrationSettings}
+              subtitle="Choose how your drafts sound. Changes apply the next time you generate or regenerate a chapter draft."
+              embedded
+              narrationSaved={narrationSaved}
+            />
+          </div>
         </div>
       </Card>
 
-      {completedChapter ? (
-        <Card className="p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-emerald-100">
-                Chapter completed: {completedChapter.title}
-              </p>
-              <p className="text-xs text-white/60">
-                Continue into Studio now or keep filling out other chapters.
-              </p>
-            </div>
-            <TrackedLink
-              href={`/studio/${storybookId}?chapter=${completedChapter.id}`}
-              eventName="open_studio_from_chapter"
-              eventProps={{ chapterKey: completedChapter.chapterKey }}
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-400/10 px-4 text-sm font-semibold text-emerald-100 hover:bg-emerald-400/15"
-            >
-              Open in Studio
-            </TrackedLink>
-          </div>
-        </Card>
-      ) : null}
-
-      {narrationSaved ? (
-        <Card className="p-4">
-          <p className="text-sm text-emerald-100">Narration settings saved.</p>
-        </Card>
-      ) : null}
       {getSearchString(resolvedSearchParams, "narrationError") === "1" ? (
         <Card className="p-4">
           <p className="text-sm text-rose-100">Could not save narration settings.</p>
         </Card>
       ) : null}
-
-      <NarrationSettingsPanel
-        narration={storybook.data.narration}
-        action={saveNarrationSettings}
-        subtitle="These settings are applied when generating chapter drafts in Sprint 19."
-      />
 
       {isFreeformStory ? (
         <Card className="p-4">
@@ -278,4 +267,3 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
     </div>
   );
 }
-

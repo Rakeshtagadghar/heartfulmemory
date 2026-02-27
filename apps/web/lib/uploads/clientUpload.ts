@@ -17,6 +17,7 @@ type SignResponse =
       uploadUrl: string | null;
       key: string;
       headersRequired: Record<string, string>;
+      publicUrl?: string | null;
       maxBytes?: number;
     }
   | { ok: false; error: string };
@@ -134,7 +135,7 @@ export async function uploadImageViaPreparedSignature(input: {
     return { ok: false, error: `Upload failed (${putRes.status}). Check R2 CORS/presigned URL.` };
   }
 
-  const sourceUrl = "";
+  const sourceUrl = typeof sign.publicUrl === "string" ? sign.publicUrl : "";
 
   return {
     ok: true,

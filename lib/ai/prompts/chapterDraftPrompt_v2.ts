@@ -21,7 +21,10 @@ export function buildChapterDraftPromptV2(input: ChapterDraftPromptV2Input) {
     "Return ONLY valid JSON matching the output schema. Do not include markdown or commentary.",
     "Never include writing instructions, prompt text, section guidance, or citations inline inside section text.",
     "Section text must be user-visible storytelling only.",
-    "Do not repeat the same sentence across sections.",
+    "Each section must be materially different in focus and wording.",
+    "Do not repeat or lightly paraphrase the same sentence across sections.",
+    "Use different evidence from the answers for different sections whenever possible.",
+    "If two sections sound similar, rewrite the later section before returning output.",
     "If no dates are available, timeline text must describe sequence without inventing dates.",
     "",
     `Chapter: ${input.chapterTitle} (${input.chapterKey})`,
@@ -58,4 +61,3 @@ export function buildChapterDraftPromptV2(input: ChapterDraftPromptV2Input) {
 
   return lines.join("\n");
 }
-

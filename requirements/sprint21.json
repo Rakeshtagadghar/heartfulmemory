@@ -1,0 +1,371 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 21,
+      "title": "Chapter → Studio Populate v1 (Slot Mapping + Next Chapter Navigation)",
+      "duration": "1 week",
+      "goal": "Populate the Studio automatically from chapter outputs: map chapter draft sections into template text slots and map auto-illustrated images into template image slots. Add chapter navigation inside Studio (Next/Previous chapter) and persist progress.",
+      "definitionOfDone": [
+        "For a completed chapter, clicking 'Open in Studio' creates/updates the Studio pages for that chapter using template layouts",
+        "Text slots (title/body/quote/captions) are populated from chapter draft sections deterministically",
+        "Image slots are populated using cached assets from Auto-Illustrate (Sprint 20) with attribution preserved",
+        "Population is idempotent: re-opening the same chapter does not duplicate nodes",
+        "User can edit layout in Studio after population (no lock-in)",
+        "Studio includes chapter navigation: Previous/Next chapter, and 'Mark chapter as laid out'",
+        "Per-chapter Studio status is tracked (not started / populated / edited / finalized)",
+        "No regressions to editor performance or PDF export parity"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (queries/mutations/actions)",
+      "editorModel": "Your existing Studio document/page/node JSON model from Sprints 6–16",
+      "templates": "Template JSON includes chapter studioPages[] with layoutId and slot ids for text/image placeholders",
+      "drafts": "chapterDrafts from Sprint 19 (sections + summary + quotes + imageIdeas)",
+      "illustrations": "chapterIllustrations from Sprint 20 (slotAssignments with mediaAsset cachedUrl + attribution)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S21-T01",
+      "title": "Define Population Contract v1 (inputs/outputs + idempotency keys)",
+      "skill": ["Architecture", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "inputs": [
+          "templateId",
+          "chapterKey",
+          "template.chapter.studioPages[] (layoutId + slots mapping)",
+          "chapterDraft (sections, summary, quotes, entities)",
+          "chapterIllustrations (slotAssignments: slotId -> mediaAsset)"
+        ],
+        "outputs": [
+          "StudioDoc updates: pages added/updated, nodes created/updated",
+          "Per-chapter population metadata (hashes + version refs)"
+        ],
+        "idempotency": [
+          "Each created node gets stable id derived from (chapterKey, pageId, slotId) or stored mapping table",
+          "Population stores lastAppliedDraftVersion and lastAppliedIllustrationVersion per chapter"
+        ],
+        "constraints": [
+          "Never duplicate nodes on re-run",
+          "If user edited a node, do not overwrite unless user requests 'Repopulate' (v2)",
+          "All created nodes must remain compatible with Layout→PDF Renderer v1"
+        ]
+      },
+      "acceptanceTests": [
+        "Contract documented and used by population code",
+        "Stable node id strategy proven with rerun test (no duplicates)"
+      ],
+      "deliverables": [
+        "docs/studio_population_contract_v1.md",
+        "packages/shared/populate/populationTypes.ts"
+      ]
+    },
+    {
+      "id": "S21-T02",
+      "title": "Extend Convex Studio persistence for per-chapter page grouping (if not present)",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "convexTables": [
+          {
+            "name": "studioDocs",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "docJson (any/json)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_storybookId"]
+          },
+          {
+            "name": "chapterStudioState",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "chapterInstanceId (Id<'storybookChapters'>)",
+              "chapterKey (string)",
+              "status ('not_started'|'populated'|'edited'|'finalized')",
+              "lastAppliedDraftVersion (number|null)",
+              "lastAppliedIllustrationVersion (number|null)",
+              "pageIds (array<string>)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_storybookId", "by_chapterInstanceId"]
+          }
+        ],
+        "constraints": [
+          "If you already store studio docs, reuse and only add chapterStudioState table",
+          "Owner-only access"
+        ]
+      },
+      "acceptanceTests": [
+        "chapterStudioState can be created/updated per chapter",
+        "studioDocs can be read/written only by owner"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/studioDocs.ts (get/save)",
+        "convex/chapterStudioState.ts (get/update)"
+      ]
+    },
+    {
+      "id": "S21-T03",
+      "title": "Slot mapping rules v1: map draft sections -> template text slots",
+      "skill": ["Product", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "mappingRules": [
+          "slot.title <- chapter title",
+          "slot.body <- concatenated sections (or main section only, depending on layout)",
+          "slot.quote <- best quote OR pullout sentence from draft.quotes[0]",
+          "slot.caption1/2 <- generated from imageIdeas reasons or place/date (short)",
+          "If slot missing: ignore safely"
+        ],
+        "fallbacks": [
+          "If quotes empty: generate a short pull-quote from summary (LLM not required; simple heuristic ok)",
+          "If body too long: truncate with '…' for v1 and add overflow warning (preflight later)"
+        ],
+        "constraints": [
+          "Must be deterministic without calling LLM (generation already done in Sprint 19)"
+        ]
+      },
+      "acceptanceTests": [
+        "Given a fixed draft, mapping produces same slotText every run",
+        "Slots are filled even when quotes missing via fallback"
+      ],
+      "deliverables": [
+        "packages/shared/populate/textSlotMapper.ts",
+        "docs/text_slot_mapping_rules_v1.md"
+      ]
+    },
+    {
+      "id": "S21-T04",
+      "title": "Image slot mapping v1: map chapterIllustrations slotAssignments -> Studio image nodes",
+      "skill": ["Editor Engineering", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "slot.imageX -> create Image node or fill Frame node depending on layout",
+          "Use cachedUrl as src",
+          "Apply default crop: cover + center (use cropModel defaults from Sprint 14)",
+          "Attach attribution metadata to node"
+        ],
+        "constraints": [
+          "If slotAssignments missing for a slot: leave placeholder empty",
+          "Do not fetch provider URLs in Studio; use cached assets only"
+        ]
+      },
+      "acceptanceTests": [
+        "Slots receive correct image src and attribution",
+        "Frames are filled when layout expects frames",
+        "No broken images after refresh"
+      ],
+      "deliverables": [
+        "packages/shared/populate/imageSlotMapper.ts",
+        "packages/editor/commands/fillSlotWithImage.ts"
+      ]
+    },
+    {
+      "id": "S21-T05",
+      "title": "Implement population action: build/update Studio doc for a chapter (idempotent)",
+      "skill": ["Convex", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "studio.populateChapter",
+        "inputs": ["storybookId", "chapterInstanceId"],
+        "behavior": [
+          "Load templateJson, chapterDraft (latest ready), chapterIllustrations (latest ready)",
+          "Ensure studioDoc exists",
+          "For each chapter studioPage spec: ensure page exists and create/update slot nodes",
+          "Write chapterStudioState (status=populated) and store applied versions",
+          "Return studio route info (page ids) for navigation"
+        ],
+        "idempotency": [
+          "Stable node ids OR mapping table prevents duplicates",
+          "If node exists and user edited: do not overwrite in v1 (skip updates if edited flag true)"
+        ],
+        "constraints": [
+          "Population must be fast (avoid heavy LLM calls)",
+          "All created nodes must comply with PDF render contract"
+        ]
+      },
+      "acceptanceTests": [
+        "Running populateChapter twice produces identical doc (no duplicates)",
+        "Studio doc contains pages/nodes for that chapter",
+        "chapterStudioState records applied versions correctly"
+      ],
+      "deliverables": [
+        "convex/studioPopulate.ts (action)",
+        "convex/studioDocs.ts updated",
+        "convex/chapterStudioState.ts updated"
+      ]
+    },
+    {
+      "id": "S21-T06",
+      "title": "Studio entry integration: 'Open in Studio' triggers population when needed",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "From Chapter List: Open in Studio calls populateChapter if chapterStudioState not populated or versions changed",
+          "Show progress UI: 'Preparing your chapter…'",
+          "On success route to Studio with chapter context + first page id"
+        ],
+        "constraints": [
+          "Do not block UI; show cancel/back option",
+          "Handle failures with retry"
+        ]
+      },
+      "acceptanceTests": [
+        "Open in Studio produces populated pages and navigates correctly",
+        "Retry works if action fails"
+      ],
+      "deliverables": [
+        "components/chapters/OpenInStudioButton.tsx",
+        "lib/studio/openInStudio.ts"
+      ]
+    },
+    {
+      "id": "S21-T07",
+      "title": "Add chapter navigation inside Studio (Next/Previous chapter + status chip)",
+      "skill": ["Frontend", "UX", "Editor Integration"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Top-right (or corner) Chapter Navigator: Prev | Chapter Title | Next",
+          "Status chip: Draft/Populated/Edited/Finalized",
+          "CTA: Proceed to next chapter (routes to wizard/draft/illustrations as chosen)"
+        ],
+        "behavior": [
+          "Prev/Next navigates between chapters in storybook order",
+          "Maintain current zoom/pan if desired (optional)",
+          "If next chapter not completed, route to its wizard"
+        ],
+        "constraints": ["Must not clutter the Studio (keep controls minimal)"]
+      },
+      "acceptanceTests": [
+        "User can navigate across chapters within Studio",
+        "Navigation respects chapter completion status",
+        "No regressions to existing Studio toolbar/panels"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/ChapterNavigator.tsx",
+        "lib/chapters/navigation.ts"
+      ]
+    },
+    {
+      "id": "S21-T08",
+      "title": "Detect 'edited' state for a chapter (dirty tracking for populated nodes/pages)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "editedDetection": [
+          "When user moves/resizes/edits text or replaces an image on a chapter page, mark chapterStudioState.status='edited'",
+          "Heuristic v1: set edited on any save after population (for that chapter)"
+        ],
+        "constraints": [
+          "Avoid noisy toggling; only promote status (populated -> edited), not downgrade automatically"
+        ]
+      },
+      "acceptanceTests": [
+        "After user makes a change and saves, chapter status becomes edited",
+        "Status persists after refresh"
+      ],
+      "deliverables": [
+        "packages/editor/events/onDocChange.ts",
+        "convex/chapterStudioState.ts (markEdited mutation)"
+      ]
+    },
+    {
+      "id": "S21-T09",
+      "title": "Hook up 'Proceed to next chapter' flow from Studio (chapter pipeline routing)",
+      "skill": ["Frontend", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "routingRules": [
+          "If next chapter not started/in_progress: route to wizard",
+          "If completed but no draft: route to draft generation screen",
+          "If draft ready but no illustrations: route to illustrations screen",
+          "If all ready: open in Studio (populates if needed)"
+        ],
+        "constraints": ["Must be deterministic and based on Convex statuses"]
+      },
+      "acceptanceTests": [
+        "Proceed button routes correctly in each state scenario",
+        "No dead ends"
+      ],
+      "deliverables": [
+        "lib/chapters/nextStepRouter.ts",
+        "apps/web/components/studio/ProceedNextChapterButton.tsx"
+      ]
+    },
+    {
+      "id": "S21-T10",
+      "title": "Instrumentation + QA + tests for population + chapter navigation",
+      "skill": ["QA", "Testing", "Analytics"],
+      "priority": "P0",
+      "requirements": {
+        "events": [
+          "populate_chapter_start",
+          "populate_chapter_success",
+          "populate_chapter_error (error_code)",
+          "studio_chapter_nav_prev",
+          "studio_chapter_nav_next",
+          "chapter_mark_finalized"
+        ],
+        "manualChecklist": [
+          "Complete a chapter -> draft -> illustrations -> Open in Studio",
+          "Verify pages created and filled correctly",
+          "Re-open Open in Studio again: confirm no duplicate nodes",
+          "Edit layout: status becomes edited",
+          "Navigate next/prev chapters",
+          "Export PDF and confirm populated content renders"
+        ],
+        "automation": [
+          "Integration: populateChapter action idempotency (run twice, compare node ids)",
+          "Unit: textSlotMapper deterministic mapping",
+          "Integration: imageSlotMapper assigns cachedUrl and attribution"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues in QA checklist",
+        "At least 3 automated tests added (population idempotency + mappers)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint21_populate_studio.md",
+        "tests/populate/*",
+        "lib/analytics/studioChapterFlow.ts"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S21-T01",
+      "S21-T03",
+      "S21-T04",
+      "S21-T02",
+      "S21-T05",
+      "S21-T06",
+      "S21-T07",
+      "S21-T10",
+      "S21-T08",
+      "S21-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Idempotency is the biggest risk: use stable node ids derived from slot ids or store a slot->node mapping to avoid duplicates.",
+      "Do not overwrite user edits in v1—skip updating nodes once user has changed them. Add a 'Repopulate' button later.",
+      "Keep navigation minimal and corner-based to preserve Canva-like clean canvas."
+    ]
+  }
+}

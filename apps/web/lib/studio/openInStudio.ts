@@ -89,26 +89,6 @@ export async function resolveOpenInStudioForUser(
     };
   }
 
-  const studioState = studioStateResult.ok ? studioStateResult.data : null;
-  const stateIsCurrent =
-    Boolean(studioState?.pageIds.length) &&
-    studioState?.lastAppliedDraftVersion === draftResult.data.version &&
-    studioState?.lastAppliedIllustrationVersion === illustrationResult.data.version;
-
-  if (stateIsCurrent) {
-    return {
-      ok: true,
-      data: {
-        ok: true,
-        href: studioHref(input.storybookId, input.chapterInstanceId, studioState?.pageIds[0] ?? null),
-        chapterKey: chapter.chapterKey,
-        populated: false,
-        reused: true,
-        pageIds: studioState?.pageIds ?? []
-      }
-    };
-  }
-
   const populate = await populateStudioChapterForUser(viewerSubject, input);
   if (!populate.ok) return { ok: false, error: populate.error };
   if (!populate.data.ok) {

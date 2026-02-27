@@ -205,6 +205,50 @@ function extractorApiRef() {
   return (api as unknown as Record<string, { extractFromAnswers: unknown }>)["ai/entitiesExtractor"];
 }
 
+function normalizeEntityText(value: string) {
+  return value.toLowerCase().replaceAll(/\s+/g, " ").trim();
+}
+
+function inferEntityCitations(value: string, answers: GroundedAnswer[]) {
+  const needle = normalizeEntityText(value);
+  if (!needle) return [];
+  return answers
+    .filter((answer) => normalizeEntityText(answer.answerText).includes(needle))
+    .map((answer) => answer.questionId);
+}
+
+function repairMissingEntityCitations(
+  entitiesV2: ChapterDraftEntitiesV2 | null,
+  groundedAnswers: GroundedAnswer[]
+): ChapterDraftEntitiesV2 | null {
+  if (!entitiesV2) return null;
+
+  return {
+    ...entitiesV2,
+    people: entitiesV2.people.map((item) => ({
+      ...item,
+      citations:
+        Array.isArray(item.citations) && item.citations.length > 0
+          ? item.citations
+          : inferEntityCitations(item.value, groundedAnswers)
+    })),
+    places: entitiesV2.places.map((item) => ({
+      ...item,
+      citations:
+        Array.isArray(item.citations) && item.citations.length > 0
+          ? item.citations
+          : inferEntityCitations(item.value, groundedAnswers)
+    })),
+    dates: entitiesV2.dates.map((item) => ({
+      ...item,
+      citations:
+        Array.isArray(item.citations) && item.citations.length > 0
+          ? item.citations
+          : inferEntityCitations(item.value, groundedAnswers)
+    }))
+  };
+}
+
 async function resolveEntitiesForChapter(args: {
   ctx: ActionCtx;
   viewerSubject: string;
@@ -230,8 +274,9 @@ async function resolveEntitiesForChapter(args: {
     args.latestDraft.answersHash === answersHash;
 
   if (canReuseCachedEntities) {
+    const repairedCached = repairMissingEntityCitations(args.latestDraft?.entitiesV2 ?? null, args.groundedAnswers);
     return {
-      entitiesV2: args.latestDraft?.entitiesV2 ?? null,
+      entitiesV2: repairedCached,
       answersHash,
       warnings: [] as Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>,
       usedCache: true
@@ -268,7 +313,10 @@ async function resolveEntitiesForChapter(args: {
     };
   }
 
-  const finalEntities = applyEntityOverrides(extractResult.entities, overrides);
+  const finalEntities = repairMissingEntityCitations(
+    applyEntityOverrides(extractResult.entities, overrides),
+    args.groundedAnswers
+  );
   return {
     entitiesV2: finalEntities,
     answersHash,
@@ -443,15 +491,17 @@ export const generateV2 = action({
       });
 
       if (quality.errors.length > 0) {
+        const qualityErrorCode =
+          (quality.errors[0]?.code as StableAiErrorCode | undefined) ?? "GENERATION_EMPTY";
         await ctx.runMutation(api.chapterDrafts.setError, {
           viewerSubject: viewer.subject,
           draftId: begin.draft.id,
-          errorCode: quality.errors[0].code,
+          errorCode: qualityErrorCode,
           errorMessage: quality.errors[0].message
         });
         return {
           ok: false as const,
-          errorCode: "GENERATION_EMPTY" as const,
+          errorCode: qualityErrorCode,
           message: quality.errors[0].message,
           retryable: true
         };
@@ -655,15 +705,17 @@ export const regenSectionV2 = action({
       });
 
       if (quality.errors.length > 0) {
+        const qualityErrorCode =
+          (quality.errors[0]?.code as StableAiErrorCode | undefined) ?? "GENERATION_EMPTY";
         await ctx.runMutation(api.chapterDrafts.setError, {
           viewerSubject: viewer.subject,
           draftId: begin.draft.id,
-          errorCode: quality.errors[0].code,
+          errorCode: qualityErrorCode,
           errorMessage: quality.errors[0].message
         });
         return {
           ok: false as const,
-          errorCode: "GENERATION_EMPTY" as const,
+          errorCode: qualityErrorCode,
           message: quality.errors[0].message,
           retryable: true
         };

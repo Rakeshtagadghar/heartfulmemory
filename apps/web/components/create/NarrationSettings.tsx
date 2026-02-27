@@ -1,5 +1,5 @@
 import { Card } from "../ui/card";
-import { Button } from "../ui/button";
+import { NarrationSaveButton } from "./NarrationSaveButton";
 
 type NarrationSettingsValue = {
   voice: "first_person" | "third_person";
@@ -51,23 +51,31 @@ function SelectField({
 
 export function NarrationSettings({
   narration,
-  action
+  action,
+  title = "Narration Settings",
+  subtitle = "Saved on this storybook for upcoming story generation sprints.",
+  embedded = false,
+  narrationSaved = false
 }: {
   narration?: Record<string, unknown> | null;
   action: (formData: FormData) => Promise<void>;
+  title?: string;
+  subtitle?: string;
+  embedded?: boolean;
+  narrationSaved?: boolean;
 }) {
   const current = asNarrationValue(narration);
-
-  return (
-    <Card className="p-4 sm:p-5">
-      <div className="mb-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-white/45">Narration Settings</p>
-        <p className="mt-1 text-sm text-white/70">
-          Saved on this storybook for upcoming story generation sprints.
-        </p>
+  const content = (
+    <form action={action} className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.16em] text-white/45">{title}</p>
+          <p className="mt-1 text-sm text-white/70">{subtitle}</p>
+        </div>
+        <NarrationSaveButton saved={narrationSaved} />
       </div>
 
-      <form action={action} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <SelectField
           name="voice"
           label="Voice"
@@ -107,14 +115,10 @@ export function NarrationSettings({
             { value: "long", label: "Long" }
           ]}
         />
-
-        <div className="sm:col-span-2 lg:col-span-4">
-          <Button type="submit" variant="secondary">
-            Save Narration Settings
-          </Button>
-        </div>
-      </form>
-    </Card>
+      </div>
+    </form>
   );
-}
 
+  if (embedded) return content;
+  return <Card className="p-4 sm:p-5">{content}</Card>;
+}

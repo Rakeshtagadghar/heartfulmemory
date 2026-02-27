@@ -1,5 +1,6 @@
 import { Card } from "../ui/card";
 import { CitationsRow } from "./CitationsRow";
+import { cn } from "../ui/cn";
 
 export function DraftSummary({
   summary,
@@ -7,7 +8,8 @@ export function DraftSummary({
   status,
   version,
   provider,
-  updatedAt
+  updatedAt,
+  embedded = false
 }: {
   summary: string;
   sourceAnswerIds: string[];
@@ -15,9 +17,10 @@ export function DraftSummary({
   version: number | null;
   provider?: string | null;
   updatedAt?: number | null;
+  embedded?: boolean;
 }) {
-  return (
-    <Card className="p-4 sm:p-5">
+  const content = (
+    <div className={cn("p-4 sm:p-5", embedded && "p-0")}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full border border-white/15 bg-white/[0.03] px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/70">
           Draft {version != null ? `v${version}` : ""}
@@ -41,7 +44,9 @@ export function DraftSummary({
           <p className="text-xs text-white/45">Updated {new Date(updatedAt).toLocaleString()}</p>
         ) : null}
       </div>
-    </Card>
+    </div>
   );
-}
 
+  if (embedded) return content;
+  return <Card>{content}</Card>;
+}

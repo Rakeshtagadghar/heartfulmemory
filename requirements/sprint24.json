@@ -1,0 +1,358 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 24,
+      "title": "Auto-Illustrate v2: Diversity + Slot-Aware Queries + Chapter Variety",
+      "duration": "1 week",
+      "goal": "Stop repeated/identical images across chapters by upgrading Auto-Illustrate: generate slot-aware queries per chapter, enforce diversity constraints across the whole book, and add similarity guards + review tools.",
+      "definitionOfDone": [
+        "Auto-illustrate produces different images per chapter (no obvious repeats)",
+        "Selection is slot-aware (orientation/aspect/intent) and chapter-aware (Origins != School != Home)",
+        "Diversity constraints prevent reusing the same providerId/photographer across the storybook unless necessary",
+        "Query generation uses entitiesV2 (places + chapter type) and key facts; avoids personal names by default",
+        "A similarity guard blocks near-duplicate selections within a storybook",
+        "User can lock/replace per slot and regenerate with 'keep locked' behavior",
+        "Cached assets + attribution are preserved (no hotlinking)",
+        "Automated tests cover diversity, similarity, and deterministic selection"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for provider calls + caching; mutations for persistence)",
+      "providers": "Unsplash + Pexels integrated and normalized",
+      "storage": "Existing image caching pipeline (store cachedUrl + meta in Convex mediaAssets)",
+      "inputs": "chapterDrafts v2 (clean sections) + entitiesV2 (Sprint 23) + template slotTargets"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S24-T01",
+      "title": "Define slot intent + chapter intent taxonomy (to diversify imagery)",
+      "skill": ["Product", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "slotIntent": [
+          "scene (wide context)",
+          "object (close-up detail)",
+          "texture (background/atmosphere)",
+          "portrait (people, use sparingly)",
+          "iconic (landmark/recognizable location)"
+        ],
+        "chapterIntentPresets": {
+          "ch_origins": ["scene", "iconic", "texture"],
+          "ch_childhood_home": ["scene", "object", "texture"],
+          "ch_school_days": ["scene", "object", "iconic"],
+          "ch_how_we_met": ["scene", "texture", "object"],
+          "ch_wedding": ["portrait", "scene", "object"],
+          "ch_first_home": ["scene", "object", "texture"]
+        },
+        "constraints": [
+          "If user hasn’t opted into personal photos, avoid 'portrait' intent unless template is wedding/romance",
+          "Slot intent must map to different query styles (not one generic query everywhere)"
+        ]
+      },
+      "acceptanceTests": [
+        "Each chapterKey resolves to a deterministic set of slot intents",
+        "Each slotId gets an intent assigned (image1/image2/image3)"
+      ],
+      "deliverables": [
+        "packages/shared/illustrations/intentTaxonomy.ts",
+        "docs/slot_intent_rules.md"
+      ]
+    },
+    {
+      "id": "S24-T02",
+      "title": "Upgrade theme query generator v2 (entitiesV2 + intent-aware queries + negatives)",
+      "skill": ["Backend", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "inputs": [
+          "chapterKey",
+          "entitiesV2.places[]",
+          "draft.keyFacts",
+          "narration.tone (optional)",
+          "slotIntent"
+        ],
+        "outputs": [
+          "queries[] (per slot, 3-8)",
+          "negativeKeywords[]",
+          "providerFilters (orientation, color optional)"
+        ],
+        "rules": [
+          "Use places as optional modifiers: e.g., 'monsoon street india', 'village maharashtra evening'",
+          "Vary query style by intent: scene vs object vs texture must use different words",
+          "Add negative keywords to reduce repeats (e.g., avoid 'portrait' across non-portrait slots)",
+          "Avoid personal names by default; allow only if user setting allowPersonalNamesInSearch=true"
+        ],
+        "constraints": [
+          "Deterministic without LLM by default; LLM optional later",
+          "Keep queries short and provider-friendly"
+        ]
+      },
+      "acceptanceTests": [
+        "Origins queries differ from School Days queries even with same place",
+        "Slot intents produce clearly different query sets",
+        "Queries never include stopwords or personal names by default"
+      ],
+      "deliverables": [
+        "lib/illustrate/themeGenerator_v2.ts",
+        "docs/theme_generator_v2_examples.md"
+      ]
+    },
+    {
+      "id": "S24-T03",
+      "title": "Add storybook-level diversity constraints (no repeats across chapters)",
+      "skill": ["Backend", "Algorithms"],
+      "priority": "P0",
+      "requirements": {
+        "constraintsModel": {
+          "globalBlocklist": [
+            "providerId already used in this storybook",
+            "cachedUrl already used"
+          ],
+          "softPenalty": [
+            "same photographer repeated",
+            "same dominant query repeated",
+            "same provider repeated too often"
+          ],
+          "limits": {
+            "maxSamePhotographerPerBook": 1,
+            "maxSameProviderConsecutive": 2
+          }
+        },
+        "implementation": [
+          "When selecting candidates for a slot, filter out globalBlocklist first",
+          "If not enough candidates, relax in stages and record warnings"
+        ],
+        "constraints": [
+          "Must remain deterministic given same inputs/candidate sets",
+          "Persist selection warnings (e.g., 'had to reuse provider due to limited candidates')"
+        ]
+      },
+      "acceptanceTests": [
+        "Auto-illustrate avoids reusing the same provider asset across chapters",
+        "When forced to reuse, it records a warning and uses best alternative"
+      ],
+      "deliverables": [
+        "convex/illustrate/diversityConstraints.ts",
+        "docs/diversity_policy_v1.md"
+      ]
+    },
+    {
+      "id": "S24-T04",
+      "title": "Similarity guard v1 (near-duplicate detection within storybook)",
+      "skill": ["Backend", "Quality Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "approachV1": [
+          "Heuristic similarity: same providerId OR same assetUrl OR same photographer+dimensions+very similar query",
+          "Optional: perceptual hash (pHash) if you already have an image processing step (can defer)"
+        ],
+        "behavior": [
+          "Before finalizing selection, compare against already selected assets in storybook",
+          "If too similar -> reject and pick next best candidate",
+          "If no alternative -> allow and store 'similarityWarning=true'"
+        ],
+        "constraints": [
+          "No heavy image processing required for v1",
+          "Must not add huge latency"
+        ]
+      },
+      "acceptanceTests": [
+        "Guard prevents selecting exact same image for multiple chapters",
+        "System falls back gracefully when pool is small"
+      ],
+      "deliverables": [
+        "convex/illustrate/similarityGuard.ts",
+        "docs/similarity_guard_v1.md"
+      ]
+    },
+    {
+      "id": "S24-T05",
+      "title": "Selection scoring v2 (quality + aspect + relevance + diversity penalties)",
+      "skill": ["Backend", "Algorithms"],
+      "priority": "P0",
+      "requirements": {
+        "scoreComponents": [
+          "qualityScore (shortSidePx, megapixels)",
+          "aspectScore (distance from target aspect ratio)",
+          "orientationScore (match portrait/landscape/square)",
+          "relevanceScore (query match weight, tags if available)",
+          "diversityPenalty (photographer/provider repetition)",
+          "similarityPenalty (if flagged by guard)"
+        ],
+        "selectionRules": [
+          "Pick top per slot after filtering/penalties",
+          "Ensure within-chapter diversity: image1 != image2 != image3 in intent and look"
+        ],
+        "constraints": [
+          "Stable sorting: if scores tie, use deterministic tiebreaker (provider then id)"
+        ]
+      },
+      "acceptanceTests": [
+        "Higher-res and closer-aspect candidates win",
+        "Diversity penalty changes selection away from repeats"
+      ],
+      "deliverables": [
+        "convex/illustrate/scoring_v2.ts",
+        "convex/illustrate/selectForSlots_v2.ts",
+        "docs/scoring_v2.md"
+      ]
+    },
+    {
+      "id": "S24-T06",
+      "title": "Auto-illustrate orchestration v2 (slot intents + diversity + similarity) with caching",
+      "skill": ["Convex", "Backend Orchestration"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "chapterIllustrations.autoIllustrateV2",
+        "inputs": [
+          "storybookId",
+          "chapterInstanceId",
+          "providerMode (unsplash|pexels|both)",
+          "regenerate (boolean)"
+        ],
+        "steps": [
+          "Load template slotTargets",
+          "Load entitiesV2 and draft keyFacts",
+          "Assign slot intents",
+          "Generate per-slot queries (v2)",
+          "Fetch candidates (reuse existing provider fetch)",
+          "Apply diversity constraints + similarity guard",
+          "Score + select per slot",
+          "Cache selected assets (dedupe by providerId)",
+          "Persist chapterIllustrations (version bump, warnings stored)"
+        ],
+        "constraints": [
+          "Idempotent when regenerate=false",
+          "Locked slots preserved",
+          "No hotlinking; always use cachedUrl"
+        ]
+      },
+      "acceptanceTests": [
+        "Different chapters get different assets by default",
+        "Locked slots are preserved across regenerate",
+        "Caching reuses existing mediaAssets when available"
+      ],
+      "deliverables": [
+        "convex/chapterIllustrations_v2.ts",
+        "convex/illustrate/orchestrate_v2.ts",
+        "convex/mediaAssets.ts updated (dedupe by providerId)"
+      ]
+    },
+    {
+      "id": "S24-T07",
+      "title": "Illustrations review UI v2 (show warnings, diversity reason, and 'regenerate with new theme')",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Slot grid with intent badges (scene/object/texture)",
+          "Warnings panel (e.g., reused provider due to low pool)",
+          "Actions: Replace, Lock, Regenerate (keep theme), Regenerate (new theme)"
+        ],
+        "behavior": [
+          "Replace opens Photos picker with recommended queries (slot-intent queries)",
+          "Regenerate new theme tweaks query set (e.g., add synonyms, rotate place modifiers)"
+        ],
+        "constraints": [
+          "Elder-friendly: avoid too many toggles; keep advanced options under 'More'"
+        ]
+      },
+      "acceptanceTests": [
+        "UI shows intent and why an image was chosen",
+        "Replace uses intent-based suggested queries",
+        "Regenerate new theme produces different results most of the time"
+      ],
+      "deliverables": [
+        "components/illustrations/SlotCard.tsx updated",
+        "components/illustrations/IllustrationWarnings.tsx",
+        "components/illustrations/SuggestedQueries.tsx"
+      ]
+    },
+    {
+      "id": "S24-T08",
+      "title": "Config + limits for auto-illustrate v2 (diversity, pools, thresholds)",
+      "skill": ["Platform", "Backend"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "AUTOILLUSTRATE_MAX_SAME_PHOTOGRAPHER_PER_BOOK",
+          "AUTOILLUSTRATE_MAX_REPEAT_PROVIDERID_PER_BOOK (default 0)",
+          "AUTOILLUSTRATE_MIN_CANDIDATES_PER_SLOT (default 30)",
+          "AUTOILLUSTRATE_MAX_CANDIDATES_FETCH (default 80)",
+          "AUTOILLUSTRATE_RELAX_STEPS (resolution relax steps)",
+          "AUTOILLUSTRATE_ALLOW_PERSON_NAMES_IN_QUERIES (default false)"
+        ],
+        "constraints": [
+          "Server-side enforcement for all limits",
+          "Record when relax steps are applied"
+        ]
+      },
+      "acceptanceTests": [
+        "Changing config alters diversity behavior predictably",
+        "Relax warnings appear when pool is small"
+      ],
+      "deliverables": [
+        "lib/config/autoIllustrate_v2.ts",
+        "docs/autoIllustrate_v2_config.md"
+      ]
+    },
+    {
+      "id": "S24-T09",
+      "title": "QA + automated tests for diversity + similarity + deterministic selection",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Run auto-illustrate on 3 chapters and confirm images differ",
+          "Verify no repeated providerId across chapters",
+          "Lock slot, regenerate, confirm slot unchanged",
+          "Regenerate new theme, confirm different selection",
+          "Replace slot uses suggested intent queries"
+        ],
+        "automation": [
+          "Unit: diversityConstraints filters out used providerIds",
+          "Unit: scoring_v2 prefers better aspect and penalizes repeats",
+          "Integration: orchestrate_v2 produces different assignments for different chapterKeys",
+          "Integration: similarityGuard blocks exact duplicates"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "Known 'same images for all chapters' issue is prevented by tests"
+      ],
+      "deliverables": [
+        "tests/illustrate/diversityConstraints.test.ts",
+        "tests/illustrate/scoring_v2.test.ts",
+        "tests/illustrate/orchestrate_v2.integration.test.ts",
+        "docs/qa_sprint24_autoillustrate_v2.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S24-T01",
+      "S24-T02",
+      "S24-T03",
+      "S24-T05",
+      "S24-T06",
+      "S24-T07",
+      "S24-T09",
+      "S24-T04",
+      "S24-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Most repetition comes from generic queries + always picking top results. This sprint fixes both with intent-aware queries and global diversity constraints.",
+      "Keep personal names out of provider searches by default (privacy + better image results).",
+      "If similarity is still an issue later, add a pHash step (costlier) in a future sprint."
+    ]
+  }
+}

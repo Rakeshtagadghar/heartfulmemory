@@ -30,6 +30,26 @@ function minWordsForLength(length: DraftNarrationLength) {
   return 160;
 }
 
+function sentenceSet(text: string) {
+  return new Set(
+    text
+      .split(/(?<=[.!?])\s+/)
+      .map((sentence) => sentence.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim())
+      .filter((sentence) => sentence.length > 30)
+  );
+}
+
+function sentenceOverlapRatio(a: Set<string>, b: Set<string>) {
+  const smaller = a.size <= b.size ? a : b;
+  const larger = a.size <= b.size ? b : a;
+  if (smaller.size === 0 || larger.size === 0) return 0;
+  let overlap = 0;
+  for (const sentence of smaller) {
+    if (larger.has(sentence)) overlap += 1;
+  }
+  return overlap / smaller.size;
+}
+
 export function runDraftQualityChecks(input: DraftQualityInput): {
   warnings: ChapterDraftWarning[];
   errors: Array<{ code: string; message: string }>;
@@ -105,6 +125,35 @@ export function runDraftQualityChecks(input: DraftQualityInput): {
       message: "Draft includes language that may need review.",
       severity: "info"
     });
+  }
+
+  for (let leftIndex = 0; leftIndex < input.sections.length; leftIndex += 1) {
+    const left = input.sections[leftIndex]!;
+    if (wordCount(left.text) < 40) continue;
+    const leftSentences = sentenceSet(left.text);
+    for (let rightIndex = leftIndex + 1; rightIndex < input.sections.length; rightIndex += 1) {
+      const right = input.sections[rightIndex]!;
+      if (wordCount(right.text) < 40) continue;
+      const rightSentences = sentenceSet(right.text);
+      const overlap = sentenceOverlapRatio(leftSentences, rightSentences);
+
+      if (overlap >= 0.5) {
+        errors.push({
+          code: "REPEATED_SECTION_TEXT",
+          message: `Sections "${left.title}" and "${right.title}" reuse too many of the same sentences. Regenerate with distinct section focus.`
+        });
+        return { warnings, errors };
+      }
+
+      if (overlap >= 0.3) {
+        warnings.push({
+          code: "REPEATED_SECTION_TEXT",
+          message: `Sections "${left.title}" and "${right.title}" share several identical sentences.`,
+          severity: "warning",
+          sectionId: right.sectionId
+        });
+      }
+    }
   }
 
   return { warnings, errors };

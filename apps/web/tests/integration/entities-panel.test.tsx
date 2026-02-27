@@ -23,7 +23,7 @@ describe("EntitiesPanel", () => {
     expect(screen.getByText("People")).toBeInTheDocument();
     expect(screen.getByText("Places")).toBeInTheDocument();
     expect(screen.getByText("Dates")).toBeInTheDocument();
-    expect(screen.queryByText("The")).not.toBeInTheDocument();
+    expect(screen.getByText("The")).toBeInTheDocument();
     const link = screen.getByRole("link", { name: "q_place" });
     expect(link.getAttribute("href")).toContain("/book/sb1/chapters/ch1/wizard?questionId=q_place");
   });

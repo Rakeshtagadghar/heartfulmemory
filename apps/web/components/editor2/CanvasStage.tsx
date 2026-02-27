@@ -225,7 +225,8 @@ export function CanvasStage({ // NOSONAR
         ...proposed,
         pageWidth: activePage.width_px,
         pageHeight: activePage.height_px,
-        snapEnabled,
+        // Keep interactive drag/resize smooth; still use snapFrame for clamping/bounds.
+        snapEnabled: false,
         gridEnabled: activePage.grid.enabled,
         gridColumns: activePage.grid.columns,
         gridGutter: activePage.grid.gutter,
@@ -245,12 +246,14 @@ export function CanvasStage({ // NOSONAR
       const frame = frameMap.get(activeInteraction.frameId);
       setInteraction(null);
       if (!frame) return;
-      void onFramePatchCommit(activeInteraction.frameId, {
+      const finalPatch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">> = {
         x: frame.x,
         y: frame.y,
         w: frame.w,
         h: frame.h
-      });
+      };
+
+      void onFramePatchCommit(activeInteraction.frameId, finalPatch);
     }
 
     globalThis.addEventListener("pointermove", onPointerMove);

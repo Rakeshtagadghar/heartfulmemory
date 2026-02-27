@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireAuthenticatedUser } from "../auth/server";
-import { createStorybookForUser, updateStorybookForUser } from "../data/storybooks";
+import { createStorybookForUser, removeStorybookForUser, updateStorybookForUser } from "../data/storybooks";
 import type { DataResult } from "../data/_shared";
 import type { StorybookDTO } from "../dto/storybook";
 
@@ -31,3 +31,13 @@ export async function renameStorybookFromDashboardAction(
   return result;
 }
 
+export async function removeStorybookFromDashboardAction(
+  storybookId: string
+): Promise<DataResult<null>> {
+  const user = await requireAuthenticatedUser("/app");
+  const result = await removeStorybookForUser(user.id, storybookId);
+  revalidatePath("/app");
+  revalidatePath(`/app/storybooks/${storybookId}`);
+  revalidatePath(`/book/${storybookId}/chapters`);
+  return result;
+}

@@ -1,25 +1,51 @@
 import { Card } from "../ui/card";
 import { TrackedIllustrationActionButton } from "./TrackedIllustrationActionButton";
+import { UploadImagePicker } from "./UploadImagePicker";
 import type { ProviderAssetCandidate } from "../../lib/data/create-flow";
 
+type ActionResult = { ok: true } | { ok: false; error: string };
+
 export function ReplaceImagePicker({
+  storybookId,
   slotId,
   query,
   provider,
   results,
+  uploadedAssets,
   minShortSidePx,
   orientation,
   searchActionUrl,
-  onReplace
+  onReplace,
+  onUploadAndReplace,
+  onUseUploadedAsset
 }: {
+  storybookId: string;
   slotId: string;
   query: string;
   provider: "unsplash" | "pexels" | "both";
   results: ProviderAssetCandidate[];
+  uploadedAssets: Array<{
+    id: string;
+    cachedUrl: string;
+    thumbUrl: string | null;
+    width: number;
+    height: number;
+  }>;
   minShortSidePx: number;
   orientation: "landscape" | "portrait" | "square";
   searchActionUrl: string;
   onReplace: (formData: FormData) => Promise<void>;
+  onUploadAndReplace: (input: {
+    slotId: string;
+    sourceUrl: string;
+    storageKey: string | null;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    sizeBytes: number;
+    fileName: string;
+  }) => Promise<ActionResult>;
+  onUseUploadedAsset: (input: { slotId: string; mediaAssetId: string }) => Promise<ActionResult>;
 }) {
   return (
     <Card className="p-4 sm:p-5">
@@ -58,6 +84,14 @@ export function ReplaceImagePicker({
         </a>
       </form>
 
+      <UploadImagePicker
+        storybookId={storybookId}
+        slotId={slotId}
+        uploadedAssets={uploadedAssets}
+        onUploadAndReplace={onUploadAndReplace}
+        onUseUploadedAsset={onUseUploadedAsset}
+      />
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {results.length === 0 ? (
           <div className="sm:col-span-2 lg:col-span-3 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/55">
@@ -91,4 +125,3 @@ export function ReplaceImagePicker({
     </Card>
   );
 }
-

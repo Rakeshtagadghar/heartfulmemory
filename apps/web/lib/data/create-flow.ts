@@ -209,6 +209,26 @@ export type ChapterIllustrationSlotMap = {
   >;
 };
 
+export type UploadedIllustrationMediaAsset = {
+  id: string;
+  ownerUserId: string | null;
+  source: "upload";
+  cachedUrl: string;
+  thumbUrl: string | null;
+  width: number;
+  height: number;
+  mime: string | null;
+  attribution: {
+    authorName: string;
+    authorUrl: string | null;
+    assetUrl: string | null;
+    licenseUrl: string | null;
+    provider: "upload";
+    attributionText: string;
+  };
+  createdAt: number;
+};
+
 export type ChapterStudioStateRecord = {
   id: string;
   storybookId: string;
@@ -731,6 +751,148 @@ export async function cacheIllustrationAssetsForUser(
     assets
   });
   return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function listUploadedIllustrationMediaAssetsForUser(
+  viewerSubject: string,
+  limit = 30
+): Promise<DataResult<UploadedIllustrationMediaAsset[]>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexQuery<
+    Array<{
+      id: string;
+      ownerUserId: string | null;
+      source: "upload" | "unsplash" | "pexels" | "system";
+      cachedUrl: string;
+      thumbUrl: string | null;
+      width: number;
+      height: number;
+      mime: string | null;
+      attribution: {
+        authorName: string;
+        authorUrl?: string | null;
+        assetUrl?: string | null;
+        licenseUrl?: string | null;
+        provider: "upload" | "unsplash" | "pexels" | "system";
+        attributionText: string;
+      };
+      createdAt: number;
+    }>
+  >(anyApi.mediaAssets.listMine, {
+    viewerSubject,
+    limit: Math.max(1, Math.min(200, Math.floor(limit)))
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  return {
+    ok: true,
+    data: result.data
+      .filter((asset) => asset.source === "upload")
+      .map((asset) => ({
+        id: asset.id,
+        ownerUserId: asset.ownerUserId,
+        source: "upload" as const,
+        cachedUrl: asset.cachedUrl,
+        thumbUrl: asset.thumbUrl ?? null,
+        width: asset.width,
+        height: asset.height,
+        mime: asset.mime ?? null,
+        attribution: {
+          authorName: asset.attribution.authorName,
+          authorUrl: asset.attribution.authorUrl ?? null,
+          assetUrl: asset.attribution.assetUrl ?? null,
+          licenseUrl: asset.attribution.licenseUrl ?? null,
+          provider: "upload" as const,
+          attributionText: asset.attribution.attributionText
+        },
+        createdAt: asset.createdAt
+      }))
+  };
+}
+
+export async function createUploadedIllustrationMediaAssetForUser(
+  viewerSubject: string,
+  input: {
+    sourceId?: string | null;
+    cachedUrl: string;
+    thumbUrl?: string | null;
+    width: number;
+    height: number;
+    mime?: string | null;
+  }
+): Promise<DataResult<{ mediaAssetId: string; mediaAsset: UploadedIllustrationMediaAsset; reused: boolean }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{
+    ok: true;
+    mediaAssetId: string;
+    mediaAsset: {
+      id: string;
+      ownerUserId: string | null;
+      source: "upload" | "unsplash" | "pexels" | "system";
+      cachedUrl: string;
+      thumbUrl: string | null;
+      width: number;
+      height: number;
+      mime: string | null;
+      attribution: {
+        authorName: string;
+        authorUrl?: string | null;
+        assetUrl?: string | null;
+        licenseUrl?: string | null;
+        provider: "upload" | "unsplash" | "pexels" | "system";
+        attributionText: string;
+      };
+      createdAt: number;
+    };
+    reused: boolean;
+  }>(anyApi.mediaAssets.createOrGetBySource, {
+    viewerSubject,
+    ownerUserId: viewerSubject,
+    source: "upload",
+    sourceId: input.sourceId ?? null,
+    cachedUrl: input.cachedUrl,
+    thumbUrl: input.thumbUrl ?? input.cachedUrl,
+    width: Math.max(1, Math.floor(input.width)),
+    height: Math.max(1, Math.floor(input.height)),
+    mime: input.mime ?? null,
+    attribution: {
+      authorName: "You",
+      authorUrl: null,
+      assetUrl: null,
+      licenseUrl: null,
+      provider: "upload",
+      attributionText: "Uploaded by you"
+    }
+  });
+  if (!result.ok) return { ok: false, error: result.error };
+  if (result.data.mediaAsset.source !== "upload" || result.data.mediaAsset.attribution.provider !== "upload") {
+    return { ok: false, error: "Unexpected media asset source." };
+  }
+  return {
+    ok: true,
+    data: {
+      mediaAssetId: result.data.mediaAssetId,
+      reused: result.data.reused,
+      mediaAsset: {
+        id: result.data.mediaAsset.id,
+        ownerUserId: result.data.mediaAsset.ownerUserId,
+        source: "upload",
+        cachedUrl: result.data.mediaAsset.cachedUrl,
+        thumbUrl: result.data.mediaAsset.thumbUrl ?? null,
+        width: result.data.mediaAsset.width,
+        height: result.data.mediaAsset.height,
+        mime: result.data.mediaAsset.mime ?? null,
+        attribution: {
+          authorName: result.data.mediaAsset.attribution.authorName,
+          authorUrl: result.data.mediaAsset.attribution.authorUrl ?? null,
+          assetUrl: result.data.mediaAsset.attribution.assetUrl ?? null,
+          licenseUrl: result.data.mediaAsset.attribution.licenseUrl ?? null,
+          provider: "upload",
+          attributionText: result.data.mediaAsset.attribution.attributionText
+        },
+        createdAt: result.data.mediaAsset.createdAt
+      }
+    }
+  };
 }
 
 export async function listChapterStudioStateByStorybookForUser(

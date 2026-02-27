@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { signOut } from "next-auth/react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
 import {
   type StorybookExportSettingsV1,
@@ -18,7 +19,6 @@ import {
   createStockAssetAction,
   createUploadAssetAction,
   duplicatePageAction,
-  ensureLayoutCanvasAction,
   listEditorAssetsAction,
   listFramesByStorybookAction,
   listPagesAction,
@@ -45,6 +45,8 @@ import { showStudioToast } from "../studio/ui/toasts";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
 import type { StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
+import { MemoriosoLogo } from "../memorioso-logo";
+import { trackAuthLogout } from "../../lib/analytics/events_auth";
 import { TextPanel } from "../studio/panels/TextPanel";
 import { ElementsPanel } from "../studio/panels/ElementsPanel";
 import { UploadsPanel } from "../studio/panels/UploadsPanel";
@@ -179,6 +181,50 @@ function buildStockFrameAttribution(result: NormalizedStockResult) {
   };
 }
 
+function initialsFromLabel(value: string | null | undefined) {
+  const source = (value ?? "").trim();
+  if (!source) return "M";
+  if (source.includes("@")) return source.slice(0, 1).toUpperCase();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 1).toUpperCase();
+  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
+}
+
+function FooterCanvasToggleButton({
+  label,
+  active,
+  onClick,
+  children
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="group relative">
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        title={label}
+        className={[
+          "flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition",
+          active
+            ? "border-cyan-300/35 bg-cyan-400/12 text-cyan-100"
+            : "border-white/10 bg-white/[0.03] text-white/75 hover:bg-white/[0.06] hover:text-white"
+        ].join(" ")}
+        onClick={onClick}
+      >
+        {children}
+      </button>
+      <div className="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/10 bg-[#0a111d]/95 px-2 py-1 text-[10px] text-white/90 opacity-0 shadow-lg transition group-hover:opacity-100 group-focus-within:opacity-100">
+        {label}
+      </div>
+    </div>
+  );
+}
+
 function isCropEditableFrame(frame: FrameDTO | null): frame is FrameDTO & { type: "IMAGE" | "FRAME" } {
   if (!frame) return false;
   if (frame.type === "IMAGE") return true;
@@ -195,13 +241,17 @@ export function Editor2Shell({// NOSONAR
   initialPages,
   initialFramesByPageId,
   initialSelectedPageId = null,
-  fullscreen = false
+  fullscreen = false,
+  userEmail = null,
+  userDisplayName = null
 }: {
   storybook: StorybookDTO;
   initialPages: PageDTO[];
   initialFramesByPageId: Record<string, FrameDTO[]>;
   initialSelectedPageId?: string | null;
   fullscreen?: boolean;
+  userEmail?: string | null;
+  userDisplayName?: string | null;
 }) {
   const [pages, setPages] = useState(sortPages(initialPages));
   const [framesByPageId, setFramesByPageId] =
@@ -234,9 +284,13 @@ export function Editor2Shell({// NOSONAR
   const [showMarginsOverlay, setShowMarginsOverlay] = useState(true);
   const [showSafeAreaOverlay, setShowSafeAreaOverlay] = useState(true);
   const [snapEnabled, setSnapEnabled] = useState(true);
+  const [canvasOnlyFullscreen, setCanvasOnlyFullscreen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<EditorFramePatch>({});
   const [isPending, startTransition] = useTransition();
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const shellContainerRef = useRef<HTMLDivElement | null>(null);
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
   const studioShell = useHoverPanelController();
   const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
   const { insertFromUploadAsset, insertFromProviderResult } = useInsertImage();
@@ -279,6 +333,8 @@ export function Editor2Shell({// NOSONAR
     [selectedTextFrame]
   );
   const issueHighlightMap = useMemo(() => buildIssueHighlightMap(preflightIssues), [preflightIssues]);
+  const avatarLabel = userDisplayName || userEmail || "Member";
+  const avatarInitials = initialsFromLabel(avatarLabel);
   const currentPageIssueHighlights = useMemo(
     () => (effectiveSelectedPageId ? issueHighlightMap[effectiveSelectedPageId] ?? {} : {}),
     [effectiveSelectedPageId, issueHighlightMap]
@@ -381,18 +437,6 @@ export function Editor2Shell({// NOSONAR
       setSelectedFrameDraftPatch({});
     }
   });
-
-  async function ensureCanvas() {
-    const result = await ensureLayoutCanvasAction(storybook.id);
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
-    }
-    setPages(sortPages(result.data));
-    if (!selectedPageId && result.data[0]) {
-      setSelectedPageId(result.data[0].id);
-    }
-  }
 
   async function handleAddPage() {
     const result = await createPageAction(storybook.id, selectedPage?.size_preset ?? "BOOK_8_5X11");
@@ -1290,7 +1334,7 @@ export function Editor2Shell({// NOSONAR
   }
 
   const studioPanelContents = {
-    layouts: (
+    pages: (
       <PagesPanel
         pages={pages}
         selectedPageId={effectiveSelectedPageId}
@@ -1300,6 +1344,13 @@ export function Editor2Shell({// NOSONAR
         onMovePage={handleMovePage}
         onDuplicatePage={handleDuplicatePage}
         onDeletePage={handleDeletePage}
+      />
+    ),
+    layouts: (
+      <TemplatePicker
+        variant="panel"
+        onApplyTemplate={handleApplyTemplate}
+        disabled={!selectedPage}
       />
     ),
     text: (
@@ -1513,182 +1564,494 @@ export function Editor2Shell({// NOSONAR
     startTransition
   ]);
 
+  useEffect(() => {
+    if (!userMenuOpen) return;
+
+    function onPointerDown(event: PointerEvent) {
+      if (!userMenuRef.current) return;
+      if (userMenuRef.current.contains(event.target as Node)) return;
+      setUserMenuOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setUserMenuOpen(false);
+    }
+
+    globalThis.addEventListener("pointerdown", onPointerDown);
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => {
+      globalThis.removeEventListener("pointerdown", onPointerDown);
+      globalThis.removeEventListener("keydown", onKeyDown);
+    };
+  }, [userMenuOpen]);
+
+  useEffect(() => {
+    if (!canvasOnlyFullscreen) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      void exitCanvasFullscreen();
+    }
+
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => {
+      globalThis.removeEventListener("keydown", onKeyDown);
+    };
+  }, [canvasOnlyFullscreen]);
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      if (document.fullscreenElement) return;
+      setCanvasOnlyFullscreen(false);
+    }
+
+    globalThis.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      globalThis.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  async function enterCanvasFullscreen() {
+    setCanvasOnlyFullscreen(true);
+    const target = shellContainerRef.current;
+    if (!target) return;
+    if (document.fullscreenElement === target) return;
+    try {
+      await target.requestFullscreen();
+    } catch {
+      setMessage("Unable to enter browser fullscreen mode.");
+    }
+  }
+
+  async function exitCanvasFullscreen() {
+    setCanvasOnlyFullscreen(false);
+    if (!document.fullscreenElement) return;
+    try {
+      await document.exitFullscreen();
+    } catch {
+      setMessage("Unable to exit browser fullscreen mode.");
+    }
+  }
+
+  const canvasStage = (
+    <CanvasStage
+      page={selectedPage}
+      frames={currentFrames}
+      selectedFrameId={selectedFrameId}
+      selectedFrameIds={selectedFrameIds}
+      selectionBounds={selectionBounds}
+      zoom={zoom}
+      showGrid={showGridOverlay}
+      showMarginsOverlay={showMarginsOverlay}
+      showSafeAreaOverlay={showSafeAreaOverlay}
+      safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
+      issueHighlightMessagesByFrameId={currentPageIssueHighlights}
+      snapEnabled={snapEnabled}
+      editingTextFrameId={editingTextFrameId}
+      cropModeFrameId={cropModeFrameId}
+      cropDraftByFrameId={cropDraftByFrameId}
+      onSelectFrame={handleSelectFrame}
+      onStartTextEdit={handleStartTextEdit}
+      onEndTextEdit={handleEndTextEdit}
+      onTextContentChange={handleTextContentChange}
+      onPatchSelectedTextStyle={patchSelectedTextStyle}
+      onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
+      onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
+      onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
+      onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
+      onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
+      onNodeMenuAction={(action) => {
+        void handleNodeMenuAction(action);
+      }}
+      nodeMenuCanPaste={Boolean(getNodeClipboard())}
+      nodeMenuCanAlignSelection={selectedFrames.length >= 2 && Boolean(selectionBounds)}
+      nodeMenuCanDistribute={isDistributionEligible(selectedFrames)}
+      onStartCropEdit={handleStartCropEdit}
+      onEndCropEdit={handleApplyCropEdit}
+      onCropChange={handleCropChange}
+      onFramePatchPreview={(frameId, patch) => {
+        const active = currentFrames.find((frame) => frame.id === frameId);
+        if (!active) return;
+        setFramesByPageId((current) => {
+          const next = { ...current };
+          next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
+            frame.id === frameId ? { ...frame, ...patch } : frame
+          );
+          return next;
+        });
+      }}
+      onFramePatchCommit={handleCommitFramePatch}
+      onDropMediaOnFrame={(frameId, payload) => {
+        void handleDropMediaOnFrame(frameId, payload);
+      }}
+      onClearSelection={handleClearSelection}
+    />
+  );
+
   return (
     <div
+      ref={shellContainerRef}
       className={
-        fullscreen
+        canvasOnlyFullscreen
+          ? "fixed inset-0 z-[80] flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]"
+          : fullscreen
           ? "flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]"
           : "flex h-[calc(100vh-5.5rem)] min-h-[680px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a111d] shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
       }
     >
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-[linear-gradient(90deg,#12b7c3_0%,#2f8be6_52%,#5b42de_100%)] px-4 py-2 text-white">
-        <div className="flex items-center gap-2">
-          <Link href={`/app/storybooks/${storybook.id}`} className="rounded-md bg-white/10 px-2 py-1 text-xs font-semibold hover:bg-white/20">
-            Back
-          </Link>
-          <span className="text-sm font-semibold">Memorioso Layout Studio</span>
-          <span className="rounded-full bg-white/15 px-2 py-1 text-[11px] uppercase tracking-[0.14em]">
-            Beta
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <TemplatePicker onApplyTemplate={handleApplyTemplate} />
-          <Editor2SaveStatus status={autosave.status} error={autosave.error} />
-          <ExportButton
-            storybookId={storybook.id}
-            storybookSettings={storybookExportSettings}
-            issueDisplayMeta={issueDisplayMeta}
-            onExportSettingsChange={setStorybookExportSettings}
-            onIssueNavigate={handleNavigateToExportIssue}
-            onIssuesUpdate={setPreflightIssues}
-          />
-          <Button type="button" size="sm" onClick={() => void ensureCanvas()}>
-            Ensure Canvas
-          </Button>
+      {!canvasOnlyFullscreen ? (
+        <>
+      <div className="relative z-40 border-b border-white/10 px-0 py-0">
+        <div className="relative overflow-visible rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] shadow-[0_12px_40px_rgba(4,10,20,0.35)] backdrop-blur-2xl">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:20px_20px]" />
+          <div className="pointer-events-none absolute left-8 top-0 h-px w-28 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
+          <div className="pointer-events-none absolute -right-8 top-1/2 h-16 w-16 -translate-y-1/2 rounded-full border border-gold/20 bg-gold/10 blur-xl" />
+
+          <div className="relative flex flex-wrap items-center justify-between gap-3 px-3 py-2 sm:px-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <Link
+                href={`/book/${storybook.id}/chapters`}
+                className="rounded-xl border border-white/12 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-white/85 transition hover:bg-white/[0.06] hover:text-white"
+              >
+                Back
+              </Link>
+              <div className="hidden h-7 w-px bg-white/10 sm:block" />
+              <Link
+                href="/app"
+                className="min-w-0 rounded-xl transition hover:bg-white/[0.03]"
+              >
+                <MemoriosoLogo compact className="origin-left scale-[0.82]" />
+              </Link>
+              <span className="hidden rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/60 md:inline-flex">
+                Studio
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Editor2SaveStatus
+                status={autosave.status}
+                error={autosave.error}
+              />
+              <ExportButton
+                storybookId={storybook.id}
+                storybookSettings={storybookExportSettings}
+                issueDisplayMeta={issueDisplayMeta}
+                onExportSettingsChange={setStorybookExportSettings}
+                onIssueNavigate={handleNavigateToExportIssue}
+                onIssuesUpdate={setPreflightIssues}
+              />
+              <div ref={userMenuRef} className="relative ml-1">
+                <button
+                  type="button"
+                  aria-label="Open account menu"
+                  aria-haspopup="menu"
+                  aria-expanded={userMenuOpen}
+                  className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-white/[0.03] text-xs font-semibold text-white transition hover:bg-white/[0.06]"
+                  onClick={() => setUserMenuOpen((current) => !current)}
+                >
+                  {avatarInitials}
+                </button>
+                {userMenuOpen ? (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-[calc(100%+10px)] z-50 w-52 overflow-hidden rounded-2xl border border-white/12 bg-[#0b1220]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+                  >
+                    <div className="mb-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2">
+                      <p className="truncate text-sm font-semibold text-white">
+                        {userDisplayName || "Memorioso Member"}
+                      </p>
+                      <p className="truncate text-xs text-white/55">
+                        {userEmail ?? "Signed in"}
+                      </p>
+                    </div>
+                    <Link
+                      href="/app/profile"
+                      role="menuitem"
+                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Profile
+                    </Link>
+                    <Link
+                      href="/app/settings"
+                      role="menuitem"
+                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Settings
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="mt-1 flex h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm text-rose-100 hover:bg-rose-500/10"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        trackAuthLogout({ source: "studio_header_menu" });
+                        void signOut({ callbackUrl: "/login?loggedOut=1" });
+                      }}
+                    >
+                      Logout
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {message ? (
-        <div className="border-b border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">{message}</div>
+        <div className="border-b border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">
+          {message}
+        </div>
+      ) : null}
+        </>
       ) : null}
 
       <div className="flex min-h-0 flex-1">
-        <StudioShellV2
-          rootRef={studioShell.rootRef}
-          hoverCapable={studioShell.hoverCapable}
-          openPanelId={studioShell.openPanelId}
-          pinnedPanelId={studioShell.pinnedPanelId}
-          closePanel={studioShell.closePanel}
-          pinPanel={studioShell.pinPanel}
-          onIconHoverStart={studioShell.onIconHoverStart}
-          onIconHoverEnd={studioShell.onIconHoverEnd}
-          onPanelHoverStart={studioShell.onPanelHoverStart}
-          onPanelHoverEnd={studioShell.onPanelHoverEnd}
-          onIconActivate={studioShell.onIconActivate}
-          panelContents={studioPanelContents}
-          onCanvasPointerDownCapture={studioShell.onCanvasPointerDown}
-        >
-          <div className="flex h-full min-w-0">
-            <div className="relative min-w-0 flex-1">
-              <CanvasStage
-                page={selectedPage}
-                frames={currentFrames}
-                selectedFrameId={selectedFrameId}
-                selectedFrameIds={selectedFrameIds}
-                selectionBounds={selectionBounds}
-                zoom={zoom}
-                showGrid={showGridOverlay}
-                showMarginsOverlay={showMarginsOverlay}
-                showSafeAreaOverlay={showSafeAreaOverlay}
-                safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
-                issueHighlightMessagesByFrameId={currentPageIssueHighlights}
-                snapEnabled={snapEnabled}
-                editingTextFrameId={editingTextFrameId}
-                cropModeFrameId={cropModeFrameId}
-                cropDraftByFrameId={cropDraftByFrameId}
-                onSelectFrame={handleSelectFrame}
-                onStartTextEdit={handleStartTextEdit}
-                onEndTextEdit={handleEndTextEdit}
-                onTextContentChange={handleTextContentChange}
-                onPatchSelectedTextStyle={patchSelectedTextStyle}
-                onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
-                onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
-                onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
-                onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
-                onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
-                onNodeMenuAction={(action) => {
-                  void handleNodeMenuAction(action);
+        {canvasOnlyFullscreen ? (
+          <div className="relative min-h-0 flex-1">
+            {canvasStage}
+            <div className="pointer-events-none absolute right-4 top-4 z-20">
+              <button
+                type="button"
+                aria-label="Exit fullscreen canvas"
+                title="Exit fullscreen canvas"
+                className="pointer-events-auto inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-white/20 bg-[#0b1423]/85 text-white shadow-lg backdrop-blur transition hover:bg-[#102039]"
+                onClick={() => {
+                  void exitCanvasFullscreen();
                 }}
-                nodeMenuCanPaste={Boolean(getNodeClipboard())}
-                nodeMenuCanAlignSelection={selectedFrames.length >= 2 && Boolean(selectionBounds)}
-                nodeMenuCanDistribute={isDistributionEligible(selectedFrames)}
-                onStartCropEdit={handleStartCropEdit}
-                onEndCropEdit={handleApplyCropEdit}
-                onCropChange={handleCropChange}
-                onFramePatchPreview={(frameId, patch) => {
-                  const active = currentFrames.find((frame) => frame.id === frameId);
-                  if (!active) return;
-                  setFramesByPageId((current) => {
-                    const next = { ...current };
-                    next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
-                      frame.id === frameId ? { ...frame, ...patch } : frame
-                    );
-                    return next;
-                  });
-                }}
-                onFramePatchCommit={handleCommitFramePatch}
-                onDropMediaOnFrame={(frameId, payload) => {
-                  void handleDropMediaOnFrame(frameId, payload);
-                }}
-                onClearSelection={handleClearSelection}
-              />
-
-              <div className="pointer-events-none absolute inset-0">
-                <div className="pointer-events-auto absolute bottom-4 right-4 rounded-xl border border-white/15 bg-[#0c1422]/90 p-3 shadow-xl backdrop-blur-xl">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
-                      onClick={() => setZoom((value) => Math.max(0.45, Number((value - 0.05).toFixed(2))))}
-                    >
-                      -
-                    </button>
-                    <span className="min-w-14 text-center text-xs font-semibold text-white/90">
-                      {Math.round(zoom * 100)}%
-                    </span>
-                    <button
-                      type="button"
-                      className="h-8 w-8 cursor-pointer rounded-lg border border-white/10 bg-white/[0.03] text-white"
-                      onClick={() => setZoom((value) => Math.min(1.6, Number((value + 0.05).toFixed(2))))}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant={showGridOverlay ? "secondary" : "ghost"} onClick={() => setShowGridOverlay((value) => !value)}>
-                      Overlay Grid
-                    </Button>
-                    <Button type="button" size="sm" variant={showMarginsOverlay ? "secondary" : "ghost"} onClick={() => setShowMarginsOverlay((value) => !value)}>
-                      Margins
-                    </Button>
-                    <Button type="button" size="sm" variant={showSafeAreaOverlay ? "secondary" : "ghost"} onClick={() => setShowSafeAreaOverlay((value) => !value)}>
-                      Safe Area
-                    </Button>
-                    <Button type="button" size="sm" variant={snapEnabled ? "secondary" : "ghost"} onClick={() => setSnapEnabled((value) => !value)}>
-                      Snap
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 4H4v5" />
+                  <path d="M15 4h5v5" />
+                  <path d="M20 15v5h-5" />
+                  <path d="M4 15v5h5" />
+                </svg>
+              </button>
             </div>
-
-            <PropertiesPanel
-              page={selectedPage}
-              selectedFrame={selectedFrame}
-              snapEnabled={snapEnabled}
-              onToggleSnap={() => setSnapEnabled((value) => !value)}
-              onPageSizeChange={handlePageSizeChange}
-              onToggleGrid={handleToggleGrid}
-              onPatchFrameDraft={applySelectedFrameDraftPatch}
-              onDeleteFrame={handleDeleteSelectedFrame}
-              onBringToFront={handleBringToFront}
-              onSendBackward={handleSendBackward}
-              onOpenImagePicker={selectedFrame && (selectedFrame.type === "IMAGE" || selectedFrame.type === "FRAME") ? openImagePanel : undefined}
-              onStartCropMode={selectedCropTargetFrame ? () => handleStartCropEdit(selectedCropTargetFrame.id) : undefined}
-              onEndCropMode={selectedCropTargetFrame ? () => handleCancelCropEdit(selectedCropTargetFrame.id) : undefined}
-              cropModeActive={selectedCropTargetFrame ? cropModeFrameId === selectedCropTargetFrame.id : false}
-            />
           </div>
-        </StudioShellV2>
+        ) : (
+          <StudioShellV2
+            rootRef={studioShell.rootRef}
+            hoverCapable={studioShell.hoverCapable}
+            openPanelId={studioShell.openPanelId}
+            pinnedPanelId={studioShell.pinnedPanelId}
+            closePanel={studioShell.closePanel}
+            pinPanel={studioShell.pinPanel}
+            onIconHoverStart={studioShell.onIconHoverStart}
+            onIconHoverEnd={studioShell.onIconHoverEnd}
+            onPanelHoverStart={studioShell.onPanelHoverStart}
+            onPanelHoverEnd={studioShell.onPanelHoverEnd}
+            onIconActivate={studioShell.onIconActivate}
+            panelContents={studioPanelContents}
+            onCanvasPointerDownCapture={studioShell.onCanvasPointerDown}
+          >
+            <div className="flex h-full min-w-0">
+              <div className="relative min-w-0 flex-1">{canvasStage}</div>
+
+              <PropertiesPanel
+                page={selectedPage}
+                selectedFrame={selectedFrame}
+                snapEnabled={snapEnabled}
+                onToggleSnap={() => setSnapEnabled((value) => !value)}
+                onPageSizeChange={handlePageSizeChange}
+                onToggleGrid={handleToggleGrid}
+                onPatchFrameDraft={applySelectedFrameDraftPatch}
+                onDeleteFrame={handleDeleteSelectedFrame}
+                onBringToFront={handleBringToFront}
+                onSendBackward={handleSendBackward}
+                onOpenImagePicker={
+                  selectedFrame &&
+                  (selectedFrame.type === "IMAGE" ||
+                    selectedFrame.type === "FRAME")
+                    ? openImagePanel
+                    : undefined
+                }
+                onStartCropMode={
+                  selectedCropTargetFrame
+                    ? () => handleStartCropEdit(selectedCropTargetFrame.id)
+                    : undefined
+                }
+                onEndCropMode={
+                  selectedCropTargetFrame
+                    ? () => handleCancelCropEdit(selectedCropTargetFrame.id)
+                    : undefined
+                }
+                cropModeActive={
+                  selectedCropTargetFrame
+                    ? cropModeFrameId === selectedCropTargetFrame.id
+                    : false
+                }
+              />
+            </div>
+          </StudioShellV2>
+        )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
-        <p>WYSIWYG canvas v1 · Pages + frames are the canonical model for Sprint 7 PDF rendering.</p>
-        <p>
-          {pages.length} pages · {Object.values(framesByPageId).reduce((sum, frames) => sum + frames.length, 0)} frames
-          {imagePanelAssetSummary}
-        </p>
+      {!canvasOnlyFullscreen ? (
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
+          <p>WYSIWYG canvas v1</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4 text-white/70"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="5" />
+              <path d="m20 20-4-4" />
+            </svg>
+            <input
+              type="range"
+              min={45}
+              max={160}
+              step={1}
+              aria-label="Zoom"
+              value={Math.round(zoom * 100)}
+              onChange={(event) => setZoom(Number(event.target.value) / 100)}
+              className="h-1.5 w-28 cursor-pointer accent-white sm:w-36"
+            />
+            <span className="min-w-10 text-right font-semibold text-white/85">
+              {Math.round(zoom * 100)}%
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
+            <FooterCanvasToggleButton
+              label="Overlay Grid"
+              active={showGridOverlay}
+              onClick={() => setShowGridOverlay((value) => !value)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+                <path d="M9.33 4v16" />
+                <path d="M14.66 4v16" />
+                <path d="M4 9.33h16" />
+                <path d="M4 14.66h16" />
+              </svg>
+            </FooterCanvasToggleButton>
+            <FooterCanvasToggleButton
+              label="Margins"
+              active={showMarginsOverlay}
+              onClick={() => setShowMarginsOverlay((value) => !value)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+                <rect x="7.5" y="7.5" width="9" height="9" rx="1" />
+              </svg>
+            </FooterCanvasToggleButton>
+            <FooterCanvasToggleButton
+              label="Safe Area"
+              active={showSafeAreaOverlay}
+              onClick={() => setShowSafeAreaOverlay((value) => !value)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="4" y="4" width="16" height="16" rx="2" />
+                <path d="M8 8h8v8H8z" strokeDasharray="2 2" />
+              </svg>
+            </FooterCanvasToggleButton>
+            <FooterCanvasToggleButton
+              label="Snap"
+              active={snapEnabled}
+              onClick={() => setSnapEnabled((value) => !value)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 4v4" />
+                <path d="M12 16v4" />
+                <path d="M4 12h4" />
+                <path d="M16 12h4" />
+                <circle cx="12" cy="12" r="3.5" />
+              </svg>
+            </FooterCanvasToggleButton>
+            <FooterCanvasToggleButton
+              label="Fullscreen Canvas"
+              active={canvasOnlyFullscreen}
+              onClick={() => {
+                void enterCanvasFullscreen();
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 4H4v5" />
+                <path d="M15 4h5v5" />
+                <path d="M20 15v5h-5" />
+                <path d="M4 15v5h5" />
+              </svg>
+            </FooterCanvasToggleButton>
+          </div>
+
+          <p className="shrink-0">
+            {pages.length} pages ·{" "}
+            {Object.values(framesByPageId).reduce(
+              (sum, frames) => sum + frames.length,
+              0,
+            )}{" "}
+            frames
+            {imagePanelAssetSummary}
+          </p>
+        </div>
       </div>
+      ) : null}
 
       {isPending ? (
         <div className="pointer-events-none absolute right-4 top-14 rounded-lg border border-white/10 bg-[#0d1626]/90 px-3 py-1 text-xs text-white/80">

@@ -399,7 +399,7 @@ export const createDefaultCanvas = mutationGeneric({
       content: {
         kind: "text_frame_v1",
         text:
-          "Start with a meaningful moment. This WYSIWYG canvas is the new source of truth for future PDF rendering."
+          "Start with a meaningful moment. This could be a memory, an idea, a lesson, or anything you want to explore. Use the tools on the left to customize this page and bring your story to life."
       },
       version: 1,
       createdAt: now,

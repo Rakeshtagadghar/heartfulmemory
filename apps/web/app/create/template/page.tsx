@@ -80,7 +80,7 @@ export default async function CreateTemplatePage() {
 
   return (
     <AppShell email={user.email} profile={profile}>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+      <div className="space-y-6">
         <Card className="overflow-hidden p-6 sm:p-8">
           <ViewportEvent eventName="create_entry_view" />
           <ViewportEvent eventName="template_select_view" />

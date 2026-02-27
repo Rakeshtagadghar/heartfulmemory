@@ -28,12 +28,21 @@ function MiniSidebarGlyph({ panelId }: { panelId: StudioShellPanelId }) {
   };
 
   switch (panelId) {
-    case "layouts":
+    case "pages":
       return (
         <svg {...common}>
           <rect x="4" y="5" width="16" height="14" rx="2" />
           <path d="M10 5v14" />
           <path d="M4 11h6" />
+        </svg>
+      );
+    case "layouts":
+      return (
+        <svg {...common}>
+          <rect x="4" y="5" width="16" height="14" rx="2" />
+          <path d="M12 5v14" />
+          <path d="M4 10h16" />
+          <path d="M4 14h8" />
         </svg>
       );
     case "text":

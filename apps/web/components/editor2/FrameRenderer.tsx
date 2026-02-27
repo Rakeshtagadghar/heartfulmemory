@@ -374,11 +374,17 @@ export function FrameRenderer({ // NOSONAR
         {!frame.locked && isTextFrame && !textEditing ? (
           <button
             type="button"
-            aria-label={selected ? "Edit text frame" : "Select and edit text frame"}
-            className="absolute inset-0 z-10 cursor-text rounded-lg bg-transparent text-left"
+            aria-label={selected ? "Move or edit text frame" : "Select, move, or edit text frame"}
+            className="absolute inset-0 z-10 cursor-move rounded-lg bg-transparent text-left"
+            onPointerDown={(event) => {
+              event.stopPropagation();
+              const additive = event.shiftKey || event.metaKey || event.ctrlKey;
+              onSelect(additive ? { additive: true } : { preserveIfSelected: true });
+              if (additive) return;
+              onDragStart(event);
+            }}
             onClick={(event) => {
               event.stopPropagation();
-              onSelect({ additive: event.shiftKey || event.metaKey || event.ctrlKey });
               if (shouldEnterTextEditMode({ detail: event.detail })) {
                 onStartTextEdit?.();
               }

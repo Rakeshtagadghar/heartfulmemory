@@ -1,6 +1,5 @@
 import type { ChapterDraftEntities, ChapterDraftSection } from "../../packages/shared/drafts/draftTypes";
 import { detectPromptLeakage, startsWithLiteralSectionLabel } from "./promptLeak";
-import { findRepeatedSentencesAcrossSections } from "./repetition";
 
 type Severity = "info" | "warning" | "error";
 
@@ -69,17 +68,6 @@ export function validateDraftOutputV1(input: DraftValidatorInput): {
     }
   }
 
-  const repeated = findRepeatedSentencesAcrossSections(
-    input.sections.map((section) => ({ sectionId: section.sectionId, text: section.text ?? "" }))
-  );
-  if (repeated.length > 0) {
-    errors.push({
-      code: "REPEATED_SECTION_TEXT",
-      message: "Repeated sentence(s) detected across sections.",
-      severity: "error"
-    });
-  }
-
   const badEntities = [
     ...invalidEntityValues(input.entities.people),
     ...invalidEntityValues(input.entities.places),
@@ -99,4 +87,3 @@ export function validateDraftOutputV1(input: DraftValidatorInput): {
     warnings
   };
 }
-

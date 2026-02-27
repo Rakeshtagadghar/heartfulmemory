@@ -31,6 +31,11 @@ export function ChapterCard({
 
   const totalQuestions = progress?.totalQuestions ?? 0;
   const answeredCount = progress?.answeredCount ?? 0;
+  const requiredQuestions = typeof progress?.requiredQuestions === "number" ? progress.requiredQuestions : totalQuestions;
+  const readyForNextStep = requiredQuestions > 0 ? answeredCount >= requiredQuestions : chapter.status === "completed";
+  const nextStepCopy = chapter.status === "completed"
+    ? "Next: Generate or review draft, then review illustrations, then open in Studio."
+    : "Next: Finish answers, then generate your draft.";
 
   return (
     <Card className="p-4 sm:p-5">
@@ -38,13 +43,15 @@ export function ChapterCard({
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge className={statusBadgeClass(chapter.status)}>{statusLabel(chapter.status)}</Badge>
-            <span className="text-xs uppercase tracking-[0.14em] text-white/40">{chapter.chapterKey}</span>
           </div>
           <h3 className="text-lg font-semibold text-parchment">{chapter.title}</h3>
           <p className="text-sm text-white/65">
             Progress: {answeredCount}/{totalQuestions}
             {typeof progress?.requiredQuestions === "number" ? ` / Required ${progress.requiredQuestions}` : ""}
           </p>
+          {readyForNextStep ? (
+            <p className="text-xs font-medium text-cyan-100/85">{nextStepCopy}</p>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-2 sm:items-end">
@@ -56,27 +63,59 @@ export function ChapterCard({
           </ButtonLink>
 
           {chapter.status === "completed" ? (
-            <div className="flex flex-col items-start gap-1 sm:items-end">
+            <div className="flex items-center gap-2 sm:justify-end">
               <TrackedLink
                 href={`/book/${storybookId}/chapters/${chapter.id}/draft`}
                 eventName="draft_review_open"
                 eventProps={{ chapterKey: chapter.chapterKey }}
-                className="text-xs font-semibold text-gold hover:text-[#e6c77f]"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-white/[0.03] text-gold transition hover:bg-white/[0.08] hover:text-[#e6c77f]"
+                aria-label="Review Draft"
+                title="Review Draft"
               >
-                Review Draft
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M6 4h9l3 3v13H6z" />
+                  <path d="M9 9h6" />
+                  <path d="M9 13h6" />
+                  <path d="M9 17h4" />
+                </svg>
               </TrackedLink>
               <TrackedLink
                 href={`/book/${storybookId}/chapters/${chapter.id}/illustrations`}
                 eventName="illustrations_review_open"
                 eventProps={{ chapterKey: chapter.chapterKey }}
-                className="text-xs font-semibold text-white/80 hover:text-white"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 bg-white/[0.03] text-white/80 transition hover:bg-white/[0.08] hover:text-white"
+                aria-label="Review Illustrations"
+                title="Review Illustrations"
               >
-                Review Illustrations
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="5" width="16" height="14" rx="2" />
+                  <circle cx="9" cy="10" r="1.5" />
+                  <path d="m7 16 3.5-3.5L13 15l2.5-2.5L18 16" />
+                </svg>
               </TrackedLink>
               <OpenInStudioButton
                 href={`/studio/${storybookId}?chapter=${chapter.id}`}
                 chapterKey={chapter.chapterKey}
-                className="h-auto border-0 bg-transparent p-0 text-xs font-semibold text-cyan-100 shadow-none hover:bg-transparent hover:text-cyan-50"
+                iconOnly
+                ariaLabel="Open in Studio"
               />
             </div>
           ) : (

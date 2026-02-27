@@ -1,4 +1,5 @@
 import { Card } from "../ui/card";
+import { cn } from "../ui/cn";
 
 type WarningRow = {
   code: string;
@@ -27,11 +28,11 @@ function warningTitle(code: string) {
   return map[code] ?? code.replaceAll("_", " ");
 }
 
-export function DraftWarnings({ warnings }: { warnings: WarningRow[] }) {
+export function DraftWarnings({ warnings, embedded = false }: { warnings: WarningRow[]; embedded?: boolean }) {
   if (!warnings.length) return null;
 
-  return (
-    <Card className="p-4">
+  const content = (
+    <div className={cn("p-4", embedded && "p-0")}>
       <p className="text-xs uppercase tracking-[0.14em] text-white/45">Draft Warnings</p>
       <div className="mt-3 space-y-2">
         {warnings.map((warning, index) => (
@@ -44,6 +45,9 @@ export function DraftWarnings({ warnings }: { warnings: WarningRow[] }) {
           </div>
         ))}
       </div>
-    </Card>
+    </div>
   );
+
+  if (embedded) return content;
+  return <Card>{content}</Card>;
 }

@@ -1,0 +1,333 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 22,
+      "title": "Draft Quality v2: Prompt-Safe Storytelling + Clean Sections",
+      "duration": "1 week",
+      "goal": "Fix story generation so sections are real narrative (not instructions), with zero prompt leakage in UI, minimal repetition, and clear section differentiation (Opening/Story/Timeline/Reflection).",
+      "definitionOfDone": [
+        "No prompt/guidance/instruction text appears in any user-visible section",
+        "Sections produce actual storytelling (narrative voice/tone applied) with minimal repetition",
+        "Section outputs are cleanly separated from internal guidance and validated before saving",
+        "Entity sanity warnings stop triggering due to prompt leakage tokens",
+        "Draft Review UI renders only validated, user-safe text",
+        "Regression tests prevent reintroducing prompt leakage"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for LLM calls, mutations for persistence)",
+      "llm": "Existing AI provider behind internal interface",
+      "data": "chapterAnswers (Sprint 17/18) + chapterDrafts (Sprint 19)",
+      "ui": "Draft Review screen exists and shows sections, facts, entities, warnings"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S22-T01",
+      "title": "Split 'section guidance' from 'section text' in data model (prevent UI prompt leakage)",
+      "skill": ["Architecture", "Convex", "Frontend Types"],
+      "priority": "P0",
+      "requirements": {
+        "problem": "Model output currently includes prompt/guidance like 'Write as the storyteller...' and UI renders it.",
+        "schemaChange": {
+          "chapterDrafts.sections[]": [
+            "sectionId",
+            "title",
+            "guidance (string, INTERNAL ONLY)",
+            "text (string, USER VISIBLE)",
+            "wordCount",
+            "citations[]"
+          ]
+        },
+        "migration": [
+          "If existing drafts store section text in a single field, migrate it to sections[].text",
+          "Set sections[].guidance from section framework (not from model output)"
+        ],
+        "constraints": [
+          "UI must never render guidance",
+          "Only 'text' goes to Studio population later"
+        ]
+      },
+      "acceptanceTests": [
+        "Draft sections persist both guidance and text",
+        "UI renders only sections[].text and never guidance",
+        "Existing drafts do not break after migration"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/chapterDrafts.ts migrations/patch",
+        "packages/shared/drafts/draftTypes.ts",
+        "docs/draft_section_schema_v2.md"
+      ]
+    },
+    {
+      "id": "S22-T02",
+      "title": "Rewrite generation prompt contract: output MUST be only story text (no instructions) + JSON schema",
+      "skill": ["Prompt Engineering", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "promptRules": [
+          "Return ONLY user-visible story text per section",
+          "Never include writing instructions, section guidance, meta commentary, or citations inline",
+          "Do not repeat the same sentence across sections",
+          "Timeline: if no dates are present, describe sequence without inventing dates"
+        ],
+        "outputFormat": {
+          "type": "json",
+          "schema": {
+            "summary": "string",
+            "sections": [
+              {
+                "sectionId": "string",
+                "text": "string",
+                "citations": ["string (questionId)"]
+              }
+            ],
+            "keyFacts": [
+              { "label": "string", "value": "string", "citations": ["string"] }
+            ],
+            "quotes": [{ "text": "string", "citations": ["string"] }],
+            "imageIdeas": [
+              {
+                "query": "string",
+                "reason": "string",
+                "slotHint": "portrait|landscape|texture|scene|object"
+              }
+            ],
+            "entities": {
+              "people": [
+                {
+                  "value": "string",
+                  "citations": ["string"],
+                  "confidence": 0.0
+                }
+              ],
+              "places": [
+                {
+                  "value": "string",
+                  "citations": ["string"],
+                  "confidence": 0.0
+                }
+              ],
+              "dates": [
+                {
+                  "value": "string",
+                  "citations": ["string"],
+                  "confidence": 0.0
+                }
+              ]
+            }
+          }
+        },
+        "constraints": [
+          "LLM must not be allowed to output raw prompt strings",
+          "All instructions go in system/developer prompt, never in the response fields"
+        ]
+      },
+      "acceptanceTests": [
+        "Generate draft returns structured JSON where section text contains no prompt phrases",
+        "Sections read like storytelling and differ across Opening/Story/Timeline/Reflection"
+      ],
+      "deliverables": [
+        "lib/ai/prompts/chapterDraftPrompt_v2.ts",
+        "docs/chapter_draft_output_schema_v2.json"
+      ]
+    },
+    {
+      "id": "S22-T03",
+      "title": "Add Draft Output Validator v1 (prompt-leak filter + repetition detector + min quality gates)",
+      "skill": ["Backend", "Quality Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "validator": [
+          "Block if section.text contains instruction-like phrases (denylist + regex)",
+          "Block if section.text starts with 'Opening.'/'The Story.'/'Timeline.' literal labels (unless you explicitly want them)",
+          "Detect repeated sentences/paragraphs across sections (similarity or exact match) and flag",
+          "Minimum word counts per section (config-driven)",
+          "Reject if entities contain obvious stopwords (the, my, our, I, we)"
+        ],
+        "behavior": [
+          "If invalid: mark draft status='error' with reasons and offer regenerate",
+          "If partially valid: allow save but show warnings (config-driven)"
+        ],
+        "constraints": [
+          "Validator must be deterministic (no LLM calls)",
+          "Reasons must be user-safe and developer-actionable"
+        ]
+      },
+      "acceptanceTests": [
+        "Validator catches prompt leakage in sample bad outputs",
+        "Validator catches repeated section text",
+        "Valid draft passes and saves"
+      ],
+      "deliverables": [
+        "lib/ai/validators/draftValidator.ts",
+        "lib/ai/validators/repetition.ts",
+        "lib/ai/validators/promptLeak.ts",
+        "docs/draft_validator_rules.md"
+      ]
+    },
+    {
+      "id": "S22-T04",
+      "title": "Update Convex generation action to use v2 prompt + validator + safe persistence",
+      "skill": ["Convex", "Backend Orchestration"],
+      "priority": "P0",
+      "requirements": {
+        "actions": ["chapterDrafts.generateV2", "chapterDrafts.regenSectionV2"],
+        "steps": [
+          "Load answers + narration settings",
+          "Build section framework guidance (internal)",
+          "Call LLM with strict output schema",
+          "Run validator",
+          "Persist: guidance stored from framework; text stored from model",
+          "Store warnings/errors separately from the visible story text"
+        ],
+        "constraints": [
+          "Never persist raw prompt into draft record",
+          "Regeneration replaces only target section.text and updates version"
+        ]
+      },
+      "acceptanceTests": [
+        "GenerateV2 produces clean draft text without leakage",
+        "RegenSectionV2 updates only one section text",
+        "Invalid outputs are blocked and explain why"
+      ],
+      "deliverables": [
+        "convex/ai/chapterDrafts_v2.ts",
+        "convex/chapterDrafts.ts updated to support v2 fields"
+      ]
+    },
+    {
+      "id": "S22-T05",
+      "title": "Fix Draft Review UI rendering (never show guidance; show warnings cleanly)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "uiChanges": [
+          "Section card renders only sections[].text",
+          "Add a 'Warnings' panel that shows validator warnings (not prompt text)",
+          "Citations display should reference questionIds only, no prompt fragments",
+          "Add 'Regenerate section' button wiring to regenSectionV2"
+        ],
+        "constraints": [
+          "No accidental rendering of internal fields anywhere",
+          "Do not show raw validator regex outputs; keep messages human-readable"
+        ]
+      },
+      "acceptanceTests": [
+        "UI never shows 'Write as...' style prompt text",
+        "Warnings panel shows meaningful issues if validator flags"
+      ],
+      "deliverables": [
+        "components/draft/DraftSectionCard.tsx updated",
+        "components/draft/DraftWarnings.tsx updated",
+        "components/draft/DraftHeader.tsx updated"
+      ]
+    },
+    {
+      "id": "S22-T06",
+      "title": "Section differentiation rules v1 (Opening vs Story vs Timeline vs Reflection)",
+      "skill": ["Product", "Prompt Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "rules": [
+          "Opening: set context + sensory detail + emotional tone (no lists)",
+          "Story: narrate events + people; avoid repeating opening lines",
+          "Timeline: bullet-ish chronological sequence ONLY from answers; if no dates, use 'First/Then/After that'",
+          "Reflection: meaning + values + lesson; avoid repeating facts"
+        ],
+        "constraints": [
+          "No invented facts",
+          "No repeated first sentence across sections"
+        ]
+      },
+      "acceptanceTests": [
+        "Sections read distinct and not duplicated",
+        "Timeline does not invent dates"
+      ],
+      "deliverables": [
+        "docs/section_differentiation_rules.md",
+        "lib/ai/prompts/sectionGuidance_v2.ts"
+      ]
+    },
+    {
+      "id": "S22-T07",
+      "title": "Fix entity sanity warning logic to rely on extracted entities, not tokenized section text",
+      "skill": ["Backend", "Quality Engineering"],
+      "priority": "P1",
+      "requirements": {
+        "change": [
+          "EntitySanity checks should compare extracted entities against source answers only",
+          "Stop scanning section text for random capitalized tokens",
+          "Add stopword list + min length rules for entities"
+        ],
+        "constraints": [
+          "No false positives like 'The', 'Our', 'My', 'India', 'Maharashtra' as people"
+        ]
+      },
+      "acceptanceTests": [
+        "People list no longer includes stopwords",
+        "Places list includes Maharashtra/India if present",
+        "Entity sanity warnings become rare and meaningful"
+      ],
+      "deliverables": [
+        "lib/ai/qualityChecks/entitySanity.ts updated",
+        "packages/shared/nlp/stopwords.ts"
+      ]
+    },
+    {
+      "id": "S22-T08",
+      "title": "Regression tests: prompt leakage + repetition + UI safety",
+      "skill": ["Testing", "QA"],
+      "priority": "P0",
+      "requirements": {
+        "testCases": [
+          "Bad output containing 'Write as...' is rejected",
+          "Bad output repeating same paragraph in all sections is rejected/warned",
+          "UI snapshot test ensures guidance never appears",
+          "Entity stopword test ensures tokens like 'The'/'My' are filtered"
+        ],
+        "automation": [
+          "Unit: promptLeak validator rules",
+          "Unit: repetition detector",
+          "Integration: generateV2 persists only safe text fields"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests pass and cover the regression areas",
+        "Known failure modes from screenshot are reproduced and fixed"
+      ],
+      "deliverables": [
+        "tests/drafts/promptLeak.test.ts",
+        "tests/drafts/repetition.test.ts",
+        "tests/ui/draftRenderSafety.test.tsx",
+        "docs/qa_sprint22_draft_quality_v2.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S22-T01",
+      "S22-T02",
+      "S22-T03",
+      "S22-T04",
+      "S22-T05",
+      "S22-T08",
+      "S22-T07",
+      "S22-T06"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "This sprint fixes the biggest trust breaker: prompt text leaking into user-visible content.",
+      "Validator-first approach prevents shipping low-quality drafts even if the model behaves badly.",
+      "Entity extraction improvements are partially addressed here (stopwords + sanity), but full LLM-assisted entity extraction is in the next sprint."
+    ]
+  }
+}

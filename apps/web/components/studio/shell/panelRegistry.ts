@@ -7,10 +7,15 @@ export type StudioPanelDefinition = {
 };
 
 export const studioPanelRegistry: Record<StudioShellPanelId, StudioPanelDefinition> = {
+  pages: {
+    id: "pages",
+    title: "Pages",
+    description: "Manage pages, order, duplicate, and delete."
+  },
   layouts: {
     id: "layouts",
-    title: "Pages & Layouts",
-    description: "Manage pages, order, duplicate, and delete."
+    title: "Layouts",
+    description: "Add preset layout blocks to the current page."
   },
   text: {
     id: "text",

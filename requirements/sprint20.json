@@ -1,0 +1,437 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 20,
+      "title": "Auto-Illustrate v1 (Unsplash/Pexels High-Res Selection + Slot Fill)",
+      "duration": "1 week",
+      "goal": "Automatically select high-resolution themed images for each completed chapter using Unsplash/Pexels, cache them to your storage, and assign them into template image slots (image1/image2/image3) so Studio opens with images already placed.",
+      "definitionOfDone": [
+        "For a completed chapter draft, system generates themed search queries (chapter themes)",
+        "Fetches candidates from Unsplash and/or Pexels, normalizes results, and filters to print-safe resolution thresholds",
+        "Ranks candidates by relevance + aspect match + quality + diversity and selects best per slot",
+        "Selected provider images are cached to app storage (avoid hotlinking) and stored as assets with attribution metadata",
+        "Template image slots are assigned to chosen assets (slotAssignments persisted per chapter)",
+        "User can review/replace selected images before Studio (simple review screen or in-panel)",
+        "Attribution metadata is captured on insert (for Credits sprint later)",
+        "No regressions to Photos/Uploads manual insert flows"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for provider calls + caching; mutations for persistence)",
+      "providers": "Unsplash + Pexels already integrated (Sprint 10). Reuse existing proxy logic/normalizers.",
+      "storage": "Existing image storage (R2/S3/Supabase storage equivalent in your stack); store cached URLs + meta in Convex",
+      "templates": "Template JSON contains chapter studioPages + image slot ids"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S20-T01",
+      "title": "Define Auto-Illustrate data model (assets + slot assignments + chapter theme cache)",
+      "skill": ["Architecture", "Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "convexTables": [
+          {
+            "name": "mediaAssets",
+            "fields": [
+              "id (Convex _id)",
+              "ownerUserId (string|null)  // null for system-cached shared assets or set owner for per-user",
+              "type ('image')",
+              "source ('upload'|'unsplash'|'pexels'|'system')",
+              "sourceId (string|null)",
+              "cachedUrl (string)",
+              "thumbUrl (string|null)",
+              "width (number)",
+              "height (number)",
+              "mime (string|null)",
+              "attribution (object { authorName, authorUrl, assetUrl, licenseUrl, provider, attributionText })",
+              "createdAt (number)"
+            ],
+            "indexes": ["by_ownerUserId", "by_source_sourceId"]
+          },
+          {
+            "name": "chapterIllustrations",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "chapterInstanceId (Id<'storybookChapters'>)",
+              "chapterKey (string)",
+              "version (number)",
+              "status ('selecting'|'ready'|'error')",
+              "theme (object { queries[], keywords[], negativeKeywords[] })",
+              "slotTargets (array of { slotId, aspectTarget, orientation, minShortSidePx })",
+              "slotAssignments (array of { slotId, mediaAssetId, providerMetaSnapshot })",
+              "lockedSlotIds (array<string>)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_chapterInstanceId", "by_storybookId"]
+          }
+        ],
+        "constraints": [
+          "Attribution must be captured for each selected image",
+          "Version increments on reselection/regenerate"
+        ]
+      },
+      "acceptanceTests": [
+        "Schema compiles and owner-only access enforced for storybook-linked records",
+        "Can store and query slot assignments per chapter"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/mediaAssets.ts (queries/mutations)",
+        "convex/chapterIllustrations.ts (queries/mutations)",
+        "packages/shared/media/assetTypes.ts"
+      ]
+    },
+    {
+      "id": "S20-T02",
+      "title": "Slot target extraction from template (per chapter: image slots + aspect ratios)",
+      "skill": ["Frontend", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "inputs": ["templateJson", "chapterKey", "studioPages[].slots"],
+        "output": [
+          "slotTargets[] with minShortSidePx and aspectTarget/orientation"
+        ],
+        "rules": [
+          "For each chapter page layout, identify slot.image1/image2/image3 used",
+          "Provide default aspect targets if layout lacks metadata (e.g., image1=4:3, image2=1:1, image3=3:4)",
+          "Compute minShortSidePx based on slot size class (cover/large/medium/small)"
+        ],
+        "constraints": [
+          "No dependency on actual canvas pixel size; use template slot metadata or fallbacks"
+        ]
+      },
+      "acceptanceTests": [
+        "Given a template + chapterKey, extraction returns deterministic slotTargets",
+        "SlotTargets cover all image slots used by chapter layouts"
+      ],
+      "deliverables": [
+        "packages/shared/templates/slotTargets.ts",
+        "docs/slot_targets_rules.md"
+      ]
+    },
+    {
+      "id": "S20-T03",
+      "title": "Generate chapter theme queries from chapter draft (LLM-light or heuristic v1)",
+      "skill": ["Backend", "Prompt Engineering", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "approach": [
+          "Option A (fast): heuristic from chapter title + keyFacts + places + tone",
+          "Option B (better): small LLM call that outputs queries/keywords/negativeKeywords"
+        ],
+        "inputs": [
+          "chapterDraft.summary",
+          "chapterDraft.entities (people/places/dates)",
+          "templateId + chapterKey",
+          "narration.tone"
+        ],
+        "outputSchema": {
+          "queries": "array (3-8)",
+          "keywords": "array (10-30)",
+          "negativeKeywords": "array (0-15)"
+        },
+        "constraints": [
+          "No personal names in queries by default (privacy-safe). Use generic terms unless user explicitly wants personal photos.",
+          "Queries must be provider-friendly (short phrases)."
+        ]
+      },
+      "acceptanceTests": [
+        "Themes generated consistently for the same inputs",
+        "Queries avoid private names and are relevant to chapter"
+      ],
+      "deliverables": [
+        "convex/illustrate/themeGenerator.ts",
+        "docs/theme_generation_rules.md"
+      ]
+    },
+    {
+      "id": "S20-T04",
+      "title": "Fetch provider candidates (Unsplash/Pexels) + normalize + filter by print-safe thresholds",
+      "skill": ["Convex", "API Integration"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "illustrate.fetchCandidates",
+        "inputs": [
+          "provider (unsplash|pexels|both)",
+          "queries[]",
+          "orientation",
+          "page/perPage"
+        ],
+        "normalization": [
+          "Normalize to ProviderAsset: provider, id, thumbUrl, fullUrl, width, height, authorName, authorUrl, assetUrl, licenseUrl, attributionText"
+        ],
+        "filtering": [
+          "Drop items where min(width,height) < minShortSidePx for target slot",
+          "Drop duplicates by (provider,id) and near-duplicate URLs"
+        ],
+        "constraints": [
+          "Keys stay server-side",
+          "Handle rate limits gracefully (fallback to other provider or fewer results)"
+        ]
+      },
+      "acceptanceTests": [
+        "Candidate list returns normalized assets",
+        "Filtering removes low-res assets correctly",
+        "Rate limit returns structured errors and fallback path works"
+      ],
+      "deliverables": [
+        "convex/illustrate/providers.ts",
+        "convex/illustrate/fetchCandidates.ts",
+        "lib/photos/normalizeProviderAsset.ts (reuse if exists)"
+      ]
+    },
+    {
+      "id": "S20-T05",
+      "title": "Rank + select best image per slot (relevance + aspect match + diversity)",
+      "skill": ["Backend", "Algorithms"],
+      "priority": "P0",
+      "requirements": {
+        "scoring": [
+          "qualityScore: normalized by resolution (shortSidePx, megapixels)",
+          "aspectScore: penalty by |candidateAR - targetAR|",
+          "relevanceScore: query match weight (simple heuristic v1)",
+          "diversityPenalty: avoid same author/provider repeated within chapter"
+        ],
+        "selectionRules": [
+          "For each slotTarget, choose top-scoring candidate",
+          "Respect lockedSlotIds (do not replace locked selections)",
+          "If no candidate meets threshold, relax minShortSidePx by one step and retry"
+        ],
+        "constraints": [
+          "Deterministic selection given same candidate set (stable sorting)",
+          "Avoid selecting faces/people-heavy images by default unless chapter theme suggests it (optional rule)"
+        ]
+      },
+      "acceptanceTests": [
+        "Selection produces one asset per slot when candidates available",
+        "Locked slots are preserved on reselection",
+        "Aspect ratio matches slot targets reasonably"
+      ],
+      "deliverables": [
+        "convex/illustrate/scoring.ts",
+        "convex/illustrate/selectForSlots.ts",
+        "docs/selection_scoring_v1.md"
+      ]
+    },
+    {
+      "id": "S20-T06",
+      "title": "Cache provider images to storage (avoid hotlinking) + create mediaAssets records",
+      "skill": ["Backend", "Storage", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "illustrate.cacheSelectedAssets",
+        "behavior": [
+          "Download full-res from provider URL",
+          "Store to your storage bucket (existing pipeline)",
+          "Generate cachedUrl + thumbUrl (optional)",
+          "Write mediaAssets record with attribution"
+        ],
+        "constraints": [
+          "Deduplicate caching by (provider, sourceId) if already cached",
+          "Limit file size (config), and timeout downloads",
+          "Never lose attribution metadata"
+        ]
+      },
+      "acceptanceTests": [
+        "Cached URLs are reachable and stable",
+        "Re-running caching for same provider asset reuses existing mediaAsset",
+        "Attribution is stored for each cached asset"
+      ],
+      "deliverables": [
+        "convex/illustrate/cacheAssets.ts",
+        "convex/mediaAssets.ts (createOrGetBySource)",
+        "lib/storage/imageCachePipeline.ts"
+      ]
+    },
+    {
+      "id": "S20-T07",
+      "title": "Auto-Illustrate orchestration action (theme -> candidates -> select -> cache -> persist assignments)",
+      "skill": ["Convex", "Backend orchestration"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "chapterIllustrations.autoIllustrate",
+        "inputs": [
+          "storybookId",
+          "chapterInstanceId",
+          "providerMode (unsplash|pexels|both)",
+          "regenerate (boolean)"
+        ],
+        "behavior": [
+          "Load chapter draft + templateJson",
+          "Compute slotTargets",
+          "Generate theme queries",
+          "Fetch candidates",
+          "Select per slot",
+          "Cache selected images",
+          "Persist chapterIllustrations record with slotAssignments"
+        ],
+        "statusTransitions": ["selecting -> ready OR error"],
+        "constraints": [
+          "Idempotency: if already ready and regenerate=false, return existing",
+          "Rate limit action per user"
+        ]
+      },
+      "acceptanceTests": [
+        "Auto-illustrate produces slotAssignments for a completed chapter",
+        "Repeated call returns cached result when regenerate=false",
+        "Errors are structured and recoverable"
+      ],
+      "deliverables": [
+        "convex/chapterIllustrations.ts (action + mutations)",
+        "docs/auto_illustrate_flow.md"
+      ]
+    },
+    {
+      "id": "S20-T08",
+      "title": "Illustration review UI (per chapter): lock/replace and regenerate",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/book/{storybookId}/chapters/{chapterInstanceId}/illustrations",
+        "ui": [
+          "Grid of slots (image1/image2/image3...) with preview",
+          "Buttons: Replace (opens Photos panel search), Lock/Unlock, Regenerate All",
+          "Show attribution (small) and provider badge"
+        ],
+        "behavior": [
+          "Replace picks a new provider image -> caches -> updates assignment",
+          "Lock prevents slot replacement on regenerate",
+          "Regenerate reruns selection using same theme (or re-theme optional)"
+        ],
+        "constraints": ["Elder-friendly: minimal controls, clear labels"]
+      },
+      "acceptanceTests": [
+        "User can see selected images for each slot",
+        "Lock works and persists",
+        "Replace updates slot assignment and persists"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/chapters/[chapterInstanceId]/illustrations/page.tsx",
+        "components/illustrations/SlotCard.tsx",
+        "components/illustrations/ReplaceImagePicker.tsx"
+      ]
+    },
+    {
+      "id": "S20-T09",
+      "title": "Integration hook: expose slotAssignments to Studio population pipeline (future Sprint 21)",
+      "skill": ["Architecture", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "Convex query: chapterIllustrations.getByChapterInstance",
+          "Stable shape returned: slotId -> {cachedUrl, attribution, width, height}"
+        ],
+        "constraints": [
+          "No Studio auto-fill in Sprint 20; just provide data contract",
+          "Must align with image node schema + attribution fields from Sprint 10"
+        ]
+      },
+      "acceptanceTests": [
+        "Query returns consistent mapping for consumption by Studio",
+        "Returned fields are sufficient to create Image nodes"
+      ],
+      "deliverables": [
+        "convex/chapterIllustrations.ts (get query)",
+        "packages/shared/illustrations/illustrationTypes.ts"
+      ]
+    },
+    {
+      "id": "S20-T10",
+      "title": "Config, limits, and safety (resolution thresholds, provider quotas, caching limits)",
+      "skill": ["Platform", "Backend"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "AUTOILLUSTRATE_MIN_SHORTSIDE_FULLPAGE",
+          "AUTOILLUSTRATE_MIN_SHORTSIDE_LARGE",
+          "AUTOILLUSTRATE_MIN_SHORTSIDE_SMALL",
+          "AUTOILLUSTRATE_PROVIDER_MODE_DEFAULT",
+          "AUTOILLUSTRATE_MAX_CANDIDATES_PER_SLOT",
+          "AUTOILLUSTRATE_MAX_DOWNLOAD_MB",
+          "AUTOILLUSTRATE_RATE_LIMIT_PER_USER"
+        ],
+        "constraints": [
+          "Enforce limits server-side",
+          "Return warnings if thresholds are relaxed"
+        ]
+      },
+      "acceptanceTests": [
+        "Changing thresholds affects filtering",
+        "Rate limit prevents abuse with friendly message"
+      ],
+      "deliverables": [
+        "lib/config/autoIllustrate.ts",
+        "docs/auto_illustrate_config.md"
+      ]
+    },
+    {
+      "id": "S20-T11",
+      "title": "Instrumentation + QA + tests for Auto-Illustrate",
+      "skill": ["QA", "Testing", "Analytics"],
+      "priority": "P0",
+      "requirements": {
+        "events": [
+          "auto_illustrate_start",
+          "auto_illustrate_success",
+          "auto_illustrate_error (error_code)",
+          "illustration_lock_toggle (slotId)",
+          "illustration_replace (slotId, provider)",
+          "illustration_regenerate"
+        ],
+        "manualChecklist": [
+          "Generate chapter draft (Sprint 19) then run auto-illustrate",
+          "Verify selected images meet resolution thresholds",
+          "Verify caching produces stable URLs",
+          "Lock slot and regenerate -> locked stays unchanged",
+          "Replace slot with manual search result",
+          "Verify attribution stored"
+        ],
+        "automation": [
+          "Unit: scoring ranks higher-res and aspect-matching images higher",
+          "Integration: autoIllustrate action produces chapterIllustrations ready state",
+          "Integration: caching dedupes by (provider, sourceId)"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues in QA checklist",
+        "At least 3 automated tests added (scoring + orchestration + caching)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint20_auto_illustrate.md",
+        "tests/autoIllustrate/*",
+        "lib/analytics/illustrations.ts"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S20-T01",
+      "S20-T02",
+      "S20-T03",
+      "S20-T04",
+      "S20-T05",
+      "S20-T06",
+      "S20-T07",
+      "S20-T08",
+      "S20-T09",
+      "S20-T10",
+      "S20-T11"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Default to caching provider images to your storage to prevent broken exports and provider rate-limit issues.",
+      "Theme generation should avoid private names by default for privacy; keep queries generic but relevant.",
+      "Auto-Illustrate creates the asset + assignment layer; Studio population happens in Sprint 21."
+    ]
+  }
+}

@@ -67,7 +67,7 @@ export function OnboardingForm({ initialDisplayName, initialGoal }: Props) {
         throw new Error(result.error || "Could not save onboarding details.");
       }
       trackOnboardingComplete({ source: "onboarding", goal });
-      router.push("/app/start");
+      router.push("/create/template");
       router.refresh();
     } catch (err) {
       setStatus("error");

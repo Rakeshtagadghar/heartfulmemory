@@ -8,6 +8,7 @@ import { Card } from "../ui/card";
 import type { StorybookDTO } from "../../lib/dto/storybook";
 import {
   createBlankStorybookAction,
+  removeStorybookFromDashboardAction,
   renameStorybookFromDashboardAction
 } from "../../lib/actions/storybooks-dashboard";
 import {
@@ -44,6 +45,8 @@ export function StorybooksDashboardPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [subtitleDraft, setSubtitleDraft] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteBook, setConfirmDeleteBook] = useState<StorybookDTO | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const total = storybooks.length;
@@ -84,6 +87,26 @@ export function StorybooksDashboardPanel({
     });
   }
 
+  async function handleDelete(book: StorybookDTO) {
+    setDeletingId(book.id);
+    const result = await removeStorybookFromDashboardAction(book.id);
+    setDeletingId(null);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setStorybooks((current) => current.filter((item) => item.id !== book.id));
+    if (editingId === book.id) {
+      setEditingId(null);
+      setTitleDraft("");
+      setSubtitleDraft("");
+    }
+    setConfirmDeleteBook((current) => (current?.id === book.id ? null : current));
+    setError(null);
+  }
+
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -103,7 +126,7 @@ export function StorybooksDashboardPanel({
             Quick Blank
           </Button>
           <Link
-            href="/app/start"
+            href="/create/template"
             className="inline-flex h-9 items-center rounded-xl border border-white/15 bg-white/[0.03] px-3 text-sm font-semibold text-white hover:bg-white/[0.06]"
           >
             Start Flow
@@ -214,18 +237,32 @@ export function StorybooksDashboardPanel({
                       Open
                     </Link>
                     {isEditing ? null : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => {
-                          setEditingId(book.id);
-                          setTitleDraft(book.title);
-                          setSubtitleDraft(book.subtitle ?? "");
-                        }}
-                      >
-                        Rename
-                      </Button>
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            setEditingId(book.id);
+                            setTitleDraft(book.title);
+                            setSubtitleDraft(book.subtitle ?? "");
+                          }}
+                        >
+                          Rename
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          loading={deletingId === book.id && isPending}
+                          onClick={() => {
+                            setConfirmDeleteBook(book);
+                          }}
+                          className="border-rose-300/20 text-rose-100 hover:border-rose-300/40 hover:bg-rose-500/10"
+                        >
+                          Delete
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -234,6 +271,70 @@ export function StorybooksDashboardPanel({
           })}
         </div>
       )}
+
+      {confirmDeleteBook ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-storybook-title"
+          aria-describedby="delete-storybook-desc"
+        >
+          <button
+            type="button"
+            aria-label="Close delete confirmation"
+            className="absolute inset-0 bg-[#020617]/70 backdrop-blur-sm"
+            onClick={() => {
+              if (deletingId === confirmDeleteBook.id && isPending) return;
+              setConfirmDeleteBook(null);
+            }}
+          />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-[linear-gradient(180deg,rgba(12,20,36,0.96)_0%,rgba(9,14,26,0.96)_100%)] p-5 shadow-[0_30px_100px_rgba(0,0,0,0.45)]">
+            <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_top,rgba(18,183,195,0.22),transparent_52%)]" />
+            <div className="relative">
+              <p className="text-xs uppercase tracking-[0.18em] text-rose-200/80">Delete Storybook</p>
+              <h3 id="delete-storybook-title" className="mt-2 text-xl font-semibold text-parchment">
+                Are you sure?
+              </h3>
+              <p id="delete-storybook-desc" className="mt-2 text-sm leading-6 text-white/70">
+                This will permanently delete{" "}
+                <span className="font-semibold text-white">{confirmDeleteBook.title}</span>, including its chapters and content.
+                This action cannot be undone.
+              </p>
+
+              <div className="mt-4 rounded-xl border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-100/90">
+                Proceed only if you are certain you no longer need this storybook.
+              </div>
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={deletingId === confirmDeleteBook.id && isPending}
+                  onClick={() => setConfirmDeleteBook(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  loading={deletingId === confirmDeleteBook.id && isPending}
+                  onClick={() => {
+                    startTransition(() => {
+                      void handleDelete(confirmDeleteBook);
+                    });
+                  }}
+                  className="border-rose-300/30 bg-rose-500/10 text-rose-100 hover:border-rose-300/50 hover:bg-rose-500/15"
+                >
+                  Delete Storybook
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

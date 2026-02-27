@@ -1,0 +1,367 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 18,
+      "title": "Voice Capture + STT v1 (ElevenLabs/Groq) + Transcript Review",
+      "duration": "1 week",
+      "goal": "Enable voice-first answering in the Chapter Wizard: record audio per question, transcribe via ElevenLabs or Groq, let users review/edit transcript, and persist transcript + metadata to Convex. Must be reliable, elder-friendly, and safe (consent + clear controls).",
+      "definitionOfDone": [
+        "Each wizard question supports voice input: Start/Stop recording + live timer + clear states",
+        "Audio is sent to STT provider (ElevenLabs or Groq) and transcript is returned",
+        "User can edit transcript before saving/next",
+        "Transcript + STT metadata is persisted per question answer in Convex (source='voice')",
+        "Retry transcription is supported (re-record and/or re-transcribe)",
+        "Graceful handling of mic permissions, network failures, and provider errors",
+        "Optional: store audio asset reference (or explicitly skip storing audio for privacy)",
+        "No regressions to Sprint 17 wizard save/resume behavior"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for calling external STT providers, mutations for persistence)",
+      "sttProviders": {
+        "primary": "Choose one default (ElevenLabs Scribe or Groq Whisper)",
+        "secondary": "Keep provider interface to swap later"
+      },
+      "audio": "Browser MediaRecorder API; store as webm/ogg depending on browser support",
+      "privacy": "Explicit user consent for recording and transcription; no background recording"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S18-T01",
+      "title": "Design STT provider interface + Convex action wrapper (ElevenLabs/Groq)",
+      "skill": ["Architecture", "Convex", "API Integration"],
+      "priority": "P0",
+      "requirements": {
+        "providerInterface": {
+          "name": "sttProvider.transcribe",
+          "input": [
+            "audioBytes (base64 or ArrayBuffer via Convex action)",
+            "mimeType",
+            "language(optional)",
+            "prompt(optional)",
+            "provider: 'elevenlabs'|'groq'"
+          ],
+          "output": [
+            "transcriptText",
+            "confidence(optional)",
+            "durationMs(optional)",
+            "providerRequestId(optional)",
+            "raw(optional minimal)"
+          ]
+        },
+        "convexActions": [
+          "stt.transcribe (calls external STT)",
+          "stt.healthcheck (optional)"
+        ],
+        "constraints": [
+          "API keys must never be exposed to client",
+          "Implement timeouts and retry-safe error mapping",
+          "Return structured error codes: MIC, NETWORK, PROVIDER_RATE_LIMIT, PROVIDER_ERROR"
+        ]
+      },
+      "acceptanceTests": [
+        "Action can transcribe a short audio sample end-to-end in dev",
+        "Provider errors map to stable error codes"
+      ],
+      "deliverables": [
+        "convex/stt.ts (actions)",
+        "lib/stt/providerRegistry.ts",
+        "docs/stt_provider_contract.md"
+      ]
+    },
+    {
+      "id": "S18-T02",
+      "title": "Implement recorder component (MediaRecorder) with elder-friendly UX states",
+      "skill": ["Frontend", "Web Audio"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Large mic button: Start / Stop",
+          "Recording indicator + timer",
+          "Playback control (optional P1)",
+          "Clear 'Use transcript' and 'Record again' actions"
+        ],
+        "states": [
+          "idle",
+          "requesting_permission",
+          "recording",
+          "processing_upload",
+          "transcribing",
+          "reviewing",
+          "error"
+        ],
+        "constraints": [
+          "No continuous background recording",
+          "Handle permission denied with clear guidance",
+          "Max recording length configurable (e.g., 2–5 minutes per question)"
+        ]
+      },
+      "acceptanceTests": [
+        "User can start/stop recording reliably",
+        "Permission denied shows helpful message and fallback to text input",
+        "Recording stops automatically at max duration"
+      ],
+      "deliverables": [
+        "components/voice/VoiceRecorder.tsx",
+        "components/voice/recorderStateMachine.ts",
+        "lib/audio/mediaRecorder.ts"
+      ]
+    },
+    {
+      "id": "S18-T03",
+      "title": "Integrate voice input into Wizard QuestionStep (voice + text dual mode)",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "QuestionStep shows tabs or toggle: Voice | Type (default Voice)",
+          "After transcription, transcript fills the answer input area",
+          "User can edit transcript, then Save/Next",
+          "Source field set to 'voice' when transcript originates from STT"
+        ],
+        "constraints": [
+          "Must not break existing autosave/resume logic",
+          "If user edits transcript, treat as final answerText"
+        ]
+      },
+      "acceptanceTests": [
+        "Voice transcript populates answer field",
+        "User can edit and save",
+        "Resume loads saved transcript text"
+      ],
+      "deliverables": [
+        "components/wizard/QuestionStep.tsx updated",
+        "components/wizard/VoiceAnswerPanel.tsx"
+      ]
+    },
+    {
+      "id": "S18-T04",
+      "title": "Persist transcript + STT metadata to Convex (extend chapterAnswers schema safely)",
+      "skill": ["Convex", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "schemaUpdates": [
+          "chapterAnswers: add sttMeta (object nullable) { provider, confidence?, durationMs?, providerRequestId?, mimeType?, bytes? }",
+          "chapterAnswers: add audioRef (string nullable) if storing audio (optional)"
+        ],
+        "mutations": [
+          "chapterAnswers.upsertVoice (wrap upsert with sttMeta)",
+          "or reuse existing upsert and include sttMeta"
+        ],
+        "constraints": [
+          "Do not store raw provider response unless needed (keep minimal)",
+          "If storing audio, store only a reference to uploaded blob (not bytes in Convex docs)"
+        ]
+      },
+      "acceptanceTests": [
+        "Voice answers persist with source='voice' and sttMeta present",
+        "Text answers still work unchanged"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/chapterAnswers.ts updated (mutations/queries)"
+      ]
+    },
+    {
+      "id": "S18-T05",
+      "title": "Audio handling strategy v1 (choose: store audio or discard after STT)",
+      "skill": ["Product", "Architecture", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "decision": {
+          "optionA": "Do not store audio (privacy-first). Store transcript only.",
+          "optionB": "Store audio file (for re-transcribe later) using existing storage; store audioRef in Convex."
+        },
+        "implementation": [
+          "If A: delete local blob after transcript confirmed",
+          "If B: upload audio blob, store audioRef, allow replay (P1)"
+        ],
+        "constraints": [
+          "Default should be privacy-first unless you already need audio later",
+          "Must show consent text either way"
+        ]
+      },
+      "acceptanceTests": [
+        "Chosen strategy implemented consistently",
+        "User sees clear messaging about what is stored"
+      ],
+      "deliverables": [
+        "docs/audio_storage_decision.md",
+        "lib/audio/audioStorage.ts (if storing)"
+      ]
+    },
+    {
+      "id": "S18-T06",
+      "title": "Error handling + retry UX (network/provider/mic) with non-blocking fallbacks",
+      "skill": ["Frontend", "UX", "Resilience"],
+      "priority": "P0",
+      "requirements": {
+        "errors": [
+          "Mic permission denied",
+          "Mic not found",
+          "Network offline",
+          "Provider rate limit",
+          "Provider timeout",
+          "Unsupported mimeType"
+        ],
+        "retryOptions": [
+          "Record again",
+          "Retry transcription",
+          "Switch to typing"
+        ],
+        "constraints": [
+          "Do not trap user in error state; always provide Type fallback"
+        ]
+      },
+      "acceptanceTests": [
+        "Each error shows a friendly message and at least one escape path",
+        "Retry works without reloading the page"
+      ],
+      "deliverables": [
+        "components/voice/VoiceErrors.tsx",
+        "lib/stt/errorMap.ts"
+      ]
+    },
+    {
+      "id": "S18-T07",
+      "title": "Consent + privacy UX (recording disclosure + terms link) for voice input",
+      "skill": ["Product", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "One-time disclosure modal or inline notice: 'Your voice will be recorded and sent to transcription'",
+          "Checkbox: 'I understand' (optional, depends on your compliance comfort)",
+          "Link to privacy/terms"
+        ],
+        "storage": [
+          "Remember consent per user in local storage or user profile in Convex (optional)"
+        ],
+        "constraints": [
+          "Do not start recording without user action",
+          "Clear mic state indicator while recording"
+        ]
+      },
+      "acceptanceTests": [
+        "Recording cannot start before consent acknowledgement (if enabled)",
+        "Notice is visible and understandable"
+      ],
+      "deliverables": [
+        "components/voice/VoiceConsent.tsx",
+        "lib/consent/useVoiceConsent.ts"
+      ]
+    },
+    {
+      "id": "S18-T08",
+      "title": "Provider configuration + feature flags (ElevenLabs vs Groq) and limits",
+      "skill": ["Platform", "Convex", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "STT_PROVIDER_DEFAULT=elevenlabs|groq",
+          "STT_MAX_SECONDS_PER_ANSWER",
+          "STT_LANGUAGE_DEFAULT",
+          "STT_RATE_LIMIT_PER_USER (soft)"
+        ],
+        "featureFlags": ["enableVoiceInput", "enableAudioStorage"],
+        "constraints": [
+          "Enforce max duration client-side and server-side",
+          "Keys only in Convex env"
+        ]
+      },
+      "acceptanceTests": [
+        "Switching default provider changes which backend path runs",
+        "Duration limits enforced"
+      ],
+      "deliverables": [
+        "convex/env.ts (or config helper)",
+        "lib/config/stt.ts",
+        "docs/stt_config.md"
+      ]
+    },
+    {
+      "id": "S18-T09",
+      "title": "Instrumentation for voice funnel (record -> transcribe -> confirm)",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "voice_record_start",
+          "voice_record_stop",
+          "voice_transcribe_start",
+          "voice_transcribe_success",
+          "voice_transcribe_error (error_code)",
+          "voice_transcript_edit",
+          "voice_answer_confirm"
+        ],
+        "properties": ["provider", "durationSec", "questionId", "chapterKey"],
+        "constraints": ["No raw transcript text in analytics"]
+      },
+      "acceptanceTests": [
+        "Events fire once per action",
+        "provider and duration captured"
+      ],
+      "deliverables": [
+        "lib/analytics/voiceFlow.ts",
+        "components/voice/* instrumented"
+      ]
+    },
+    {
+      "id": "S18-T10",
+      "title": "QA checklist + automated tests for voice answering",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Mic permission granted -> record -> transcribe -> edit -> save -> resume",
+          "Mic permission denied -> fallback to typing",
+          "Record long answer -> auto stop at limit",
+          "Provider failure -> retry transcription",
+          "Switch provider flag and validate path",
+          "Ensure chapter completion still works with voice answers"
+        ],
+        "automation": [
+          "Unit: recorder state machine transitions",
+          "Unit: errorMap converts provider errors to stable codes",
+          "Integration: chapterAnswers upsert includes sttMeta and persists"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues found",
+        "At least 3 automated tests added (state machine + error map + persistence)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint18_voice_stt.md",
+        "tests/voice/*",
+        "tests/stt/*"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S18-T01",
+      "S18-T02",
+      "S18-T03",
+      "S18-T04",
+      "S18-T05",
+      "S18-T06",
+      "S18-T07",
+      "S18-T08",
+      "S18-T09",
+      "S18-T10"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Sprint 18 focuses on capturing and validating transcripts. Story generation comes in Sprint 19.",
+      "Default to privacy-first (store transcript only) unless you have a concrete need to store audio.",
+      "Keep the STT provider behind a small interface so switching ElevenLabs/Groq later is trivial."
+    ]
+  }
+}

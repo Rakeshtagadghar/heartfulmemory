@@ -1,0 +1,424 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper (Phase 1)",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 19,
+      "title": "Story Generation v1 (Narrator Style + Chapter Draft)",
+      "duration": "1 week",
+      "goal": "Turn chapter Q&A (typed/voice transcripts) into a structured chapter draft: narration voice (1st/3rd person), tone/tense/length settings, sectioned narrative output, and regeneration controls. Persist drafts in Convex and expose a review screen before sending content to Studio in Sprint 21.",
+      "definitionOfDone": [
+        "Narration settings (voice/tense/tone/length) are applied to generation prompts",
+        "For a completed chapter, the system can generate a chapter draft (summary + narrative + key facts + quotes + imageIdeas + extracted entities)",
+        "Draft is persisted in Convex and is resumable/reviewable",
+        "User can regenerate the whole chapter OR a specific section (e.g., intro, middle, closing) without losing other sections",
+        "Generation is grounded in user answers (citations to questionIds in output metadata)",
+        "Basic safety/quality checks run (empty output, too short, hallucinated names check via entity list)",
+        "No changes to Studio layout yet; this sprint ends at “Chapter Draft Ready”"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for LLM calls; mutations for persistence)",
+      "llm": "Use existing AI provider in project (OpenAI/Anthropic/Groq etc.). Keep behind interface.",
+      "stt": "Answers already stored from Sprint 18; this sprint consumes transcripts + typed answers",
+      "editor": "Studio exists; population into Studio happens Sprint 21"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S19-T01",
+      "title": "Define Chapter Draft schema + Convex storage (drafts + versions + section regen)",
+      "skill": ["Architecture", "Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "convexTables": [
+          {
+            "name": "chapterDrafts",
+            "fields": [
+              "id (Convex _id)",
+              "storybookId (Id<'storybooks'>)",
+              "chapterInstanceId (Id<'storybookChapters'>)",
+              "chapterKey (string)",
+              "version (number)",
+              "status ('generating'|'ready'|'error')",
+              "narration (object {voice,tense,tone,length})",
+              "sections (array of {sectionId, title, text, wordCount, citations[]})",
+              "summary (string)",
+              "keyFacts (array)",
+              "quotes (array)",
+              "entities (object {people[], places[], dates[]})",
+              "imageIdeas (array of {query, reason, slotHint?})",
+              "sourceAnswerIds (array of questionIds used)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": [
+              "by_storybookId",
+              "by_chapterInstanceId",
+              "by_storybookId_chapterKey"
+            ]
+          }
+        ],
+        "authzRules": ["Only storybook owner can read/write chapterDrafts"],
+        "constraints": [
+          "Drafts must be versioned (regeneration creates new version or updates with history)",
+          "Section regen should preserve unchanged sections"
+        ]
+      },
+      "acceptanceTests": [
+        "Schema compiles and queries return drafts per chapter",
+        "Owner-only access enforced"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/chapterDrafts.ts (queries/mutations)",
+        "packages/shared/drafts/draftTypes.ts"
+      ]
+    },
+    {
+      "id": "S19-T02",
+      "title": "Build LLM orchestration interface + Convex action (generate chapter draft)",
+      "skill": ["Architecture", "Convex", "LLM Integration"],
+      "priority": "P0",
+      "requirements": {
+        "providerInterface": {
+          "name": "llm.generateChapterDraft",
+          "input": [
+            "templateId",
+            "chapterKey",
+            "chapterTitle",
+            "questionAnswers[] (questionId, prompt, answerText)",
+            "narrationSettings",
+            "targetSections[] (section definitions from template)"
+          ],
+          "output": [
+            "summary",
+            "sections[]",
+            "keyFacts[]",
+            "quotes[]",
+            "entities",
+            "imageIdeas[]",
+            "citationsMap"
+          ]
+        },
+        "convexActions": [
+          "chapterDrafts.generate (calls LLM + writes draft)",
+          "chapterDrafts.regenSection (calls LLM for one section + patches draft)"
+        ],
+        "constraints": [
+          "Do not expose LLM keys to client",
+          "Set timeouts and return structured errors",
+          "Prompt must be grounded: no facts not present in answers unless labeled as 'uncertain'"
+        ]
+      },
+      "acceptanceTests": [
+        "generate action returns a ready draft for a sample chapter",
+        "Errors are returned as stable codes"
+      ],
+      "deliverables": [
+        "convex/ai/chapterDrafts.ts (actions)",
+        "lib/ai/llmRegistry.ts",
+        "docs/ai_chapter_generation_contract.md"
+      ]
+    },
+    {
+      "id": "S19-T03",
+      "title": "Create section template for each chapter (intro/body/closing + optional 'timeline')",
+      "skill": ["Product", "Prompt Engineering", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "sectionFramework": [
+          {
+            "sectionId": "intro",
+            "title": "Opening",
+            "guidance": "Set scene and context based on answers."
+          },
+          {
+            "sectionId": "main",
+            "title": "The Story",
+            "guidance": "Narrate key events and emotions with specificity."
+          },
+          {
+            "sectionId": "reflection",
+            "title": "Reflection",
+            "guidance": "Lessons, values, meaning—grounded in answers."
+          },
+          {
+            "sectionId": "closing",
+            "title": "Closing",
+            "guidance": "Warm closing paragraph; connect to next chapter if possible."
+          }
+        ],
+        "chapterOverrides": [
+          "Wedding chapters may include 'Ceremony Highlights' section",
+          "School chapters may include 'Teachers & Friends' section"
+        ],
+        "constraints": [
+          "Sections must map later to Studio slot types (title/body/quote/captions)"
+        ]
+      },
+      "acceptanceTests": [
+        "Each chapterKey has a deterministic list of sections",
+        "Section list is used by generation action"
+      ],
+      "deliverables": [
+        "packages/shared/templates/sectionFramework.ts",
+        "docs/sections_by_chapter.md"
+      ]
+    },
+    {
+      "id": "S19-T04",
+      "title": "Narration settings UI (voice/tense/tone/length) integrated into chapter draft generation",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Settings visible in Chapter List header and Draft Review screen",
+          "Controls: first/third person, tense, tone, length",
+          "Preview example line (optional) updates when settings change"
+        ],
+        "behavior": [
+          "Changing settings prompts user: regenerate draft to apply (or auto-regenerate)",
+          "Settings stored on storybook and copied into draft metadata"
+        ],
+        "constraints": ["Defaults: third_person, past, warm, medium"]
+      },
+      "acceptanceTests": [
+        "Settings persist and reload",
+        "Generated drafts reflect settings (first vs third person visibly changes pronouns)"
+      ],
+      "deliverables": [
+        "components/story/NarrationSettingsPanel.tsx",
+        "app/book/[storybookId]/chapters/page.tsx updated"
+      ]
+    },
+    {
+      "id": "S19-T05",
+      "title": "Chapter Draft Review screen (read-only view + regenerate controls)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/book/{storybookId}/chapters/{chapterInstanceId}/draft",
+        "ui": [
+          "Draft status: generating/ready/error",
+          "Summary card",
+          "Section cards with text, word count, and regen button",
+          "Key facts + quotes panels",
+          "Image ideas list (for Sprint 20 auto-illustrate)",
+          "CTA: Approve draft (locks version) / Continue to Studio (later)"
+        ],
+        "behavior": [
+          "Generate button triggers chapterDrafts.generate action",
+          "Regen section triggers chapterDrafts.regenSection action",
+          "Maintain version history (view previous versions optional P1)"
+        ],
+        "constraints": [
+          "Do not populate Studio yet; this is pre-Studio review step"
+        ]
+      },
+      "acceptanceTests": [
+        "User can generate draft for a completed chapter",
+        "User can regenerate one section without losing others",
+        "Draft persists and reloads"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/chapters/[chapterInstanceId]/draft/page.tsx",
+        "components/draft/DraftSectionCard.tsx",
+        "components/draft/DraftSummary.tsx"
+      ]
+    },
+    {
+      "id": "S19-T06",
+      "title": "Grounding & citations: link draft output back to questionIds (traceability)",
+      "skill": ["Prompt Engineering", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "citations": [
+          "Each section returns citations[] containing questionIds used",
+          "KeyFacts can include citations",
+          "If model adds something not in answers, mark as 'uncertain' and cite none"
+        ],
+        "ui": ["Optional: show 'Based on answers: Q1, Q3, Q6' per section"],
+        "constraints": ["No external web knowledge used"]
+      },
+      "acceptanceTests": [
+        "Sections contain citations that reference existing questionIds",
+        "Uncited claims are marked uncertain (or removed)"
+      ],
+      "deliverables": [
+        "lib/ai/prompts/chapterDraftPrompt.ts",
+        "components/draft/CitationsRow.tsx"
+      ]
+    },
+    {
+      "id": "S19-T07",
+      "title": "Section regeneration v1 (patch draft in-place with version bump)",
+      "skill": ["Convex", "LLM Integration"],
+      "priority": "P0",
+      "requirements": {
+        "regenBehavior": [
+          "User chooses section -> regen",
+          "Action reuses same answers + narration settings",
+          "Only that section text is replaced",
+          "Draft version increments OR stores a sectionRevision array (choose one; version increment recommended)"
+        ],
+        "constraints": [
+          "Prevent concurrent regen collisions (lock draft while generating)",
+          "Rate limit regen per user per minute (config)"
+        ]
+      },
+      "acceptanceTests": [
+        "Regenerating a section changes only that section",
+        "Draft status transitions: ready -> generating -> ready",
+        "Version increments correctly"
+      ],
+      "deliverables": [
+        "convex/ai/chapterDrafts.ts updated (regenSection)",
+        "convex/chapterDrafts.ts (mutation to patch sections)"
+      ]
+    },
+    {
+      "id": "S19-T08",
+      "title": "Quality checks v1 (empty/too short, entity sanity, profanity filter hook)",
+      "skill": ["Backend", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "checks": [
+          "Reject empty output or < minimum words",
+          "Entity sanity: if new person name appears not present in answers, flag warning",
+          "Basic profanity filter hook (blocklist/allowlist) or provider moderation if available"
+        ],
+        "ui": [
+          "Show warnings in Draft Review screen",
+          "Allow user to regenerate to fix"
+        ],
+        "constraints": ["Keep checks lightweight; do not over-block"]
+      },
+      "acceptanceTests": [
+        "Bad outputs show warnings or errors",
+        "User can recover by regenerating"
+      ],
+      "deliverables": [
+        "lib/ai/qualityChecks.ts",
+        "components/draft/DraftWarnings.tsx"
+      ]
+    },
+    {
+      "id": "S19-T09",
+      "title": "Config + limits for generation (tokens, retries, per-user rate limiting)",
+      "skill": ["Platform", "Convex"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "AI_PROVIDER_DEFAULT",
+          "AI_MAX_RETRIES",
+          "AI_TIMEOUT_MS",
+          "AI_RATE_LIMIT_PER_USER",
+          "AI_MAX_WORDS_BY_LENGTH (short/medium/long)"
+        ],
+        "constraints": [
+          "Do not leak prompts or user content in logs",
+          "Return stable error codes on rate limit"
+        ]
+      },
+      "acceptanceTests": [
+        "Rate limiting blocks excessive regen gracefully",
+        "Length setting affects output size predictably"
+      ],
+      "deliverables": [
+        "lib/config/ai.ts",
+        "convex/ai/rateLimit.ts",
+        "docs/ai_limits.md"
+      ]
+    },
+    {
+      "id": "S19-T10",
+      "title": "Instrumentation for generation funnel (generate/regen/approve)",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "draft_generate_start",
+          "draft_generate_success",
+          "draft_generate_error (error_code)",
+          "draft_regen_section_start (sectionId)",
+          "draft_regen_section_success",
+          "draft_approve (version)"
+        ],
+        "properties": [
+          "provider",
+          "chapterKey",
+          "voice",
+          "tone",
+          "tense",
+          "length"
+        ],
+        "constraints": ["No raw narrative content in analytics"]
+      },
+      "acceptanceTests": [
+        "Events fire once per action",
+        "Properties are attached"
+      ],
+      "deliverables": [
+        "lib/analytics/draftFlow.ts",
+        "components/draft/* instrumented"
+      ]
+    },
+    {
+      "id": "S19-T11",
+      "title": "QA checklist + automated tests for chapter draft generation",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Complete a chapter via wizard (voice or text)",
+          "Generate draft and verify it uses narration settings",
+          "Regenerate one section and verify others unchanged",
+          "Verify citations reference questionIds",
+          "Verify warnings appear for odd outputs",
+          "Refresh page: draft persists"
+        ],
+        "automation": [
+          "Unit: section framework resolves per chapterKey",
+          "Integration: generate action writes chapterDrafts with status transitions",
+          "Integration: regenSection patches only target section"
+        ]
+      },
+      "acceptanceTests": [
+        "No critical issues found",
+        "At least 3 automated tests added (framework + generate + regen)"
+      ],
+      "deliverables": [
+        "docs/qa_sprint19_story_generation.md",
+        "tests/drafts/*",
+        "convex/_generated/test/* (or your testing setup)"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S19-T01",
+      "S19-T03",
+      "S19-T02",
+      "S19-T04",
+      "S19-T05",
+      "S19-T06",
+      "S19-T07",
+      "S19-T08",
+      "S19-T09",
+      "S19-T10",
+      "S19-T11"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Keep generation fully grounded in the user's answers; do not use external web knowledge.",
+      "Persist drafts as structured sections so Sprint 21 can map them into Studio slots deterministically.",
+      "If versioning is heavy, store lastVersion + an audit trail of regen operations as a lightweight alternative."
+    ]
+  }
+}

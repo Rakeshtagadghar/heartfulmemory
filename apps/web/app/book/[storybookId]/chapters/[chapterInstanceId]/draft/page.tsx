@@ -443,14 +443,6 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
         />
       ) : null}
 
-      <DraftHeader
-        chapterTitle={chapter.title}
-        chapterKey={chapter.chapterKey}
-        chapterStatus={chapter.status}
-        storybookTitle={storybook.data.title}
-        storybookId={storybookId}
-      />
-
       {notice === "approved" ? (
         <Card className="p-4">
           <p className="text-sm text-emerald-100">Draft approved. Studio population happens in a later sprint.</p>
@@ -486,62 +478,107 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
         </Card>
       ) : null}
 
-      <NarrationSettingsPanel
-        narration={storybook.data.narration}
-        action={saveNarrationSettings}
-        subtitle="These settings are saved on the storybook and applied when generating or regenerating chapter drafts."
-      />
+      <Card className="p-6 sm:p-8">
+        <DraftHeader
+          chapterTitle={chapter.title}
+          chapterKey={chapter.chapterKey}
+          chapterStatus={chapter.status}
+          storybookTitle={storybook.data.title}
+          storybookId={storybookId}
+          embedded
+        />
 
-      {narrationMismatch ? (
-        <Card className="p-4">
-          <p className="text-sm text-amber-100">
-            Narration settings changed after this draft was generated. Regenerate the draft to apply the latest style.
-          </p>
-        </Card>
-      ) : null}
+        <div className="mt-6 border-t border-white/10 pt-6">
+          <NarrationSettingsPanel
+            narration={storybook.data.narration}
+            action={saveNarrationSettings}
+            subtitle="These settings are saved on the storybook and applied when generating or regenerating chapter drafts."
+            embedded
+            narrationSaved={narrationSaved}
+          />
+        </div>
 
-      <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-parchment">Draft Actions</p>
-            <p className="text-xs text-white/55">
-              Generate a new chapter draft, regenerate individual sections, then approve this version.
+        {narrationMismatch ? (
+          <div className="mt-4 rounded-xl border border-amber-300/20 bg-amber-400/10 p-3">
+            <p className="text-sm text-amber-100">
+              Narration settings changed after this draft was generated. Regenerate the draft to apply the latest style.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <form action={generateDraft}>
-              <TrackedDraftActionButton
-                type="submit"
-                eventName="draft_generate_start"
-                eventProps={{
-                  provider: providerFromQuery,
-                  chapterKey: chapter.chapterKey,
-                  ...narrationForAnalytics
-                }}
-              >
-                {latest ? "Regenerate Full Draft" : "Generate Draft"}
-              </TrackedDraftActionButton>
-            </form>
-            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/wizard`} variant="secondary">
-              Edit Answers
-            </ButtonLink>
-            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/illustrations`} variant="secondary">
-              Review Illustrations
-            </ButtonLink>
+        ) : null}
+
+        <div className="mt-6 border-t border-white/10 pt-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-parchment">Draft Actions</p>
+              <p className="text-xs text-white/55">
+                Generate a new chapter draft, regenerate individual sections, then approve this version.
+              </p>
+            </div>
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <div className="flex flex-wrap gap-2">
+                <form action={generateDraft}>
+                  <TrackedDraftActionButton
+                    type="submit"
+                    eventName="draft_generate_start"
+                    eventProps={{
+                      provider: providerFromQuery,
+                      chapterKey: chapter.chapterKey,
+                      ...narrationForAnalytics
+                    }}
+                  >
+                    {latest ? "Regenerate Full Draft" : "Generate Draft"}
+                  </TrackedDraftActionButton>
+                </form>
+                <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/wizard`} variant="secondary">
+                  Edit Answers
+                </ButtonLink>
+                <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/illustrations`} variant="secondary">
+                  Review Illustrations
+                </ButtonLink>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <form action={approveDraft}>
+                  <input type="hidden" name="draftId" value={latest?.id ?? ""} />
+                  <TrackedDraftActionButton
+                    type="submit"
+                    disabled={latest?.status !== "ready"}
+                    eventName="draft_approve"
+                    eventProps={{
+                      version: latest?.version ?? 0,
+                      provider: providerFromQuery,
+                      chapterKey: chapter.chapterKey,
+                      ...narrationForAnalytics
+                    }}
+                  >
+                    Approve Draft
+                  </TrackedDraftActionButton>
+                </form>
+                <ButtonLink href={`/studio/${storybookId}?chapter=${chapterInstanceId}`} variant="secondary">
+                  Continue to Studio
+                </ButtonLink>
+              </div>
+            </div>
           </div>
         </div>
+
+        <div className="mt-6 border-t border-white/10 pt-6">
+          <DraftSummary
+            summary={latest?.summary ?? ""}
+            sourceAnswerIds={latest?.sourceAnswerIds ?? []}
+            status={latest?.status ?? "generating"}
+            version={latest?.version ?? null}
+            provider={providerFromQuery}
+            updatedAt={latest?.updatedAt ?? null}
+            embedded
+          />
+        </div>
+
+        {latest && (latest.warnings?.length ?? 0) > 0 ? (
+          <div className="mt-6 border-t border-white/10 pt-6">
+            <DraftWarnings warnings={latest.warnings ?? []} embedded />
+          </div>
+        ) : null}
       </Card>
-
-      <DraftSummary
-        summary={latest?.summary ?? ""}
-        sourceAnswerIds={latest?.sourceAnswerIds ?? []}
-        status={latest?.status ?? "generating"}
-        version={latest?.version ?? null}
-        provider={providerFromQuery}
-        updatedAt={latest?.updatedAt ?? null}
-      />
-
-      {latest ? <DraftWarnings warnings={latest.warnings ?? []} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[1.6fr_1fr]">
         <div className="space-y-4">
@@ -582,7 +619,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
           </Card>
 
           <Card className="p-4 sm:p-5">
-            <p className="text-xs uppercase tracking-[0.14em] text-white/45">Image Ideas (Sprint 20)</p>
+            <p className="text-xs uppercase tracking-[0.14em] text-white/45">Image Ideas</p>
             <div className="mt-3 space-y-2">
               {(latest?.imageIdeas ?? []).length === 0 ? (
                 <p className="text-sm text-white/55">No image ideas yet.</p>
@@ -638,33 +675,6 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
             </div>
           </Card>
 
-          <Card className="p-4 sm:p-5">
-            <p className="text-sm font-semibold text-parchment">Approve Draft</p>
-            <p className="mt-1 text-xs text-white/55">
-              Approving marks this version as reviewed. Studio population comes in Sprint 21.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <form action={approveDraft}>
-                <input type="hidden" name="draftId" value={latest?.id ?? ""} />
-                <TrackedDraftActionButton
-                  type="submit"
-                  disabled={latest?.status !== "ready"}
-                  eventName="draft_approve"
-                  eventProps={{
-                    version: latest?.version ?? 0,
-                    provider: providerFromQuery,
-                    chapterKey: chapter.chapterKey,
-                    ...narrationForAnalytics
-                  }}
-                >
-                  Approve Draft
-                </TrackedDraftActionButton>
-              </form>
-              <ButtonLink href={`/studio/${storybookId}?chapter=${chapterInstanceId}`} variant="secondary">
-                Continue to Studio
-              </ButtonLink>
-            </div>
-          </Card>
         </div>
       </div>
 

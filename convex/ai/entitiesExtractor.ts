@@ -4,7 +4,6 @@ import { v } from "convex/values";
 import { action } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
 import { buildEntitiesExtractorPromptV2 } from "../../lib/ai/prompts/entitiesExtractorPrompt_v2";
-import { postprocessEntitiesV2 } from "../../lib/entities/postprocess";
 import { normalizeEntityDateValue } from "../../lib/entities/normalizeDates";
 import type { ChapterDraftEntitiesV2, ExtractorAnswerInput } from "../../packages/shared/entities/entitiesTypes";
 
@@ -197,13 +196,12 @@ export const extractFromAnswers = action({
       });
 
       const rawEntities = heuristicExtractRaw({ answers });
-      const postprocessed = postprocessEntitiesV2(rawEntities);
 
       return {
         ok: true as const,
         provider: "heuristic" as const,
-        entities: postprocessed.entities,
-        warnings: postprocessed.warnings
+        entities: rawEntities,
+        warnings: []
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Entity extraction failed";

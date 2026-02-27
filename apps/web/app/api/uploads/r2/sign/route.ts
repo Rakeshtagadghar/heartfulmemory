@@ -77,6 +77,9 @@ export async function POST(request: Request) {
     storybookId: input.storybookId ?? null,
     fileName: input.fileName
   });
+  const publicBaseUrl = (process.env.R2_PUBLIC_BASE_URL ?? "").trim();
+  const publicUrl =
+    publicBaseUrl.length > 0 ? `${publicBaseUrl.replace(/\/$/, "")}/${key}` : undefined;
 
   const r2Configured = Boolean(
     process.env.R2_ACCOUNT_ID &&
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
       uploadUrl: null,
       key,
       headersRequired: {},
+      publicUrl: null,
       maxBytes
     });
   }
@@ -129,6 +133,7 @@ export async function POST(request: Request) {
       uploadUrl: signed.uploadUrl,
       key: signed.key,
       headersRequired: signed.headersRequired,
+      publicUrl: publicUrl ?? null,
       maxBytes
     });
   } catch (error) {

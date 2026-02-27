@@ -1,0 +1,306 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 25,
+      "title": "Studio Populate v2: Safe-Area Placement + Overflow Guards",
+      "duration": "1 week",
+      "goal": "Ensure all auto-populated chapter content (text + images) lands inside the safe area, respects template constraints, avoids overflow, and stays export-ready. Add deterministic layout guardrails during population.",
+      "definitionOfDone": [
+        "Auto-populated nodes are clamped into safe area for hardcopy mode (and sensible margins for digital)",
+        "Text boxes do not overflow silently: overflow is prevented via auto-resize and/or controlled truncation with warning",
+        "Population respects layout slot constraints (aspect targets, intent, priority)",
+        "Full-bleed layouts are supported explicitly (images allowed into bleed; text still safe)",
+        "Population remains idempotent (no duplicates) and does not overwrite user edits",
+        "Draft + illustration changes can trigger repopulate preview (optional) but v2 still defaults to non-destructive behavior",
+        "Automated tests cover safe-area clamping and overflow prevention"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions/mutations)",
+      "editorModel": "Existing Studio doc/page/node model from Sprints 6–16 + population hooks from Sprint 21",
+      "printModel": "Page presets provide safe/bleed boxes; hardcopy vs digital modes exist",
+      "text": "Text overflow measurement can be done client-side (preferred) with fallback behavior in population"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S25-T01",
+      "title": "Define slot constraints metadata (safe-area, max box, priority, full-bleed flag) per layoutId",
+      "skill": ["Architecture", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "slotConstraints": [
+          "slotId",
+          "type (text|image|frame|shape)",
+          "safeAreaPolicy (must_fit|allow_bleed|decorative)",
+          "maxBoxFraction (e.g., w<=0.9 safe width, h<=0.6 safe height)",
+          "minBox (px)",
+          "priority (1..5) for overflow handling",
+          "fullBleed (boolean, only images/shapes)",
+          "aspectTarget (optional, for images)"
+        ],
+        "whereStored": [
+          "In template layout catalog (layoutId -> slotConstraints map)"
+        ],
+        "constraints": [
+          "Defaults exist if metadata missing (safeAreaPolicy=must_fit for text)",
+          "No template should allow text outside safe area in hardcopy mode"
+        ]
+      },
+      "acceptanceTests": [
+        "Given layoutId, system can resolve constraints for each slot",
+        "Missing metadata falls back to safe defaults"
+      ],
+      "deliverables": [
+        "packages/shared/templates/layoutConstraints.ts",
+        "docs/layout_slot_constraints_v1.md"
+      ]
+    },
+    {
+      "id": "S25-T02",
+      "title": "Implement safe-area clamp utilities (node bounds -> safeBox) for population",
+      "skill": ["Rendering/Geometry", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "utilities": [
+          "computeSafeBox(pagePreset, mode)",
+          "clampRectToBox(rect, box, padding)",
+          "fitRectMaintainAspect(rect, targetAspect, withinBox)"
+        ],
+        "rules": [
+          "Text: always clamp inside safeBox",
+          "Frames/images: clamp inside safeBox unless slot fullBleed=true",
+          "Full-bleed images allowed into bleedBox but not beyond bleedBox"
+        ],
+        "constraints": [
+          "Axis-aligned bounds v1 (rotation-aware later)",
+          "Deterministic results"
+        ]
+      },
+      "acceptanceTests": [
+        "Clamping always results in node inside safeBox (text)",
+        "Full-bleed images can extend to bleedBox but not outside"
+      ],
+      "deliverables": [
+        "packages/shared/geometry/safeClamp.ts",
+        "packages/shared/geometry/rectMath.ts"
+      ]
+    },
+    {
+      "id": "S25-T03",
+      "title": "Text population fitting strategy v1 (auto-resize + controlled truncation + warnings)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "strategies": [
+          "Auto-grow text box height up to maxBoxFraction within safeBox",
+          "If still overflow: apply one of (choose v1):",
+          "A) truncate and append '…' + store overflowWarning",
+          "B) create continuation text box on next page (P1)",
+          "C) reduce font size within min font size (P1)"
+        ],
+        "overflowMeta": [
+          "node.meta.overflow=true",
+          "node.meta.overflowReason='truncated'|'continued'|'minFontHit'",
+          "chapterStudioState.warnings includes overflow entries"
+        ],
+        "constraints": [
+          "Never place overflowing text outside safe area",
+          "No silent clipping without warning"
+        ]
+      },
+      "acceptanceTests": [
+        "Long text does not exceed safe area bounds",
+        "Overflow produces visible warning meta",
+        "PDF export matches what Studio shows (no hidden text)"
+      ],
+      "deliverables": [
+        "packages/shared/populate/textFit.ts",
+        "packages/shared/populate/overflowWarnings.ts",
+        "docs/text_fit_policy_v1.md"
+      ]
+    },
+    {
+      "id": "S25-T04",
+      "title": "Image placement guardrails (safe fit + aspect + default crop) during population",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "Frames/images placed inside safeBox unless fullBleed",
+          "Preserve slot aspectTarget; if mismatch, apply cropModel defaults (cover + center)",
+          "Prefer using frames for templates; fill frames rather than raw image nodes when layout expects it",
+          "If asset resolution below threshold, attach warning meta (ties to Preflight later)"
+        ],
+        "constraints": [
+          "Do not fetch provider URLs; use cachedUrl only",
+          "Non-destructive crop model only"
+        ]
+      },
+      "acceptanceTests": [
+        "Images never overflow safe area for non-fullBleed slots",
+        "Aspect mismatch results in valid crop model, not distortion"
+      ],
+      "deliverables": [
+        "packages/shared/populate/imageFit.ts",
+        "packages/editor/commands/applyDefaultCrop.ts"
+      ]
+    },
+    {
+      "id": "S25-T05",
+      "title": "Update studio.populateChapter to apply safe-area + fitting guardrails",
+      "skill": ["Convex", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "During node creation/update, clamp node bounds using safeClamp utilities",
+          "Apply textFit strategy for text slots",
+          "Apply imageFit strategy for image/frame slots",
+          "Persist warnings in chapterStudioState (overflow, lowRes, clampApplied)"
+        ],
+        "constraints": [
+          "Idempotent node ids preserved",
+          "Do not overwrite user-edited nodes",
+          "Guardrails applied only to auto-generated nodes"
+        ]
+      },
+      "acceptanceTests": [
+        "Populated nodes are within safe area in hardcopy mode",
+        "Long text triggers overflow warning rather than clipping",
+        "Re-run does not duplicate nodes"
+      ],
+      "deliverables": [
+        "convex/studioPopulate.ts updated (v2 guardrails)",
+        "convex/chapterStudioState.ts updated (warnings)",
+        "docs/populate_guardrails_v2.md"
+      ]
+    },
+    {
+      "id": "S25-T06",
+      "title": "Studio UI: show chapter-level warnings (overflow/safe clamp/low-res) with quick links",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "In Studio ChapterNavigator: warning badge count",
+          "Warnings drawer/popup listing items",
+          "Click warning -> focus page/node (deep link in-canvas)"
+        ],
+        "constraints": ["Non-intrusive; elders shouldn’t feel blocked"]
+      },
+      "acceptanceTests": [
+        "Warnings appear after population when issues exist",
+        "Clicking warning focuses node"
+      ],
+      "deliverables": [
+        "apps/web/components/studio/ChapterWarnings.tsx",
+        "packages/editor/navigation/focusNode.ts reused/extended"
+      ]
+    },
+    {
+      "id": "S25-T07",
+      "title": "Optional P1: continuation text box creation on overflow (split to next page)",
+      "skill": ["Editor Engineering", "Algorithms"],
+      "priority": "P1",
+      "requirements": {
+        "behavior": [
+          "If textFit cannot fit within safeBox and truncation disabled or exceeds threshold:",
+          "Create next page (same layoutId or a continuation layout)",
+          "Insert continuation text node with remaining text",
+          "Maintain stable ids and links (node.meta.continuesToPageId)"
+        ],
+        "constraints": [
+          "Keep deterministic behavior",
+          "Avoid infinite splits (cap pages per chapter)"
+        ]
+      },
+      "acceptanceTests": [
+        "Long text splits onto next page without losing content",
+        "Export includes continuation pages"
+      ],
+      "deliverables": [
+        "packages/shared/populate/textSplit.ts",
+        "docs/text_continuation_v1.md"
+      ]
+    },
+    {
+      "id": "S25-T08",
+      "title": "Config + thresholds for safe area padding and text fit limits",
+      "skill": ["Platform"],
+      "priority": "P1",
+      "requirements": {
+        "config": [
+          "SAFE_AREA_PADDING_PX",
+          "TEXTFIT_MAX_GROW_FACTOR",
+          "TEXTFIT_TRUNCATE_ENABLED",
+          "TEXTFIT_MIN_FONT_SIZE (future)",
+          "FULLBLEED_ALLOWED_LAYOUTS"
+        ],
+        "constraints": ["Server-side enforced during populate action"]
+      },
+      "acceptanceTests": [
+        "Changing config changes clamp/fit outcomes predictably",
+        "Defaults are safe and produce good layouts"
+      ],
+      "deliverables": [
+        "lib/config/populateGuardrails.ts",
+        "docs/populate_guardrails_config.md"
+      ]
+    },
+    {
+      "id": "S25-T09",
+      "title": "QA + automated tests for safe-area and overflow guardrails",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Populate chapter with long text; verify it stays inside safe area",
+          "Verify overflow warnings visible and clickable",
+          "Populate with images; verify no content outside safe area for non-fullBleed",
+          "Export PDF and confirm it matches Studio and respects safe area expectations"
+        ],
+        "automation": [
+          "Unit: clampRectToBox keeps rect within safe box",
+          "Unit: textFit returns truncation + overflow meta when needed",
+          "Integration: populateChapter v2 outputs nodes within safe area and sets warnings"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "Regression prevents 'auto content outside safe area' issue"
+      ],
+      "deliverables": [
+        "tests/geometry/safeClamp.test.ts",
+        "tests/populate/textFit.test.ts",
+        "tests/populate/populateGuardrails.integration.test.ts",
+        "docs/qa_sprint25_safe_area_overflow.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S25-T01",
+      "S25-T02",
+      "S25-T03",
+      "S25-T04",
+      "S25-T05",
+      "S25-T06",
+      "S25-T09",
+      "S25-T08",
+      "S25-T07"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Your biggest trust issue for printing is content drifting outside safe area—guardrails must run during population, not only at preflight.",
+      "Avoid overwriting user edits; only apply guardrails to auto-generated nodes and store warnings instead.",
+      "Continuation splitting is optional; truncation + warnings is acceptable for v1 if you want speed."
+    ]
+  }
+}

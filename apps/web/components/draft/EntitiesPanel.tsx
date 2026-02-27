@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { ChapterDraftEntitiesV2 } from "../../../../packages/shared/entities/entitiesTypes";
-import { ENTITY_PERSON_STOPWORDS } from "../../../../lib/entities/stopwords";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 import { buildWizardQuestionDeepLink } from "../../lib/routes/wizardDeepLink";
@@ -95,17 +94,9 @@ export function EntitiesPanel({
   retryAction?: () => Promise<void>;
 }) {
   const extractorUnavailable = (warnings ?? []).some((warning) => warning.code === "ENTITY_EXTRACTOR_UNAVAILABLE");
-  const filteredEntities = entitiesV2
-    ? {
-        ...entitiesV2,
-        people: entitiesV2.people.filter((row) => !ENTITY_PERSON_STOPWORDS.has(row.value.trim().toLowerCase()))
-      }
-    : null;
   const hasEntities =
-    Boolean(filteredEntities) &&
-    ((filteredEntities?.people.length ?? 0) > 0 ||
-      (filteredEntities?.places.length ?? 0) > 0 ||
-      (filteredEntities?.dates.length ?? 0) > 0);
+    Boolean(entitiesV2) &&
+    ((entitiesV2?.people.length ?? 0) > 0 || (entitiesV2?.places.length ?? 0) > 0 || (entitiesV2?.dates.length ?? 0) > 0);
   const showEmptyState = hasEntities === false;
 
   return (
@@ -115,9 +106,9 @@ export function EntitiesPanel({
           <p className="text-xs uppercase tracking-[0.14em] text-white/45">Entities</p>
           <p className="mt-1 text-xs text-white/55">People, places, and dates extracted from chapter answers only.</p>
         </div>
-        {filteredEntities ? (
+        {entitiesV2 ? (
           <span className="rounded-full border border-white/10 bg-white/[0.02] px-2 py-1 text-[11px] text-white/55">
-            {`v${filteredEntities.meta.version} / ${filteredEntities.meta.generator}`}
+            {`v${entitiesV2.meta.version} / ${entitiesV2.meta.generator}`}
           </span>
         ) : null}
       </div>
@@ -139,7 +130,7 @@ export function EntitiesPanel({
         <div className="mt-3 space-y-4">
           <EntityListSection
             title="People"
-            rows={(filteredEntities?.people ?? []).map((row) => ({
+            rows={(entitiesV2?.people ?? []).map((row) => ({
               value: row.value,
               confidence: row.confidence,
               citations: row.citations,
@@ -150,7 +141,7 @@ export function EntitiesPanel({
           />
           <EntityListSection
             title="Places"
-            rows={(filteredEntities?.places ?? []).map((row) => ({
+            rows={(entitiesV2?.places ?? []).map((row) => ({
               value: row.value,
               confidence: row.confidence,
               citations: row.citations
@@ -160,7 +151,7 @@ export function EntitiesPanel({
           />
           <EntityListSection
             title="Dates"
-            rows={(filteredEntities?.dates ?? []).map((row) => ({
+            rows={(entitiesV2?.dates ?? []).map((row) => ({
               value: row.value,
               normalized: row.normalized,
               confidence: row.confidence,

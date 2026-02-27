@@ -263,7 +263,7 @@ export const landingPageConfig: MarketingPageConfig = {
           badge: index === 1 ? "Popular gift" : undefined
         })),
         note:
-          "Pricing should remain configurable server-side and can be localized by region later."
+          "The digital storybook includes everything you need to create and export your storybook as a PDF. The print upgrade, launching later, will add features for a print-ready layout and QR codes linking to recordings."
       }
     },
     {

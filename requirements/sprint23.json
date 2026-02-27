@@ -1,0 +1,365 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 23,
+      "title": "Entity Extraction v2: LLM-Assisted + Deterministic Post-Processing",
+      "duration": "1 week",
+      "goal": "Fix People/Places/Dates extraction so entities are correct, grounded in answers, and usable for image theming and sanity checks. Remove token-based entity guessing from story text.",
+      "definitionOfDone": [
+        "Entities are extracted from chapter answers using an LLM extraction step + deterministic cleanup",
+        "Stopwords/pronouns no longer appear as People (e.g., The, Our, My)",
+        "Places are correctly identified (e.g., Maharashtra, India) when present in answers",
+        "Dates are extracted only when present and normalized (year-only allowed)",
+        "Each entity contains citations[] referencing questionIds used",
+        "EntitySanity warnings are based on extracted entities vs answers (not story text tokenization)",
+        "Draft Review UI shows clean entities with confidence + citations",
+        "Image theme/query generation uses entities safely (no personal names by default)",
+        "Automated tests cover extraction validation + regression cases"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (actions for LLM call; mutations for persistence)",
+      "llm": "Existing provider behind internal interface",
+      "data": "chapterAnswers + chapterDrafts (v2 schema from Sprint 22)",
+      "privacy": "Do not use personal names in public image provider queries unless user opts in"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S23-T01",
+      "title": "Define Entities schema v2 + persistence approach (draft-embedded + optional user overrides)",
+      "skill": ["Architecture", "Convex", "Frontend Types"],
+      "priority": "P0",
+      "requirements": {
+        "entitiesSchemaV2": {
+          "people": [
+            {
+              "value": "string",
+              "kind": "person|role",
+              "confidence": "number(0..1)",
+              "citations": ["string(questionId)"],
+              "source": "llm|override"
+            }
+          ],
+          "places": [
+            {
+              "value": "string",
+              "confidence": "number(0..1)",
+              "citations": ["string(questionId)"],
+              "source": "llm|override"
+            }
+          ],
+          "dates": [
+            {
+              "value": "string(ISO or human e.g., 2008 or 2008-06)",
+              "normalized": "string(ISO-ish)",
+              "confidence": "number(0..1)",
+              "citations": ["string(questionId)"],
+              "source": "llm|override"
+            }
+          ],
+          "meta": {
+            "version": 2,
+            "generatedAt": "number(timestamp)",
+            "generator": "llm_extractor_v2"
+          }
+        },
+        "persistence": [
+          "Store entities inside chapterDrafts record as chapterDrafts.entitiesV2 (preferred for v1)",
+          "Optionally add chapterEntityOverrides table for user edits (P1)"
+        ],
+        "constraints": [
+          "Entities must be grounded with citations to questionIds",
+          "Entities must be safe for downstream image queries (no personal names by default)"
+        ]
+      },
+      "acceptanceTests": [
+        "Type definitions compile and match stored shape",
+        "Draft can persist entitiesV2 without breaking existing UI"
+      ],
+      "deliverables": [
+        "packages/shared/entities/entitiesTypes.ts",
+        "docs/entities_schema_v2.json",
+        "convex/schema.ts updated (chapterDrafts.entitiesV2 field)"
+      ]
+    },
+    {
+      "id": "S23-T02",
+      "title": "Implement LLM entity extractor action (answers -> entitiesV2 with citations + confidence)",
+      "skill": ["Convex", "LLM Integration", "Prompt Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "entities.extractFromAnswers",
+        "inputs": [
+          "storybookId",
+          "chapterInstanceId",
+          "chapterKey",
+          "answers[]: { questionId, questionPrompt, answerText }"
+        ],
+        "output": "entitiesSchemaV2",
+        "promptRules": [
+          "Return JSON only (strict schema)",
+          "People: ONLY real names found in answers OR relationship roles (Mother/Father/Grandmother)",
+          "Places: geography/locations found in answers (e.g., Maharashtra, India)",
+          "Dates: ONLY if explicit in answers; do not invent",
+          "Each item must include citations[] referencing questionIds",
+          "Confidence must reflect how explicit the mention is"
+        ],
+        "constraints": [
+          "No web knowledge; only use provided answers",
+          "Do not infer surnames or hidden identities",
+          "Timeout + retries with stable error codes"
+        ]
+      },
+      "acceptanceTests": [
+        "Given sample answers (Maharashtra/India), extractor returns places correctly",
+        "Extractor does not return stopwords as people",
+        "All returned entities include citations"
+      ],
+      "deliverables": [
+        "convex/ai/entitiesExtractor.ts",
+        "lib/ai/prompts/entitiesExtractorPrompt_v2.ts",
+        "docs/entities_extractor_contract.md"
+      ]
+    },
+    {
+      "id": "S23-T03",
+      "title": "Deterministic post-processing: stopwords, validation rules, normalization, and dedupe",
+      "skill": ["Backend", "Quality Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "cleanupRules": [
+          "Trim + collapse whitespace",
+          "Remove duplicates (case-insensitive)",
+          "Stopword removal for people (the, our, my, i, we, you, he, she, they)",
+          "Reject people tokens shorter than 3 chars unless role",
+          "People validation: accept if (kind=role) OR looks like name (2+ tokens OR capitalized single token with high confidence)",
+          "Places validation: accept known geo terms + multi-token place names; allow region/state/country single tokens (India, Maharashtra)",
+          "Dates normalization: keep year-only 'YYYY' and convert month/year to 'YYYY-MM' when possible"
+        ],
+        "outputs": [
+          "cleanEntitiesV2",
+          "warnings[] (e.g., 'low confidence place removed')"
+        ],
+        "constraints": [
+          "Deterministic: no LLM calls in post-processing",
+          "Never mutate answer content"
+        ]
+      },
+      "acceptanceTests": [
+        "Stopwords are removed from people list",
+        "Maharashtra/India remain as places",
+        "Duplicate entities are deduped",
+        "Dates normalize consistently"
+      ],
+      "deliverables": [
+        "lib/entities/postprocess.ts",
+        "lib/entities/stopwords.ts",
+        "lib/entities/normalizeDates.ts",
+        "docs/entities_postprocess_rules.md"
+      ]
+    },
+    {
+      "id": "S23-T04",
+      "title": "Persist entitiesV2 to chapterDrafts and update generation pipeline to use it",
+      "skill": ["Convex", "Backend Orchestration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "On chapter draft generateV2: run entities.extractFromAnswers first OR reuse cached entities if answers unchanged",
+          "Post-process entities",
+          "Persist as chapterDrafts.entitiesV2",
+          "Draft sections generation may use entities for consistency (but must not invent)"
+        ],
+        "caching": [
+          "Compute answersHash per chapter; if unchanged, skip re-extraction"
+        ],
+        "constraints": [
+          "Do not extract entities from story section text",
+          "If extractor fails, draft can still generate but entities panel shows 'not available' with warning"
+        ]
+      },
+      "acceptanceTests": [
+        "Draft stores entitiesV2 and they survive refresh",
+        "Extraction is skipped when answers unchanged",
+        "Failure mode does not break draft generation"
+      ],
+      "deliverables": [
+        "convex/ai/chapterDrafts_v2.ts updated (pre-step extract entities)",
+        "convex/chapterDrafts.ts updated (store answersHash/entitiesV2)",
+        "lib/hash/answersHash.ts"
+      ]
+    },
+    {
+      "id": "S23-T05",
+      "title": "Replace EntitySanity warning logic (use entitiesV2 vs answers; remove token scanning)",
+      "skill": ["Backend", "Quality Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "changes": [
+          "Remove any logic that tokenizes story text to detect entities",
+          "EntitySanity should validate: each entity has citations and appears in corresponding answers",
+          "Only warn when (confidence < threshold) OR (citations missing) OR (entity not found in cited answer text)"
+        ],
+        "thresholds": [
+          "LOW_CONFIDENCE_WARN = 0.55 (configurable)",
+          "MISSING_CITATION_ERROR = true"
+        ],
+        "constraints": [
+          "Avoid false positives; warnings should be rare and actionable"
+        ]
+      },
+      "acceptanceTests": [
+        "No more warnings like 'My, Our, The' as people",
+        "Warnings appear only for genuinely inconsistent entities"
+      ],
+      "deliverables": [
+        "lib/ai/qualityChecks/entitySanity_v2.ts",
+        "lib/config/entityThresholds.ts"
+      ]
+    },
+    {
+      "id": "S23-T06",
+      "title": "Update Draft Review UI Entities panel (confidence + citations + clean grouping)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Show People / Places / Dates sections",
+          "Show confidence (badge) + citations (questionId list)",
+          "Hide entities filtered out by post-processing",
+          "If extractor unavailable: show empty state with 'Try again' button"
+        ],
+        "behavior": [
+          "Click citation opens the chapter wizard at that question (deep link)",
+          "Optional: filter toggle 'Show low confidence' (P1)"
+        ],
+        "constraints": [
+          "No raw LLM response display",
+          "No stopwords ever displayed"
+        ]
+      },
+      "acceptanceTests": [
+        "Entities display is correct for sample chapter (Maharashtra/India -> Places)",
+        "Citation click routes to the right wizard question"
+      ],
+      "deliverables": [
+        "components/draft/EntitiesPanel.tsx updated",
+        "lib/routes/wizardDeepLink.ts"
+      ]
+    },
+    {
+      "id": "S23-T07",
+      "title": "Image theme/query generator input update (use places + chapter type; avoid personal names)",
+      "skill": ["Backend", "Product"],
+      "priority": "P1",
+      "requirements": {
+        "rules": [
+          "Use places (e.g., Maharashtra, India) as optional query modifiers",
+          "Use chapterKey to choose query style (Origins vs School vs Home)",
+          "Never include people names unless user enables 'use personal names in image search'",
+          "Add negativeKeywords for generic repetition (e.g., avoid 'portrait' for every chapter)"
+        ],
+        "constraints": ["Deterministic generator for v1 (LLM optional later)"]
+      },
+      "acceptanceTests": [
+        "Origins image queries differ from School Days queries",
+        "Queries do not contain personal names by default"
+      ],
+      "deliverables": [
+        "lib/illustrate/themeFromEntities.ts",
+        "docs/theme_queries_v2.md"
+      ]
+    },
+    {
+      "id": "S23-T08",
+      "title": "Optional P1: entity overrides (user can remove/add entity; stored separately)",
+      "skill": ["Convex", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "convexTable": {
+          "name": "chapterEntityOverrides",
+          "fields": [
+            "id",
+            "storybookId",
+            "chapterInstanceId",
+            "adds (entitiesSchemaV2 partial)",
+            "removes (array of {kind, value})",
+            "updatedAt"
+          ],
+          "indexes": ["by_chapterInstanceId"]
+        },
+        "behavior": [
+          "Overrides apply after extraction post-processing",
+          "Removed entities stay removed even after regenerate (unless user resets)"
+        ]
+      },
+      "acceptanceTests": [
+        "User can remove a wrong entity and it stays removed after regen",
+        "User can add a missing place and it appears everywhere needed"
+      ],
+      "deliverables": [
+        "convex/chapterEntityOverrides.ts",
+        "components/draft/EntityOverridesEditor.tsx"
+      ]
+    },
+    {
+      "id": "S23-T09",
+      "title": "QA + automated tests for entities v2 (regression suite)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Run extraction on sample chapter with Maharashtra/India",
+          "Verify People are roles/names only",
+          "Verify Places include Maharashtra and India",
+          "Verify Dates are empty if none provided",
+          "Verify EntitySanity warnings are gone for prompt leakage tokens",
+          "Verify citations deep link works"
+        ],
+        "automation": [
+          "Unit: stopword removal and validation rules",
+          "Integration: entities.extractFromAnswers returns schema-compliant JSON (mock LLM)",
+          "Integration: postprocess filters out 'The/Our/My'",
+          "UI test: EntitiesPanel does not render stopwords and groups correctly"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "Known screenshot failure case is prevented"
+      ],
+      "deliverables": [
+        "tests/entities/postprocess.test.ts",
+        "tests/entities/extractor.integration.test.ts",
+        "tests/ui/entitiesPanel.test.tsx",
+        "docs/qa_sprint23_entities_v2.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S23-T01",
+      "S23-T02",
+      "S23-T03",
+      "S23-T04",
+      "S23-T05",
+      "S23-T06",
+      "S23-T09",
+      "S23-T07",
+      "S23-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "This sprint fixes entity extraction correctness and removes token-based false positives.",
+      "Entities should be derived from answers only (grounded) and reused by image theming and future preflight checks.",
+      "Keep personal names out of provider searches by default for privacy and better image variety."
+    ]
+  }
+}

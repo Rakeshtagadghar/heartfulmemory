@@ -7,17 +7,21 @@ import { ButtonLink } from "../../../../../../components/ui/button";
 import { ViewportEvent } from "../../../../../../components/viewport-event";
 import { SlotCard } from "../../../../../../components/illustrations/SlotCard";
 import { ReplaceImagePicker } from "../../../../../../components/illustrations/ReplaceImagePicker";
+import { UploadImagePicker } from "../../../../../../components/illustrations/UploadImagePicker";
 import { TrackedIllustrationActionButton } from "../../../../../../components/illustrations/TrackedIllustrationActionButton";
 import { requireAuthenticatedUser } from "../../../../../../lib/auth/server";
 import { getOrCreateProfileForUser } from "../../../../../../lib/profile";
+import { signR2GetObject } from "../../../../../../lib/r2/server";
 import {
   autoIllustrateChapterForUser,
+  createUploadedIllustrationMediaAssetForUser,
   cacheIllustrationAssetsForUser,
   fetchIllustrationCandidatesForUser,
   getChapterIllustrationSlotMapForUser,
   getGuidedStorybookByIdForUser,
   getLatestChapterDraftForUser,
   getLatestChapterIllustrationForUser,
+  listUploadedIllustrationMediaAssetsForUser,
   listChapterIllustrationVersionsForUser,
   listGuidedChaptersByStorybookForUser,
   replaceIllustrationSlotAssignmentForUser,
@@ -84,9 +88,25 @@ function mapError(code: string | undefined) {
     AUTO_ILLUSTRATE_FAILED: "Auto-illustrate failed. Please try again.",
     SEARCH_FAILED: "Could not load replacement search results.",
     REPLACE_FAILED: "Could not replace the selected slot.",
-    LOCK_FAILED: "Could not update slot lock state."
+    LOCK_FAILED: "Could not update slot lock state.",
+    UPLOAD_FAILED: "Could not upload and apply your image.",
+    UPLOAD_NOT_FOUND: "Uploaded image was not found in your library."
   };
   return map[code] ?? "Something went wrong while loading illustrations.";
+}
+
+async function resolveUploadedImageSourceUrl(input: {
+  sourceUrl: string;
+  storageKey: string | null;
+}) {
+  const direct = input.sourceUrl.trim();
+  if (direct.length > 0) return direct;
+  if (!input.storageKey) return "";
+  try {
+    return await signR2GetObject({ key: input.storageKey, expiresInSeconds: 60 * 60 * 24 * 7 });
+  } catch {
+    return "";
+  }
 }
 
 export default async function ChapterIllustrationsPage({ params, searchParams }: Props) {
@@ -104,13 +124,14 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     );
   }
 
-  const [storybook, chapters, latestDraft, latestIllustration, illustrationSlotMap, versions] = await Promise.all([
+  const [storybook, chapters, latestDraft, latestIllustration, illustrationSlotMap, versions, uploadedMediaAssets] = await Promise.all([
     getGuidedStorybookByIdForUser(user.id, storybookId),
     listGuidedChaptersByStorybookForUser(user.id, storybookId),
     getLatestChapterDraftForUser(user.id, chapterInstanceId),
     getLatestChapterIllustrationForUser(user.id, chapterInstanceId),
     getChapterIllustrationSlotMapForUser(user.id, chapterInstanceId),
-    listChapterIllustrationVersionsForUser(user.id, chapterInstanceId)
+    listChapterIllustrationVersionsForUser(user.id, chapterInstanceId),
+    listUploadedIllustrationMediaAssetsForUser(user.id, 40)
   ]);
 
   if (!storybook.ok || !chapters.ok) {
@@ -227,6 +248,126 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     redirect(routeUrl(storybookId, chapterInstanceId, { notice: "replaced", slotId }));
   }
 
+  async function uploadAndReplaceSlotAction(input: {
+    slotId: string;
+    sourceUrl: string;
+    storageKey: string | null;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    sizeBytes: number;
+    fileName: string;
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(routeUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) {
+      return { ok: false, error: "Please complete onboarding first." };
+    }
+
+    const resolvedSourceUrl = await resolveUploadedImageSourceUrl({
+      sourceUrl: input.sourceUrl,
+      storageKey: input.storageKey
+    });
+
+    if (!illustrationId || !input.slotId || !resolvedSourceUrl) {
+      return { ok: false, error: mapError("UPLOAD_FAILED") ?? "Upload failed." };
+    }
+
+    const created = await createUploadedIllustrationMediaAssetForUser(currentUser.id, {
+      sourceId: input.storageKey || null,
+      cachedUrl: resolvedSourceUrl,
+      thumbUrl: resolvedSourceUrl,
+      width: Math.max(1, input.width ?? 1),
+      height: Math.max(1, input.height ?? 1),
+      mime: input.mimeType
+    });
+    if (!created.ok) return { ok: false, error: created.error || (mapError("UPLOAD_FAILED") ?? "Upload failed.") };
+
+    const replaced = await replaceIllustrationSlotAssignmentForUser(currentUser.id, {
+      illustrationId,
+      slotId: input.slotId,
+      mediaAssetId: created.data.mediaAssetId,
+      providerMetaSnapshot: {
+        provider: "upload",
+        sourceId: input.storageKey ?? created.data.mediaAssetId,
+        fileName: input.fileName,
+        mime: input.mimeType,
+        cacheMode: "user_upload"
+      }
+    });
+    if (!replaced.ok) return { ok: false, error: replaced.error || (mapError("UPLOAD_FAILED") ?? "Upload failed.") };
+    return { ok: true };
+  }
+
+  async function uploadOnlyAction(input: {
+    sourceUrl: string;
+    storageKey: string | null;
+    mimeType: string;
+    width: number | null;
+    height: number | null;
+    sizeBytes: number;
+    fileName: string;
+  }): Promise<{ ok: true } | { ok: false; error: string }> {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(routeUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) {
+      return { ok: false, error: "Please complete onboarding first." };
+    }
+
+    const resolvedSourceUrl = await resolveUploadedImageSourceUrl({
+      sourceUrl: input.sourceUrl,
+      storageKey: input.storageKey
+    });
+
+    if (!resolvedSourceUrl) return { ok: false, error: mapError("UPLOAD_FAILED") ?? "Upload failed." };
+
+    const created = await createUploadedIllustrationMediaAssetForUser(currentUser.id, {
+      sourceId: input.storageKey || null,
+      cachedUrl: resolvedSourceUrl,
+      thumbUrl: resolvedSourceUrl,
+      width: Math.max(1, input.width ?? 1),
+      height: Math.max(1, input.height ?? 1),
+      mime: input.mimeType
+    });
+    if (!created.ok) return { ok: false, error: created.error || (mapError("UPLOAD_FAILED") ?? "Upload failed.") };
+    return { ok: true };
+  }
+
+  async function useUploadedAssetAction(
+    input: { slotId: string; mediaAssetId: string }
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    "use server";
+    const currentUser = await requireAuthenticatedUser(routeUrl(storybookId, chapterInstanceId));
+    const currentProfile = await getOrCreateProfileForUser(currentUser);
+    if (!currentProfile.onboarding_completed) {
+      return { ok: false, error: "Please complete onboarding first." };
+    }
+
+    if (!illustrationId || !input.slotId || !input.mediaAssetId) {
+      return { ok: false, error: mapError("UPLOAD_FAILED") ?? "Upload failed." };
+    }
+
+    const uploads = await listUploadedIllustrationMediaAssetsForUser(currentUser.id, 200);
+    if (!uploads.ok || !uploads.data.some((asset) => asset.id === input.mediaAssetId)) {
+      return { ok: false, error: mapError("UPLOAD_NOT_FOUND") ?? "Upload failed." };
+    }
+
+    const replaced = await replaceIllustrationSlotAssignmentForUser(currentUser.id, {
+      illustrationId,
+      slotId: input.slotId,
+      mediaAssetId: input.mediaAssetId,
+      providerMetaSnapshot: {
+        provider: "upload",
+        sourceId: input.mediaAssetId,
+        cacheMode: "user_upload_reuse"
+      }
+    });
+    if (!replaced.ok) return { ok: false, error: replaced.error || (mapError("UPLOAD_FAILED") ?? "Upload failed.") };
+    return { ok: true };
+  }
+
   const replaceSlot = getSearchString(resolvedSearchParams, "replaceSlot");
   const replaceQ = (getSearchString(resolvedSearchParams, "q") ?? "").trim();
   const replaceProvider = (getSearchString(resolvedSearchParams, "provider") ?? "both") as "unsplash" | "pexels" | "both";
@@ -302,6 +443,15 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       {notice === "replaced" ? (
         <Card className="p-4"><p className="text-sm text-emerald-100">Slot replaced: {getSearchString(resolvedSearchParams, "slotId")}.</p></Card>
       ) : null}
+      {notice === "uploaded_replaced" ? (
+        <Card className="p-4"><p className="text-sm text-emerald-100">Uploaded image applied to slot: {getSearchString(resolvedSearchParams, "slotId")}.</p></Card>
+      ) : null}
+      {notice === "uploaded_reused" ? (
+        <Card className="p-4"><p className="text-sm text-emerald-100">Your uploaded image has been applied to slot: {getSearchString(resolvedSearchParams, "slotId")}.</p></Card>
+      ) : null}
+      {notice === "uploaded_library" ? (
+        <Card className="p-4"><p className="text-sm text-emerald-100">Image uploaded. Use Replace on a slot to apply it.</p></Card>
+      ) : null}
       {notice === "lock_updated" ? (
         <Card className="p-4"><p className="text-sm text-emerald-100">Lock updated for {getSearchString(resolvedSearchParams, "slotId")}.</p></Card>
       ) : null}
@@ -344,6 +494,17 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             </form>
           </div>
         </div>
+
+        {!replaceSlot ? (
+          <UploadImagePicker
+            storybookId={storybookId}
+            uploadedAssets={uploadedMediaAssets.ok ? uploadedMediaAssets.data : []}
+            onUploadOnly={uploadOnlyAction}
+            title="Upload Your Photos"
+            subtitle="Upload images now and apply them later using Replace on any slot."
+            uploadLabel="Upload Image"
+          />
+        ) : null}
       </Card>
 
       {illustration ? (
@@ -361,14 +522,18 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
 
       {replaceSlot && replaceTarget ? (
         <ReplaceImagePicker
+          storybookId={storybookId}
           slotId={replaceSlot}
           query={replaceQ || illustration?.theme.queries[0] || chapter.title}
           provider={replaceProvider}
           results={replaceResults}
+          uploadedAssets={uploadedMediaAssets.ok ? uploadedMediaAssets.data : []}
           minShortSidePx={replaceTarget.minShortSidePx}
           orientation={replaceTarget.orientation}
           searchActionUrl={routeUrl(storybookId, chapterInstanceId)}
           onReplace={replaceSlotAction}
+          onUploadAndReplace={uploadAndReplaceSlotAction}
+          onUseUploadedAsset={useUploadedAssetAction}
         />
       ) : null}
 
