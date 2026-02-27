@@ -72,7 +72,7 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
           Continue to Memorioso
         </h1>
         <p className="mt-3 text-sm leading-7 text-white/70">
-          Sprint 3.5 migrates auth to Auth.js + Convex. This build uses a developer email sign-in fallback until magic links are configured.
+          Enter your email address to receive a magic link for signing in or creating an account.
         </p>
 
         {helperMessage ? (

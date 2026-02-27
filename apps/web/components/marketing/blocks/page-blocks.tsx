@@ -209,12 +209,18 @@ export function PricingCardsBlockView({
           <Card
             key={plan.id}
             className={`relative overflow-hidden p-6 ${
-              plan.badge || index === 1
-                ? "border-gold/40 bg-gradient-to-b from-gold/10 to-white/[0.02] shadow-glow"
-                : ""
+              plan.comingSoon
+                ? "opacity-75"
+                : plan.badge || index === 1
+                  ? "border-gold/40 bg-gradient-to-b from-gold/10 to-white/[0.02] shadow-glow"
+                  : ""
             }`}
           >
-            {plan.badge ? (
+            {plan.comingSoon ? (
+              <span className="absolute right-4 top-4 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/70">
+                Coming soon
+              </span>
+            ) : plan.badge ? (
               <span className="absolute right-4 top-4 rounded-full border border-gold/35 bg-gold/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-gold">
                 {plan.badge}
               </span>

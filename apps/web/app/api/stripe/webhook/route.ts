@@ -104,12 +104,26 @@ export async function POST(request: Request) {
         const fallbackByCustomer = customerId
           ? await getFallbackUserIdForCustomer(customerId)
           : null;
-        await upsertFromSubscription({
+        const upserted = await upsertFromSubscription({
           eventId: event.id,
           eventType: event.type,
           subscription,
           fallbackUserId: fallbackUserId || fallbackByCustomer
         });
+        if (!upserted.ok) {
+          captureAppWarning("Checkout session webhook failed to upsert subscription", {
+            runtime: "server",
+            flow: "billing_webhook",
+            feature: "billing",
+            code: "WEBHOOK_UPSERT_FAILED",
+            extra: {
+              eventId: event.id,
+              eventType: event.type,
+              reason: upserted.reason
+            }
+          });
+          return NextResponse.json({ ok: false, error: upserted.reason }, { status: 500 });
+        }
       }
       return NextResponse.json({ ok: true });
     }

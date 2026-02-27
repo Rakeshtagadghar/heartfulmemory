@@ -6,6 +6,16 @@ import { ManageBillingButton } from "../../../../components/billing/ManageBillin
 import { PlanBenefits } from "../../../../components/billing/PlanBenefits";
 import { UpgradeCheckoutButton } from "../../../../components/billing/UpgradeCheckoutButton";
 import { UpgradeCheckoutLauncher } from "../../../../components/billing/UpgradeCheckoutLauncher";
+import { BILLING_PLAN_CATALOG } from "../../../../../../packages/shared/billing/entitlements";
+
+function formatDate(value: number | null) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "numeric"
+  });
+}
 
 export default async function BillingAccountPage({
   searchParams
@@ -31,15 +41,28 @@ export default async function BillingAccountPage({
       stripeSubscriptionId: string;
       planId: string;
       status: string;
+      currentPeriodStart: number | null;
       currentPeriodEnd: number | null;
       cancelAtPeriodEnd: boolean;
+      cancelAt: number | null;
+      canceledAt: number | null;
     } | null;
+    usage?: {
+      used: number;
+      periodStart: number;
+      periodEnd: number;
+      periodSource: "subscription" | "calendar";
+    };
   }>(anyApi.billing.getEntitlementsForViewer, {
     viewerSubject: user.id
   });
 
   const planId = billingState.ok ? billingState.data.entitlements.planId : "free";
+  const entitlements = billingState.ok ? billingState.data.entitlements : null;
   const subscription = billingState.ok ? billingState.data.subscription : null;
+  const usage = billingState.ok ? billingState.data.usage : null;
+  const quotaLimit = BILLING_PLAN_CATALOG[planId].limits.exportsPerMonth ?? 0;
+  const isCancelling = Boolean(subscription?.cancelAtPeriodEnd || subscription?.cancelAt);
   const shouldAutostartUpgrade = planId !== "pro" && intent === "upgrade";
 
   return (
@@ -62,11 +85,58 @@ export default async function BillingAccountPage({
             <p className="text-xs uppercase tracking-[0.14em] text-white/45">Subscription status</p>
             <p className="mt-2 text-lg font-semibold capitalize text-white">
               {subscription?.status?.replaceAll("_", " ") ?? "none"}
+              {isCancelling ? (
+                <span className="ml-2 text-sm font-normal text-amber-300/80">(cancels at period end)</span>
+              ) : null}
             </p>
           </div>
         </div>
 
-        {planId === "pro" ? <PlanBenefits className="mt-5 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80" /> : null}
+        {planId === "pro" && subscription ? (
+          <div className="mt-5 grid gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-4 sm:grid-cols-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Current billing period</p>
+              <p className="mt-1 text-sm text-white/85">
+                {formatDate(subscription.currentPeriodStart)} – {formatDate(subscription.currentPeriodEnd)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Next charge date</p>
+              <p className="mt-1 text-sm font-semibold text-white">
+                {subscription.cancelAtPeriodEnd ? "No renewal" : formatDate(subscription.currentPeriodEnd)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">Price</p>
+              <p className="mt-1 text-sm text-white/85">GBP 30/month</p>
+            </div>
+          </div>
+        ) : null}
+
+        {planId === "pro" && usage ? (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-[0.14em] text-white/45">PDF exports this period</p>
+              <p className="text-sm text-white/85">
+                {usage.used} / {quotaLimit} used
+              </p>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-emerald-400/70 transition-all"
+                style={{ width: `${Math.min(100, quotaLimit > 0 ? (usage.used / quotaLimit) * 100 : 0)}%` }}
+              />
+            </div>
+            <p className="mt-1.5 text-xs text-white/50">
+              {entitlements?.exportsRemaining !== null && entitlements?.exportsRemaining !== undefined
+                ? `${Math.max(0, entitlements.exportsRemaining)} exports remaining`
+                : "Unlimited exports"}
+              {" · "}Resets {formatDate(usage.periodEnd)}
+            </p>
+          </div>
+        ) : null}
+
+        {planId === "pro" ? <PlanBenefits className="mt-4 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80" /> : null}
 
         <UpgradeCheckoutLauncher enabled={shouldAutostartUpgrade} returnTo="/app/account/billing" />
 

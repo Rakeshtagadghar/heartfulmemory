@@ -24,6 +24,8 @@ export async function GET() {
       currentPeriodStart: number | null;
       currentPeriodEnd: number | null;
       cancelAtPeriodEnd: boolean;
+      cancelAt: number | null;
+      canceledAt: number | null;
     } | null;
     usage?: {
       used: number;

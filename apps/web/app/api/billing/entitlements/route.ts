@@ -55,27 +55,37 @@ function pickSubscriptionForRecovery(subscriptions: Stripe.Subscription[]) {
 }
 
 async function tryRecoverSubscription(userId: string, stripeCustomerId: string) {
-  const stripeFactory = getStripeClientForBilling();
-  if (!stripeFactory.ok) return;
+  try {
+    const stripeFactory = getStripeClientForBilling();
+    if (!stripeFactory.ok) return;
 
-  const stripeSubscriptions = await stripeFactory.stripe.subscriptions.list({
-    customer: stripeCustomerId,
-    status: "all",
-    limit: 10
-  });
-  const candidate = pickSubscriptionForRecovery(stripeSubscriptions.data);
-  if (!candidate) return;
+    const stripeSubscriptions = await stripeFactory.stripe.subscriptions.list({
+      customer: stripeCustomerId,
+      status: "all",
+      limit: 10
+    });
+    const candidate = pickSubscriptionForRecovery(stripeSubscriptions.data);
+    if (!candidate) return;
 
-  const mapped = mapStripeSubscriptionForUpsert({
-    subscription: candidate,
-    fallbackUserId: userId
-  });
-  if (!mapped) return;
+    const mapped = mapStripeSubscriptionForUpsert({
+      subscription: candidate,
+      fallbackUserId: userId
+    });
+    if (!mapped) return;
 
-  await convexMutation(anyApi.billing.upsertSubscriptionFromStripeInternal, {
-    stripeEventType: "billing.entitlements.recovery",
-    ...mapped
-  });
+    // Use the public mutation (no CONVEX_DEPLOY_KEY required).
+    // The shared BILLING_RECOVERY_TOKEN is the authorization — it must also be
+    // configured as an environment variable in the Convex dashboard.
+    const serverToken = process.env.BILLING_RECOVERY_TOKEN ?? "";
+    if (!serverToken) return; // misconfigured — skip silently
+
+    await convexMutation(anyApi.billing.upsertSubscriptionFromRecoveryForViewer, {
+      serverToken,
+      ...mapped
+    });
+  } catch {
+    // Fail silently — recovery is best-effort; the polling loop will retry
+  }
 }
 
 export async function GET() {
@@ -89,7 +99,9 @@ export async function GET() {
   }
 
   const stripeCustomerId = result.data.customer?.stripeCustomerId ?? null;
-  if (!result.data.subscription && stripeCustomerId) {
+  const subStatus = result.data.subscription?.status;
+  const needsRecovery = !result.data.subscription || subStatus === "incomplete";
+  if (needsRecovery && stripeCustomerId) {
     await tryRecoverSubscription(user.id, stripeCustomerId);
     result = await convexQuery<EntitlementsResponseData>(anyApi.billing.getEntitlementsForViewer, {
       viewerSubject: user.id

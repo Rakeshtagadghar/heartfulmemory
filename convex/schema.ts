@@ -41,6 +41,8 @@ export default defineSchema({
     currentPeriodStart: v.optional(v.union(v.number(), v.null())),
     currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
     cancelAtPeriodEnd: v.boolean(),
+    cancelAt: v.optional(v.union(v.number(), v.null())),
+    canceledAt: v.optional(v.union(v.number(), v.null())),
     latestInvoiceId: v.optional(v.union(v.string(), v.null())),
     updatedAt: v.number()
   })

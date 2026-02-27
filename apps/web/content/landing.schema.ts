@@ -104,6 +104,7 @@ export type PricingCardsBlock = {
       features: readonly string[];
       cta: CTAConfig;
       badge?: string;
+      comingSoon?: boolean;
     }[];
     note?: string;
   };

@@ -131,6 +131,9 @@ export function BillingSuccessState({
         <Link href={returnTo} className="inline-flex h-10 items-center rounded-xl border border-gold/65 bg-gold px-4 text-sm font-semibold text-ink hover:bg-[#e3c17b]">
           {isActive ? "Start exporting" : "Return to Studio"}
         </Link>
+        <Link href="/app" className="inline-flex h-10 items-center rounded-xl border border-white/15 bg-white/5 px-4 text-sm font-semibold text-parchment hover:bg-white/10">
+          Go to dashboard
+        </Link>
         <Button type="button" variant="secondary" loading={isChecking} onClick={() => void refresh()}>
           Refresh status
         </Button>

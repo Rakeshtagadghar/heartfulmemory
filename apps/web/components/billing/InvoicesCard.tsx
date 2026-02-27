@@ -7,6 +7,7 @@ type InvoicesCardProps = {
     status: string;
     currentPeriodEnd: number | null;
     cancelAtPeriodEnd: boolean;
+    cancelAt?: number | null;
   } | null;
 };
 
@@ -55,7 +56,7 @@ export function InvoicesCard({ planId, subscription }: InvoicesCardProps) {
         <p className="text-xs uppercase tracking-[0.14em] text-white/45">Payment status</p>
         <p className="mt-1 text-sm capitalize text-white/85">
           {subscription?.status?.replaceAll("_", " ") ?? "active"}
-          {subscription?.cancelAtPeriodEnd ? " (cancels at period end)" : ""}
+          {(subscription?.cancelAtPeriodEnd || subscription?.cancelAt) ? " (cancels at period end)" : ""}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">

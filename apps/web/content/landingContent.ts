@@ -9,10 +9,11 @@ export type PricingPlan = {
   id: string;
   name: string;
   price: string;
-  period: string;
+  period?: string;
   features: string[];
   cta: string;
   href: string;
+  comingSoon?: boolean;
 };
 export type FaqItem = { q: string; a: string };
 
@@ -120,6 +121,19 @@ export const pricingPlans: readonly PricingPlan[] = [
     ],
     cta: "Upgrade to export",
     href: "/app/account/billing?intent=upgrade"
+  },
+  {
+    id: "hardcopy",
+    name: "Hardcopy Book",
+    price: "TBD",
+    features: [
+      "Printed hardcover storybook delivered",
+      "Premium paper and binding",
+      "Perfect as a gift or keepsake"
+    ],
+    cta: "Coming soon",
+    href: "#email_capture",
+    comingSoon: true
   }
 ];
 

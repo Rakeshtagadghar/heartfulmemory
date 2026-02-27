@@ -24,6 +24,8 @@ type BillingSubscriptionRow = {
   currentPeriodStart?: number | null;
   currentPeriodEnd?: number | null;
   cancelAtPeriodEnd: boolean;
+  cancelAt?: number | null;
+  canceledAt?: number | null;
   latestInvoiceId?: string | null;
   updatedAt: number;
 } | null;
@@ -76,6 +78,8 @@ function toSubscriptionDto(row: BillingSubscriptionRow) {
     currentPeriodStart: row.currentPeriodStart ?? null,
     currentPeriodEnd: row.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
+    cancelAt: row.cancelAt ?? null,
+    canceledAt: row.canceledAt ?? null,
     latestInvoiceId: row.latestInvoiceId ?? null,
     updatedAt: row.updatedAt
   };
@@ -239,6 +243,76 @@ export const upsertCustomerFromStripeInternal = internalMutation({
   }
 });
 
+// Public mutation used by the server-side recovery path (no admin key required).
+// Protected by a shared BILLING_RECOVERY_TOKEN that must match between Next.js
+// and Convex environment variables — preventing self-grant abuse from the browser.
+export const upsertSubscriptionFromRecoveryForViewer = mutationGeneric({
+  args: {
+    serverToken: v.string(),
+    userId: v.string(),
+    stripeCustomerId: v.string(),
+    stripeSubscriptionId: v.string(),
+    planId: v.string(),
+    status: subscriptionStatusValidator,
+    currentPeriodStart: v.optional(v.union(v.number(), v.null())),
+    currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
+    cancelAtPeriodEnd: v.boolean(),
+    cancelAt: v.optional(v.union(v.number(), v.null())),
+    canceledAt: v.optional(v.union(v.number(), v.null())),
+    latestInvoiceId: v.optional(v.union(v.string(), v.null()))
+  },
+  handler: async (ctx, args) => {
+    const expectedToken = process.env.BILLING_RECOVERY_TOKEN;
+    if (!expectedToken || args.serverToken !== expectedToken) {
+      throw new Error("Unauthorized: invalid server token");
+    }
+
+    await upsertCustomerRow(ctx, {
+      userId: args.userId,
+      stripeCustomerId: args.stripeCustomerId
+    });
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("billingSubscriptions")
+      .withIndex("by_stripeSubscriptionId", (q) => q.eq("stripeSubscriptionId", args.stripeSubscriptionId))
+      .first();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        userId: args.userId,
+        stripeCustomerId: args.stripeCustomerId,
+        planId: args.planId,
+        status: args.status,
+        currentPeriodStart: args.currentPeriodStart ?? null,
+        currentPeriodEnd: args.currentPeriodEnd ?? null,
+        cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        cancelAt: args.cancelAt ?? null,
+        canceledAt: args.canceledAt ?? null,
+        latestInvoiceId: args.latestInvoiceId ?? null,
+        updatedAt: now
+      });
+    } else {
+      await ctx.db.insert("billingSubscriptions", {
+        userId: args.userId,
+        stripeCustomerId: args.stripeCustomerId,
+        stripeSubscriptionId: args.stripeSubscriptionId,
+        planId: args.planId,
+        status: args.status,
+        currentPeriodStart: args.currentPeriodStart ?? null,
+        currentPeriodEnd: args.currentPeriodEnd ?? null,
+        cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        cancelAt: args.cancelAt ?? null,
+        canceledAt: args.canceledAt ?? null,
+        latestInvoiceId: args.latestInvoiceId ?? null,
+        updatedAt: now
+      });
+    }
+
+    return { ok: true as const };
+  }
+});
+
 export const upsertSubscriptionFromStripeInternal = internalMutation({
   args: {
     stripeEventId: v.optional(v.string()),
@@ -251,6 +325,8 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
     currentPeriodStart: v.optional(v.union(v.number(), v.null())),
     currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
     cancelAtPeriodEnd: v.boolean(),
+    cancelAt: v.optional(v.union(v.number(), v.null())),
+    canceledAt: v.optional(v.union(v.number(), v.null())),
     latestInvoiceId: v.optional(v.union(v.string(), v.null()))
   },
   handler: async (ctx, args) => {
@@ -293,6 +369,8 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
         currentPeriodStart: args.currentPeriodStart ?? null,
         currentPeriodEnd: args.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        cancelAt: args.cancelAt ?? null,
+        canceledAt: args.canceledAt ?? null,
         latestInvoiceId: args.latestInvoiceId ?? null,
         updatedAt: now
       });
@@ -307,6 +385,8 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
         currentPeriodStart: args.currentPeriodStart ?? null,
         currentPeriodEnd: args.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
+        cancelAt: args.cancelAt ?? null,
+        canceledAt: args.canceledAt ?? null,
         latestInvoiceId: args.latestInvoiceId ?? null,
         updatedAt: now
       });

@@ -15,12 +15,18 @@ export function PricingSection() {
           <div
             key={plan.id}
             className={`relative overflow-hidden rounded-2xl border p-6 ${
-              index === 1
-                ? "border-gold/40 bg-gradient-to-b from-gold/10 to-white/[0.02] shadow-glow"
-                : "border-white/10 bg-white/[0.03]"
+              plan.comingSoon
+                ? "border-white/10 bg-white/[0.02] opacity-75"
+                : index === 1
+                  ? "border-gold/40 bg-gradient-to-b from-gold/10 to-white/[0.02] shadow-glow"
+                  : "border-white/10 bg-white/[0.03]"
             }`}
           >
-            {index === 1 ? (
+            {plan.comingSoon ? (
+              <span className="absolute right-4 top-4 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-white/70">
+                Coming soon
+              </span>
+            ) : index === 1 ? (
               <span className="absolute right-4 top-4 rounded-full border border-gold/35 bg-gold/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-gold">
                 Popular gift
               </span>
@@ -42,18 +48,29 @@ export function PricingSection() {
                 </li>
               ))}
             </ul>
-            <TrackedLink
-              href={plan.href}
-              eventName="pricing_plan_select"
-              eventProps={{ plan_id: plan.id }}
-              className={`mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl border text-sm font-semibold transition ${
-                index !== 0
-                  ? "border-gold/65 bg-gold text-ink hover:bg-[#e3c17b]"
-                  : "border-white/15 bg-white/[0.03] text-white hover:border-gold/40"
-              }`}
-            >
-              {plan.cta}
-            </TrackedLink>
+            {plan.comingSoon ? (
+              <TrackedLink
+                href={plan.href}
+                eventName="pricing_plan_select"
+                eventProps={{ plan_id: plan.id }}
+                className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl border border-white/15 bg-white/[0.03] text-sm font-semibold text-white/60 transition hover:border-gold/40 hover:text-white/80"
+              >
+                {plan.cta}
+              </TrackedLink>
+            ) : (
+              <TrackedLink
+                href={plan.href}
+                eventName="pricing_plan_select"
+                eventProps={{ plan_id: plan.id }}
+                className={`mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl border text-sm font-semibold transition ${
+                  index !== 0
+                    ? "border-gold/65 bg-gold text-ink hover:bg-[#e3c17b]"
+                    : "border-white/15 bg-white/[0.03] text-white hover:border-gold/40"
+                }`}
+              >
+                {plan.cta}
+              </TrackedLink>
+            )}
           </div>
         ))}
       </div>

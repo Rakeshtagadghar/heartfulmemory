@@ -10,6 +10,8 @@ export type NormalizedStripeSubscription = {
   currentPeriodStart: number | null;
   currentPeriodEnd: number | null;
   cancelAtPeriodEnd: boolean;
+  cancelAt: number | null;
+  canceledAt: number | null;
   latestInvoiceId: string | null;
 };
 
@@ -82,6 +84,8 @@ export function mapStripeSubscriptionForUpsert(input: {
     currentPeriodStart: period.periodStartMs,
     currentPeriodEnd: period.periodEndMs,
     cancelAtPeriodEnd: Boolean(input.subscription.cancel_at_period_end),
+    cancelAt: typeof input.subscription.cancel_at === "number" ? input.subscription.cancel_at * 1000 : null,
+    canceledAt: typeof input.subscription.canceled_at === "number" ? input.subscription.canceled_at * 1000 : null,
     latestInvoiceId:
       typeof input.subscription.latest_invoice === "string"
         ? input.subscription.latest_invoice

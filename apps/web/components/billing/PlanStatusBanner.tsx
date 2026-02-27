@@ -5,7 +5,11 @@ import { useState } from "react";
 import { usePlanStatus } from "../../lib/billing/usePlanStatus";
 import { UpgradeModal } from "./UpgradeModal";
 
-function quotaLabel(input: { used: number; limit: number; remaining: number | null }) {
+function quotaLabel(input: {
+  used: number;
+  limit: number;
+  remaining: number | null;
+}) {
   if (input.remaining === null) return "Unlimited exports";
   return `${Math.max(0, input.remaining)}/${input.limit} exports left this month`;
 }
@@ -53,16 +57,7 @@ export function PlanStatusBanner({ compact = false }: { compact?: boolean }) {
             {quotaLabel(data.quota)}
           </span>
         </div>
-        {isPro ? (
-          <>
-            <Link href="/app/account/billing" className="rounded-lg border border-white/20 bg-white/[0.03] px-2 py-1 text-white/85 hover:bg-white/[0.06]">
-              Manage Billing
-            </Link>
-            <Link href="/app/account/invoices" className="rounded-lg border border-white/15 px-2 py-1 text-white/75 hover:bg-white/[0.05] hover:text-white">
-              Invoices
-            </Link>
-          </>
-        ) : (
+        {isPro ? null : (
           <button
             type="button"
             className="cursor-pointer rounded-lg border border-gold/55 bg-gold/90 px-2 py-1 font-semibold text-ink hover:bg-[#e3c17b]"
@@ -72,7 +67,11 @@ export function PlanStatusBanner({ compact = false }: { compact?: boolean }) {
           </button>
         )}
       </div>
-      <UpgradeModal open={upgradeOpen} onClose={() => setUpgradeOpen(false)} source="studio_export" />
+      <UpgradeModal
+        open={upgradeOpen}
+        onClose={() => setUpgradeOpen(false)}
+        source="studio_export"
+      />
     </>
   );
 }
