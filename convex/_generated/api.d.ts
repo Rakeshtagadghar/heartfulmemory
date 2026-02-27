@@ -14,6 +14,7 @@ import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
 import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
+import type * as billing from "../billing.js";
 import type * as blocks from "../blocks.js";
 import type * as chapterAnswers from "../chapterAnswers.js";
 import type * as chapterDrafts from "../chapterDrafts.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   "ai/rateLimit": typeof ai_rateLimit;
   assets: typeof assets;
   authz: typeof authz;
+  billing: typeof billing;
   blocks: typeof blocks;
   chapterAnswers: typeof chapterAnswers;
   chapterDrafts: typeof chapterDrafts;

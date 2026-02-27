@@ -177,10 +177,14 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       storybookId,
       chapterKey,
       chapterInstanceId,
-      extra: {
-        correlationId: errRef,
-        ...(extra ?? {})
-      }
+      extra: extra
+        ? {
+            correlationId: errRef,
+            ...extra
+          }
+        : {
+            correlationId: errRef
+          }
     });
     return routeUrl(storybookId, chapterInstanceId, { error: errorCode, errRef });
   }
@@ -453,7 +457,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
         </div>
       </Card>
 
-      {!isDraftReady ? (
+      {isDraftReady ? null : (
         <Card className="p-5">
           <p className="text-sm text-amber-100">
             Chapter draft is not ready yet. Generate a chapter draft first in the Draft Review screen.
@@ -464,7 +468,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             </ButtonLink>
           </div>
         </Card>
-      ) : null}
+      )}
 
       {notice === "generated" ? (
         <Card className="p-4"><p className="text-sm text-emerald-100">Auto-illustrate completed.</p></Card>

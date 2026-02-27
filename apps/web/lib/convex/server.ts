@@ -15,5 +15,14 @@ export function getConvexDeployKey() {
 export function createConvexHttpClient() {
   const url = getConvexUrl();
   if (!url) return null;
-  return new ConvexHttpClient(url);
+  const client = new ConvexHttpClient(url);
+  const deployKey = getConvexDeployKey();
+  if (deployKey) {
+    (
+      client as ConvexHttpClient & {
+        setAdminAuth?: (token: string) => void;
+      }
+    ).setAdminAuth?.(deployKey);
+  }
+  return client;
 }

@@ -21,6 +21,7 @@ import {
 } from "../../../../../../packages/rules-engine/src";
 import { captureAppError, captureAppWarning } from "../../../../../../lib/observability/capture";
 import { withSentrySpan } from "../../../../../../lib/observability/spans";
+import { evaluateExportAccess } from "../../../../../../lib/billing/guards";
 
 export const runtime = "nodejs";
 
@@ -169,6 +170,11 @@ function jsonExportError(input: Parameters<typeof buildExportErrorPayload>[0]) {
 
 function shouldStoreExportPdfsInR2() {
   const value = (process.env.EXPORT_PDF_STORE_R2 ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function isBillingGuardEnabled() {
+  const value = (process.env.BILLING_ENFORCE_EXPORT_GATING ?? "").trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
 
@@ -427,6 +433,66 @@ export async function POST(request: Request) { // NOSONAR
   }
 
   const user = await requireExportAccess(parsed.storybookId);
+  if (!parsed.validateOnly && isBillingGuardEnabled()) {
+    const entitlements = await convexQuery<{
+      entitlements: {
+        planId: "free" | "pro";
+        subscriptionStatus: "none" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+        canExportDigital: boolean;
+        canExportHardcopy: boolean;
+        exportsRemaining: number | null;
+      };
+    }>(anyApi.billing.getEntitlementsForViewer, {
+      viewerSubject: user.id
+    });
+    if (!entitlements.ok) {
+      captureAppWarning("Billing entitlement check failed", {
+        runtime: "server",
+        flow: "export_pdf_post",
+        feature: "billing_guard",
+        code: "ENTITLEMENT_CHECK_FAILED",
+        storybookId: parsed.storybookId,
+        extra: {
+          traceId
+        }
+      });
+      return jsonExportError({
+        status: 503,
+        code: "ENTITLEMENT_CHECK_FAILED",
+        message: "Unable to verify export entitlement right now.",
+        traceId
+      });
+    }
+
+    const decision = evaluateExportAccess(entitlements.data.entitlements, parsed.exportTarget);
+    if (!decision.allowed) {
+      captureAppWarning("Export blocked by billing entitlement", {
+        runtime: "server",
+        flow: "export_pdf_post",
+        feature: "billing_guard",
+        code: decision.code,
+        storybookId: parsed.storybookId,
+        billingEntitlement: entitlements.data.entitlements.planId,
+        extra: {
+          traceId,
+          target: parsed.exportTarget,
+          subscriptionStatus: entitlements.data.entitlements.subscriptionStatus
+        }
+      });
+      return jsonExportError({
+        status: 402,
+        code: decision.code,
+        message: "Upgrade to Pro to export PDFs.",
+        traceId,
+        details: {
+          target: parsed.exportTarget,
+          planId: entitlements.data.entitlements.planId,
+          subscriptionStatus: entitlements.data.entitlements.subscriptionStatus
+        }
+      });
+    }
+  }
+
   if (!parsed.validateOnly) {
     const rate = checkExportRateLimit(user.id);
     if (!rate.ok) {
@@ -598,18 +664,26 @@ export async function POST(request: Request) { // NOSONAR
       () => resolveExportAssetUrls(payload, user.id)
     );
     const contract = toContract(resolvedPayload, parsed.exportTarget);
-    const debug =
-      typeof parsed.debug === "boolean"
-        ? { enabled: parsed.debug }
-        : parsed.debug && typeof parsed.debug === "object"
-          ? {
-              enabled: parsed.debug.enabled ?? true,
-              showSafeArea: parsed.debug.showSafeArea,
-              showBleed: parsed.debug.showBleed,
-              showNodeBounds: parsed.debug.showNodeBounds,
-              showNodeIds: parsed.debug.showNodeIds
-            }
-          : undefined;
+    let debug:
+      | {
+          enabled: boolean;
+          showSafeArea?: boolean;
+          showBleed?: boolean;
+          showNodeBounds?: boolean;
+          showNodeIds?: boolean;
+        }
+      | undefined;
+    if (typeof parsed.debug === "boolean") {
+      debug = { enabled: parsed.debug };
+    } else if (parsed.debug && typeof parsed.debug === "object") {
+      debug = {
+        enabled: parsed.debug.enabled ?? true,
+        showSafeArea: parsed.debug.showSafeArea,
+        showBleed: parsed.debug.showBleed,
+        showNodeBounds: parsed.debug.showNodeBounds,
+        showNodeIds: parsed.debug.showNodeIds
+      };
+    }
     const rendered = await withSentrySpan(
       "export_render_pdf",
       {

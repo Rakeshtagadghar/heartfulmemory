@@ -4,6 +4,6 @@ export const digitalPdfTargetConfig = {
   safeAreaInsetMultiplier: 1,
   showBleedGuide: false,
   printBackground: true,
-  pdfScale: 0.95,
+  pdfScale: 1,
   imageQuality: "medium" as const
 };

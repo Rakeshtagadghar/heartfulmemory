@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ExportTarget } from "../../../../packages/pdf-renderer/src/contracts";
 import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
 import type { StorybookExportSettingsV1 } from "../../../../packages/shared-schema/storybookSettings.types";
@@ -31,6 +32,21 @@ function targetsFor(selection: ExportSelection): ExportTarget[] {
   if (selection === "DIGITAL_ONLY") return ["DIGITAL_PDF"];
   if (selection === "HARDCOPY_ONLY") return ["HARDCOPY_PRINT_PDF"];
   return ["DIGITAL_PDF", "HARDCOPY_PRINT_PDF"];
+}
+
+function summarizePreflightBlock(preflight: ExportPreflightResponse) {
+  const blockingCount = preflight.blockingIssues.length;
+  const contractErrorCount = preflight.contractErrors?.length ?? 0;
+  const totalBlocking = blockingCount + contractErrorCount;
+  if (totalBlocking <= 0) return "blocked";
+  const parts: string[] = [];
+  if (blockingCount > 0) {
+    parts.push(`${blockingCount} preflight issue${blockingCount === 1 ? "" : "s"}`);
+  }
+  if (contractErrorCount > 0) {
+    parts.push(`${contractErrorCount} contract error${contractErrorCount === 1 ? "" : "s"}`);
+  }
+  return parts.join(", ");
 }
 
 export function ExportModal({
@@ -109,7 +125,9 @@ export function ExportModal({
     setPreflightByTarget((current) => ({ ...current, [target]: result.data }));
     setRunState((current) => ({
       ...current,
-      [target]: { status: result.data.canProceed ? "idle" : "blocked" }
+      [target]: result.data.canProceed
+        ? { status: "idle" }
+        : { status: "blocked", error: summarizePreflightBlock(result.data) }
     }));
     recordStudioMilestone("export_step", "export_preflight", {
       flow: "studio_export",
@@ -130,14 +148,35 @@ export function ExportModal({
   }
 
   async function runTargetExport(target: ExportTarget, preview: boolean) {
-    const preflight = preflightByTarget[target] ?? (await runPreflightForTarget(target));
+    const preflight = await runPreflightForTarget(target);
     if (!preflight) return;
     if (!preflight.canProceed) {
-      setRunState((current) => ({ ...current, [target]: { status: "blocked" } }));
-      onIssuesUpdate?.([
-        ...Object.values(preflightByTarget).flatMap((item) => item?.issues ?? []),
-        ...preflight.issues
-      ]);
+      setRunState((current) => ({
+        ...current,
+        [target]: { status: "blocked", error: summarizePreflightBlock(preflight) }
+      }));
+      const blockingCount = preflight.blockingIssues.length;
+      const contractErrorCount = preflight.contractErrors?.length ?? 0;
+      const firstBlocking = preflight.blockingIssues[0];
+      setGlobalError(
+        blockingCount > 0 || contractErrorCount > 0
+          ? `Export blocked for ${targetLabels[target]} (${summarizePreflightBlock(preflight)}). Resolve the issues below and try again.`
+          : `Export blocked for ${targetLabels[target]}. Resolve preflight issues below and try again.`
+      );
+      onIssuesUpdate?.(
+        [
+          ...Object.entries(preflightByTarget)
+            .filter(([key]) => key !== target)
+            .flatMap(([, item]) => item?.issues ?? []),
+          ...preflight.issues
+        ]
+      );
+      recordStudioMilestone("export_step", "export_generate", {
+        flow: "studio_export",
+        storybookId,
+        mode: target,
+        code: firstBlocking?.code
+      }, "failed");
       return;
     }
 
@@ -232,9 +271,10 @@ export function ExportModal({
     setGlobalError(null);
   }
 
-  return (
-    <div className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0b1320] p-5 shadow-2xl">
+  const modal = (
+    <div className="fixed inset-0 z-[220] overflow-y-auto bg-black/55 p-4">
+      <div className="mx-auto flex min-h-full w-full max-w-4xl items-center justify-center py-4">
+        <div className="flex max-h-[min(90dvh,calc(100%-2rem))] w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0b1320] p-5 shadow-2xl">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.16em] text-white/45">Export PDF</p>
@@ -398,6 +438,10 @@ export function ExportModal({
           </div>
         </div>
       </div>
+      </div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }

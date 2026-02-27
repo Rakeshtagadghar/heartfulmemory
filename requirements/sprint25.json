@@ -4,279 +4,416 @@
     "planType": "SPRINT_TASKS_JSON",
     "sprint": {
       "number": 25,
-      "title": "Studio Populate v2: Safe-Area Placement + Overflow Guards",
+      "title": "Monetization v1: Stripe Billing + Crown Export Paywall (Upgrade Flow)",
       "duration": "1 week",
-      "goal": "Ensure all auto-populated chapter content (text + images) lands inside the safe area, respects template constraints, avoids overflow, and stays export-ready. Add deterministic layout guardrails during population.",
+      "goal": "Integrate Stripe Billing for subscriptions and gate premium actions (Export) in Studio with a crown button and Upgrade flow. Persist entitlements in Convex via webhooks, support customer self-serve via Stripe Customer Portal, and provide a clean upgrade UX at the moment of intent.",
       "definitionOfDone": [
-        "Auto-populated nodes are clamped into safe area for hardcopy mode (and sensible margins for digital)",
-        "Text boxes do not overflow silently: overflow is prevented via auto-resize and/or controlled truncation with warning",
-        "Population respects layout slot constraints (aspect targets, intent, priority)",
-        "Full-bleed layouts are supported explicitly (images allowed into bleed; text still safe)",
-        "Population remains idempotent (no duplicates) and does not overwrite user edits",
-        "Draft + illustration changes can trigger repopulate preview (optional) but v2 still defaults to non-destructive behavior",
-        "Automated tests cover safe-area clamping and overflow prevention"
+        "Stripe products/prices are configured for Free vs Pro (and optionally Team placeholder)",
+        "Users can upgrade via Stripe Checkout and become 'Pro' based on webhook-confirmed subscription status",
+        "Studio shows Export as a crown button for Free users and triggers Upgrade modal instead of export",
+        "Paid users can export as normal (button triggers export pipeline)",
+        "Stripe webhooks update entitlements in Convex reliably (idempotent, verified signature)",
+        "Users can manage billing (cancel/update card) via Stripe Customer Portal",
+        "All paywall/upgrade actions are tracked with events (internal analytics hooks; PostHog not required)",
+        "No sensitive data leaks to client; all Stripe secrets remain server-side"
       ]
     },
     "stackAssumptions": {
       "frontend": "Next.js (App Router) + TypeScript",
-      "backend": "Convex (actions/mutations)",
-      "editorModel": "Existing Studio doc/page/node model from Sprints 6–16 + population hooks from Sprint 21",
-      "printModel": "Page presets provide safe/bleed boxes; hardcopy vs digital modes exist",
-      "text": "Text overflow measurement can be done client-side (preferred) with fallback behavior in population"
+      "backend": "Convex for app data + Next.js route handlers for Stripe API + webhook endpoint",
+      "payments": "Stripe Billing + Stripe Checkout + Customer Portal",
+      "auth": "Existing auth system provides stable userId/email; map to Stripe customer",
+      "observability": "Sentry already added in Sprint 24"
     }
   },
   "backlog": [
     {
       "id": "S25-T01",
-      "title": "Define slot constraints metadata (safe-area, max box, priority, full-bleed flag) per layoutId",
-      "skill": ["Architecture", "Product"],
+      "title": "Define pricing + entitlements model (what Free vs Pro can do)",
+      "skill": ["Product", "Architecture"],
       "priority": "P0",
       "requirements": {
-        "slotConstraints": [
-          "slotId",
-          "type (text|image|frame|shape)",
-          "safeAreaPolicy (must_fit|allow_bleed|decorative)",
-          "maxBoxFraction (e.g., w<=0.9 safe width, h<=0.6 safe height)",
-          "minBox (px)",
-          "priority (1..5) for overflow handling",
-          "fullBleed (boolean, only images/shapes)",
-          "aspectTarget (optional, for images)"
+        "plans": [
+          {
+            "id": "free",
+            "features": [
+              "Create storybooks",
+              "Generate drafts (basic)",
+              "Studio edit",
+              "Preview export (optional watermarked)"
+            ],
+            "limits": {
+              "exportsPerMonth": 0,
+              "hardcopyExport": false
+            }
+          },
+          {
+            "id": "pro",
+            "features": [
+              "Digital export (PDF)",
+              "Hardcopy export mode (optional feature flag)",
+              "Higher limits (chapters/assets)",
+              "Priority generation (later)"
+            ],
+            "limits": {
+              "exportsPerMonth": 50,
+              "hardcopyExport": true
+            }
+          }
         ],
-        "whereStored": [
-          "In template layout catalog (layoutId -> slotConstraints map)"
+        "entitlements": [
+          "canExportDigital",
+          "canExportHardcopy",
+          "exportsRemaining (nullable if unlimited)",
+          "planId",
+          "subscriptionStatus"
         ],
         "constraints": [
-          "Defaults exist if metadata missing (safeAreaPolicy=must_fit for text)",
-          "No template should allow text outside safe area in hardcopy mode"
+          "Entitlements must be derived from Stripe subscription status (webhook-confirmed)",
+          "Keep entitlements cacheable in Convex for fast gating checks"
         ]
       },
       "acceptanceTests": [
-        "Given layoutId, system can resolve constraints for each slot",
-        "Missing metadata falls back to safe defaults"
+        "A single entitlement object can answer: can user export? which modes? what limits remain?",
+        "Plan changes map cleanly to entitlements without code rewrites"
       ],
       "deliverables": [
-        "packages/shared/templates/layoutConstraints.ts",
-        "docs/layout_slot_constraints_v1.md"
+        "docs/pricing_entitlements_v1.md",
+        "packages/shared/billing/entitlements.ts"
       ]
     },
     {
       "id": "S25-T02",
-      "title": "Implement safe-area clamp utilities (node bounds -> safeBox) for population",
-      "skill": ["Rendering/Geometry", "Editor Engineering"],
+      "title": "Create Stripe products/prices in Stripe Dashboard (Pro monthly/annual)",
+      "skill": ["Ops", "Payments"],
       "priority": "P0",
       "requirements": {
-        "utilities": [
-          "computeSafeBox(pagePreset, mode)",
-          "clampRectToBox(rect, box, padding)",
-          "fitRectMaintainAspect(rect, targetAspect, withinBox)"
+        "stripeConfig": [
+          "Product: Memorioso Pro",
+          "Price: Pro Monthly (recurring)",
+          "Price: Pro Annual (recurring, optional)",
+          "Optional: Trial days (decide now)"
         ],
-        "rules": [
-          "Text: always clamp inside safeBox",
-          "Frames/images: clamp inside safeBox unless slot fullBleed=true",
-          "Full-bleed images allowed into bleedBox but not beyond bleedBox"
-        ],
+        "metadata": ["planId=pro", "app=memorioso"],
         "constraints": [
-          "Axis-aligned bounds v1 (rotation-aware later)",
-          "Deterministic results"
+          "Store priceIds in environment variables",
+          "Do not hardcode secrets in repo"
         ]
       },
       "acceptanceTests": [
-        "Clamping always results in node inside safeBox (text)",
-        "Full-bleed images can extend to bleedBox but not outside"
+        "Price IDs exist and are usable by Checkout Session creation",
+        "Metadata is present on subscription for webhook mapping"
       ],
       "deliverables": [
-        "packages/shared/geometry/safeClamp.ts",
-        "packages/shared/geometry/rectMath.ts"
+        "docs/stripe_products_prices.md",
+        "env.example updated with STRIPE_PRICE_ID_PRO_MONTHLY/ANNUAL"
       ]
     },
     {
       "id": "S25-T03",
-      "title": "Text population fitting strategy v1 (auto-resize + controlled truncation + warnings)",
-      "skill": ["Editor Engineering", "Frontend"],
+      "title": "Convex billing tables: link app user -> Stripe customer + subscription state",
+      "skill": ["Convex", "Data Modeling"],
       "priority": "P0",
       "requirements": {
-        "strategies": [
-          "Auto-grow text box height up to maxBoxFraction within safeBox",
-          "If still overflow: apply one of (choose v1):",
-          "A) truncate and append '…' + store overflowWarning",
-          "B) create continuation text box on next page (P1)",
-          "C) reduce font size within min font size (P1)"
-        ],
-        "overflowMeta": [
-          "node.meta.overflow=true",
-          "node.meta.overflowReason='truncated'|'continued'|'minFontHit'",
-          "chapterStudioState.warnings includes overflow entries"
+        "tables": [
+          {
+            "name": "billingCustomers",
+            "fields": [
+              "id (Convex _id)",
+              "userId (string)",
+              "email (string|null)",
+              "stripeCustomerId (string)",
+              "createdAt (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_userId", "by_stripeCustomerId"]
+          },
+          {
+            "name": "billingSubscriptions",
+            "fields": [
+              "id (Convex _id)",
+              "userId (string)",
+              "stripeCustomerId (string)",
+              "stripeSubscriptionId (string)",
+              "planId (string)",
+              "status (string: trialing|active|past_due|canceled|unpaid|incomplete)",
+              "currentPeriodEnd (number|null)",
+              "cancelAtPeriodEnd (boolean)",
+              "latestInvoiceId (string|null)",
+              "updatedAt (number)"
+            ],
+            "indexes": [
+              "by_userId",
+              "by_stripeSubscriptionId",
+              "by_stripeCustomerId"
+            ]
+          }
         ],
         "constraints": [
-          "Never place overflowing text outside safe area",
-          "No silent clipping without warning"
+          "Only user can read their billing state (or admin)",
+          "Subscription updates come from webhooks only (source of truth)"
         ]
       },
       "acceptanceTests": [
-        "Long text does not exceed safe area bounds",
-        "Overflow produces visible warning meta",
-        "PDF export matches what Studio shows (no hidden text)"
+        "Schema compiles; can read billing state for current user",
+        "Webhook updates can upsert subscription records idempotently"
       ],
       "deliverables": [
-        "packages/shared/populate/textFit.ts",
-        "packages/shared/populate/overflowWarnings.ts",
-        "docs/text_fit_policy_v1.md"
+        "convex/schema.ts updated",
+        "convex/billing.ts (queries/mutations)"
       ]
     },
     {
       "id": "S25-T04",
-      "title": "Image placement guardrails (safe fit + aspect + default crop) during population",
-      "skill": ["Editor Engineering"],
+      "title": "Server endpoint: create Stripe Checkout Session for subscription upgrade",
+      "skill": ["Backend (Next.js)", "Stripe API"],
       "priority": "P0",
       "requirements": {
-        "rules": [
-          "Frames/images placed inside safeBox unless fullBleed",
-          "Preserve slot aspectTarget; if mismatch, apply cropModel defaults (cover + center)",
-          "Prefer using frames for templates; fill frames rather than raw image nodes when layout expects it",
-          "If asset resolution below threshold, attach warning meta (ties to Preflight later)"
+        "endpoint": "POST /api/billing/checkout",
+        "inputs": ["priceId", "successUrl", "cancelUrl"],
+        "behavior": [
+          "Authenticate user",
+          "Find or create Stripe customer for user",
+          "Create Checkout Session (mode=subscription) for selected price",
+          "Return sessionUrl to client"
         ],
         "constraints": [
-          "Do not fetch provider URLs; use cachedUrl only",
-          "Non-destructive crop model only"
+          "Stripe secret key server-only",
+          "Do not trust client planId; validate allowed priceIds",
+          "Attach metadata: userId, planId"
+        ],
+        "notes": [
+          "Checkout Sessions creation is documented in Stripe API reference."
         ]
       },
       "acceptanceTests": [
-        "Images never overflow safe area for non-fullBleed slots",
-        "Aspect mismatch results in valid crop model, not distortion"
+        "Free user can open Stripe Checkout session URL",
+        "Existing customer re-used (no duplicates) when upgrading again"
       ],
       "deliverables": [
-        "packages/shared/populate/imageFit.ts",
-        "packages/editor/commands/applyDefaultCrop.ts"
+        "app/api/billing/checkout/route.ts",
+        "lib/stripe/stripeClient.ts",
+        "lib/stripe/priceAllowlist.ts"
       ]
     },
     {
       "id": "S25-T05",
-      "title": "Update studio.populateChapter to apply safe-area + fitting guardrails",
-      "skill": ["Convex", "Editor Engineering"],
+      "title": "Webhook endpoint: handle subscription lifecycle events and update Convex entitlements",
+      "skill": ["Backend (Next.js)", "Stripe Webhooks", "Convex"],
       "priority": "P0",
       "requirements": {
-        "behavior": [
-          "During node creation/update, clamp node bounds using safeClamp utilities",
-          "Apply textFit strategy for text slots",
-          "Apply imageFit strategy for image/frame slots",
-          "Persist warnings in chapterStudioState (overflow, lowRes, clampApplied)"
+        "endpoint": "POST /api/stripe/webhook",
+        "webhookHandling": [
+          "Verify signature using STRIPE_WEBHOOK_SECRET",
+          "Handle key events for subscriptions and payments"
+        ],
+        "eventsToHandle": [
+          "checkout.session.completed (subscription started)",
+          "customer.subscription.updated",
+          "customer.subscription.deleted",
+          "invoice.payment_succeeded",
+          "invoice.payment_failed"
+        ],
+        "idempotency": [
+          "Store processed event IDs (in Convex or in-memory durable store) to prevent double-processing"
         ],
         "constraints": [
-          "Idempotent node ids preserved",
-          "Do not overwrite user-edited nodes",
-          "Guardrails applied only to auto-generated nodes"
-        ]
+          "Do not rely only on checkout.session.completed; subscription status changes must be processed via subscription/invoice events",
+          "Store only minimal billing metadata in Convex"
+        ],
+        "sources": ["Stripe docs: subscriptions webhooks and events."]
       },
       "acceptanceTests": [
-        "Populated nodes are within safe area in hardcopy mode",
-        "Long text triggers overflow warning rather than clipping",
-        "Re-run does not duplicate nodes"
+        "Webhook updates subscription status in Convex when status changes (active/past_due/canceled)",
+        "Duplicate webhook delivery does not create duplicate rows or flip-flop state",
+        "When invoice.payment_failed occurs, user entitlements are downgraded per policy"
       ],
       "deliverables": [
-        "convex/studioPopulate.ts updated (v2 guardrails)",
-        "convex/chapterStudioState.ts updated (warnings)",
-        "docs/populate_guardrails_v2.md"
+        "app/api/stripe/webhook/route.ts",
+        "convex/billing.ts updated (upsert from webhook)",
+        "docs/stripe_webhooks_events.md"
       ]
     },
     {
       "id": "S25-T06",
-      "title": "Studio UI: show chapter-level warnings (overflow/safe clamp/low-res) with quick links",
-      "skill": ["Frontend", "UX"],
+      "title": "Entitlement resolver: map Stripe subscription state -> app permissions (export gating)",
+      "skill": ["Backend", "Architecture"],
       "priority": "P0",
       "requirements": {
-        "ui": [
-          "In Studio ChapterNavigator: warning badge count",
-          "Warnings drawer/popup listing items",
-          "Click warning -> focus page/node (deep link in-canvas)"
+        "rules": [
+          "status=active or trialing => plan entitlements enabled",
+          "status=past_due => optional grace period (config-driven) else disable exports",
+          "status=canceled/unpaid/incomplete => disable premium entitlements"
         ],
-        "constraints": ["Non-intrusive; elders shouldn’t feel blocked"]
+        "implementation": [
+          "Convex query: billing.getEntitlementsForUser",
+          "Client hook: useEntitlements() for gating UI",
+          "Server guard: enforce on export actions too (never client-only)"
+        ],
+        "constraints": [
+          "Never trust client gating alone",
+          "Export endpoints/actions must check entitlements"
+        ]
       },
       "acceptanceTests": [
-        "Warnings appear after population when issues exist",
-        "Clicking warning focuses node"
+        "Free users cannot trigger paid exports even via direct API calls",
+        "Paid users can export",
+        "Entitlements update within seconds after webhook receipt"
       ],
       "deliverables": [
-        "apps/web/components/studio/ChapterWarnings.tsx",
-        "packages/editor/navigation/focusNode.ts reused/extended"
+        "convex/billing.ts (getEntitlements query)",
+        "lib/billing/guards.ts",
+        "packages/shared/billing/entitlementRules.ts"
       ]
     },
     {
       "id": "S25-T07",
-      "title": "Optional P1: continuation text box creation on overflow (split to next page)",
-      "skill": ["Editor Engineering", "Algorithms"],
-      "priority": "P1",
+      "title": "Studio UI: Export crown button + Upgrade modal/paywall (moment-of-intent gating)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
       "requirements": {
-        "behavior": [
-          "If textFit cannot fit within safeBox and truncation disabled or exceeds threshold:",
-          "Create next page (same layoutId or a continuation layout)",
-          "Insert continuation text node with remaining text",
-          "Maintain stable ids and links (node.meta.continuesToPageId)"
+        "ui": [
+          "Export button visible to all users",
+          "If Free: show crown icon + label 'Upgrade to Export'",
+          "If Pro: show normal 'Export' CTA"
+        ],
+        "paywallModal": [
+          "Plan summary (Pro benefits: export, hardcopy mode, more limits)",
+          "Price toggle monthly/annual",
+          "Upgrade button -> opens Stripe Checkout session",
+          "Secondary: 'Not now' close"
         ],
         "constraints": [
-          "Keep deterministic behavior",
-          "Avoid infinite splits (cap pages per chapter)"
+          "Do not block editing; paywall is only on export click",
+          "Elder-friendly: simple copy, big CTA"
         ]
       },
       "acceptanceTests": [
-        "Long text splits onto next page without losing content",
-        "Export includes continuation pages"
+        "Free user clicking Export opens upgrade modal (not export)",
+        "Paid user clicking Export opens export flow",
+        "Upgrade modal successfully redirects to Stripe Checkout"
       ],
       "deliverables": [
-        "packages/shared/populate/textSplit.ts",
-        "docs/text_continuation_v1.md"
+        "apps/web/components/studio/ExportButtonCrown.tsx",
+        "apps/web/components/billing/UpgradeModal.tsx",
+        "lib/billing/startCheckout.ts"
       ]
     },
     {
       "id": "S25-T08",
-      "title": "Config + thresholds for safe area padding and text fit limits",
-      "skill": ["Platform"],
-      "priority": "P1",
+      "title": "Billing management: Stripe Customer Portal session + 'Manage billing' button",
+      "skill": ["Backend (Next.js)", "Frontend", "Stripe API"],
+      "priority": "P0",
       "requirements": {
-        "config": [
-          "SAFE_AREA_PADDING_PX",
-          "TEXTFIT_MAX_GROW_FACTOR",
-          "TEXTFIT_TRUNCATE_ENABLED",
-          "TEXTFIT_MIN_FONT_SIZE (future)",
-          "FULLBLEED_ALLOWED_LAYOUTS"
+        "endpoint": "POST /api/billing/portal",
+        "behavior": [
+          "Authenticate user",
+          "Fetch stripeCustomerId for user",
+          "Create billing portal session and return portalUrl"
         ],
-        "constraints": ["Server-side enforced during populate action"]
+        "ui": ["Account/Billing page with 'Manage billing' button"],
+        "constraints": [
+          "Portal sessions are short-lived; create on demand",
+          "Only authenticated users can create portal sessions"
+        ],
+        "sources": [
+          "Stripe API: create customer portal session and customer portal guide."
+        ]
       },
       "acceptanceTests": [
-        "Changing config changes clamp/fit outcomes predictably",
-        "Defaults are safe and produce good layouts"
+        "User can open Stripe portal and manage subscription",
+        "Portal cannot be created for another user's customerId"
       ],
       "deliverables": [
-        "lib/config/populateGuardrails.ts",
-        "docs/populate_guardrails_config.md"
+        "app/api/billing/portal/route.ts",
+        "app/account/billing/page.tsx",
+        "components/billing/ManageBillingButton.tsx"
       ]
     },
     {
       "id": "S25-T09",
-      "title": "QA + automated tests for safe-area and overflow guardrails",
+      "title": "Upgrade success/cancel flows + UI refresh after Checkout",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P1",
+      "requirements": {
+        "routes": ["/billing/success", "/billing/cancel"],
+        "behavior": [
+          "On success: show confirmation + 'Return to Studio' CTA",
+          "Trigger entitlements refresh (Convex query invalidation)",
+          "If webhook delay: show 'Activating your plan…' state with retry"
+        ],
+        "constraints": [
+          "Do not mark user Pro on client; wait for webhook-confirmed status"
+        ]
+      },
+      "acceptanceTests": [
+        "After successful payment, user becomes Pro once webhook processed and UI updates",
+        "Cancel returns user safely without changing entitlements"
+      ],
+      "deliverables": [
+        "app/billing/success/page.tsx",
+        "app/billing/cancel/page.tsx",
+        "lib/billing/useEntitlements.ts updated"
+      ]
+    },
+    {
+      "id": "S25-T10",
+      "title": "Event instrumentation for paywall + upgrade conversion (no PostHog)",
+      "skill": ["Analytics", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "paywall_shown (source=studio_export)",
+          "paywall_upgrade_click (planId)",
+          "checkout_redirected",
+          "billing_webhook_subscription_active",
+          "billing_webhook_payment_failed",
+          "export_click_blocked",
+          "export_click_allowed"
+        ],
+        "constraints": [
+          "No PII in events",
+          "Store to your existing analytics sink/logs; can migrate to PostHog later"
+        ]
+      },
+      "acceptanceTests": [
+        "Events fire once per action and include source and planId",
+        "Webhook events are logged with stable codes (not raw Stripe payload)"
+      ],
+      "deliverables": [
+        "lib/analytics/billingEvents.ts",
+        "lib/analytics/studioExportEvents.ts"
+      ]
+    },
+    {
+      "id": "S25-T11",
+      "title": "QA + automated tests (webhook idempotency, entitlement gating, UI paywall)",
       "skill": ["QA", "Testing"],
       "priority": "P0",
       "requirements": {
         "manualChecklist": [
-          "Populate chapter with long text; verify it stays inside safe area",
-          "Verify overflow warnings visible and clickable",
-          "Populate with images; verify no content outside safe area for non-fullBleed",
-          "Export PDF and confirm it matches Studio and respects safe area expectations"
+          "Free user clicks Export -> paywall opens",
+          "Upgrade -> Stripe Checkout -> success -> entitlement becomes Pro (webhook-confirmed)",
+          "Pro user clicks Export -> export flow opens",
+          "Cancel subscription in portal -> entitlements downgrade",
+          "Simulate invoice.payment_failed -> entitlements disabled per policy",
+          "Double webhook delivery does not duplicate records"
         ],
         "automation": [
-          "Unit: clampRectToBox keeps rect within safe box",
-          "Unit: textFit returns truncation + overflow meta when needed",
-          "Integration: populateChapter v2 outputs nodes within safe area and sets warnings"
+          "Unit: entitlementRules mapping statuses to permissions",
+          "Integration: webhook handler verifies signature and upserts subscription idempotently (mock Stripe)",
+          "UI test: Export crown triggers Upgrade modal for free user"
         ]
       },
       "acceptanceTests": [
         "At least 4 automated tests added and passing",
-        "Regression prevents 'auto content outside safe area' issue"
+        "Export cannot be accessed by free users via direct calls"
       ],
       "deliverables": [
-        "tests/geometry/safeClamp.test.ts",
-        "tests/populate/textFit.test.ts",
-        "tests/populate/populateGuardrails.integration.test.ts",
-        "docs/qa_sprint25_safe_area_overflow.md"
+        "tests/billing/entitlements.test.ts",
+        "tests/billing/webhook_idempotency.test.ts",
+        "tests/ui/exportPaywall.test.tsx",
+        "docs/qa_sprint25_stripe_billing.md"
       ]
     }
   ],
@@ -288,9 +425,11 @@
       "S25-T04",
       "S25-T05",
       "S25-T06",
-      "S25-T09",
+      "S25-T07",
       "S25-T08",
-      "S25-T07"
+      "S25-T11",
+      "S25-T09",
+      "S25-T10"
     ],
     "timeboxGuidance": {
       "P0_total_days": 5,
@@ -298,9 +437,9 @@
       "buffer_days": 1
     },
     "notes": [
-      "Your biggest trust issue for printing is content drifting outside safe area—guardrails must run during population, not only at preflight.",
-      "Avoid overwriting user edits; only apply guardrails to auto-generated nodes and store warnings instead.",
-      "Continuation splitting is optional; truncation + warnings is acceptable for v1 if you want speed."
+      "Use Stripe webhooks as the source of truth for subscription status updates (don’t trust client redirects).",
+      "Implement both client gating (UX) and server gating (security) for exports.",
+      "Customer Portal is the fastest way to support cancellations and payment method updates without building custom billing UI."
     ]
   }
 }

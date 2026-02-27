@@ -16,6 +16,42 @@ export default defineSchema({
   })
     .index("by_auth_subject", ["authSubject"])
     .index("by_email", ["email"]),
+  billingCustomers: defineTable({
+    userId: v.string(),
+    email: v.optional(v.union(v.string(), v.null())),
+    stripeCustomerId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"]),
+  billingSubscriptions: defineTable({
+    userId: v.string(),
+    stripeCustomerId: v.string(),
+    stripeSubscriptionId: v.string(),
+    planId: v.string(),
+    status: v.union(
+      v.literal("trialing"),
+      v.literal("active"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("unpaid"),
+      v.literal("incomplete")
+    ),
+    currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
+    cancelAtPeriodEnd: v.boolean(),
+    latestInvoiceId: v.optional(v.union(v.string(), v.null())),
+    updatedAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_stripeSubscriptionId", ["stripeSubscriptionId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"]),
+  billingWebhookEvents: defineTable({
+    stripeEventId: v.string(),
+    eventType: v.string(),
+    processedAt: v.number(),
+    subscriptionId: v.optional(v.union(v.string(), v.null()))
+  }).index("by_stripeEventId", ["stripeEventId"]),
   waitlist: defineTable({
     email: v.string(),
     email_lower: v.string(),

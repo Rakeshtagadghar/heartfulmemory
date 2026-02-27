@@ -24,6 +24,22 @@ export type StudioCaptureContext = {
   extra?: Record<string, unknown>;
 };
 
+function buildStudioExtra(context: StudioCaptureContext) {
+  const base: Record<string, unknown> = {
+    pageId: context.pageId ?? null,
+    nodeType: context.nodeType ?? null,
+    selectionCount: context.selectionCount ?? null,
+    durationMs: context.durationMs ?? null
+  };
+  if (context.extra) {
+    return {
+      ...base,
+      ...context.extra
+    };
+  }
+  return base;
+}
+
 function milestoneFromContext(
   category: EditorMilestoneEvent["category"],
   action: string,
@@ -72,13 +88,7 @@ export function captureStudioError(error: unknown, context: StudioCaptureContext
     storybookId: context.storybookId,
     chapterKey: context.chapterKey,
     chapterInstanceId: context.chapterInstanceId,
-    extra: {
-      pageId: context.pageId ?? null,
-      nodeType: context.nodeType ?? null,
-      selectionCount: context.selectionCount ?? null,
-      durationMs: context.durationMs ?? null,
-      ...(context.extra ?? {})
-    }
+    extra: buildStudioExtra(context)
   });
 }
 
@@ -93,13 +103,7 @@ export function captureStudioWarning(message: string, context: StudioCaptureCont
     storybookId: context.storybookId,
     chapterKey: context.chapterKey,
     chapterInstanceId: context.chapterInstanceId,
-    extra: {
-      pageId: context.pageId ?? null,
-      nodeType: context.nodeType ?? null,
-      selectionCount: context.selectionCount ?? null,
-      durationMs: context.durationMs ?? null,
-      ...(context.extra ?? {})
-    }
+    extra: buildStudioExtra(context)
   });
 }
 

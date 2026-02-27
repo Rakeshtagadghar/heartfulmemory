@@ -1936,6 +1936,14 @@ export function Editor2Shell({// NOSONAR
                     >
                       Settings
                     </Link>
+                    <Link
+                      href="/app/account/billing"
+                      role="menuitem"
+                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Billing
+                    </Link>
                     <button
                       type="button"
                       role="menuitem"

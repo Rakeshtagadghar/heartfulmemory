@@ -4,15 +4,16 @@ export function getPageCss() {
   return `
 ${fontFaceCss()}
 * { box-sizing: border-box; }
+@page { margin: 0; }
 html, body { margin: 0; padding: 0; background: #d8dadd; color: #111827; }
 body { font-family: MemoriosoSans, Arial, sans-serif; }
-.document-root { padding: 24px; }
+.document-root { padding: 0; }
 .pdf-page {
   position: relative;
-  margin: 0 auto 20px auto;
+  margin: 0;
   overflow: hidden;
   background: #fff;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  box-shadow: none;
   page-break-after: always;
   break-after: page;
 }
@@ -63,4 +64,3 @@ body { font-family: MemoriosoSans, Arial, sans-serif; }
 }
 `;
 }
-

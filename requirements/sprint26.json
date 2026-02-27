@@ -1,0 +1,368 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 26,
+      "title": "Billing UX v1: Sandbox-in-Prod + Pricing + Plan Banner + Invoices",
+      "duration": "1 week",
+      "goal": "Run the app in a 'payments sandbox' mode while live: integrate Stripe Test Mode end-to-end, set pricing to £30/month for Pro, enforce 100 PDF exports/month, show plan status banner (Free/Pro) in navbar/studio, add invoices page, and update landing/pricing copy and CTAs.",
+      "definitionOfDone": [
+        "App supports Stripe Test Mode in production safely (feature-flagged) without risking real charges",
+        "Pro plan priced at £30/month (test priceId) and purchasable via Checkout in sandbox mode",
+        "Exports are limited to 100 PDFs/month for Pro; Free exports are blocked or limited per policy",
+        "Navbar banner shows current plan (Free/Pro), exports remaining this month, and an Upgrade/Manage Billing CTA",
+        "Invoices page shows invoice history and links to Stripe-hosted invoices/receipts (via portal or invoice URLs)",
+        "Landing page updated with pricing section (£30/month) + Export paywall messaging + CTA routing",
+        "Billing state is consistent across refresh and after webhooks"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex + Next.js route handlers for Stripe API + webhook",
+      "payments": "Stripe Checkout + Billing + Customer Portal (Test Mode)",
+      "observability": "Sentry already installed (Sprint 24)",
+      "currentBilling": "Sprint 25 delivered basic Checkout + webhook + entitlements + crown export paywall"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S26-T01",
+      "title": "Add 'Payments Sandbox Mode' switch (safe test-mode in production)",
+      "skill": ["Platform", "Backend", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "goal": "Allow the live app to run Stripe Test Mode safely using explicit configuration and guardrails.",
+        "config": [
+          "BILLING_MODE='test'|'live'",
+          "STRIPE_SECRET_KEY_TEST",
+          "STRIPE_WEBHOOK_SECRET_TEST",
+          "STRIPE_PRICE_ID_PRO_TEST",
+          "STRIPE_CUSTOMER_PORTAL_CONFIG_ID_TEST (optional)"
+        ],
+        "guards": [
+          "In BILLING_MODE=test, only use *_TEST keys and priceIds",
+          "Prevent mixing live and test keys/ids at runtime (startup validation)",
+          "Banner or footer note: 'Payments are in test mode' (optional, admin-only)"
+        ],
+        "constraints": [
+          "No real charges can occur in test mode",
+          "Webhook endpoint must verify against test webhook secret when BILLING_MODE=test"
+        ]
+      },
+      "acceptanceTests": [
+        "App refuses to start (or blocks billing endpoints) if mode/key mismatch detected",
+        "Checkout sessions created in test mode only when BILLING_MODE=test"
+      ],
+      "deliverables": [
+        "lib/config/billingMode.ts",
+        "lib/stripe/stripeClientFactory.ts (select test/live)",
+        "docs/billing_sandbox_mode.md"
+      ]
+    },
+    {
+      "id": "S26-T02",
+      "title": "Configure Pro pricing: £30/month (Stripe Test Mode product/price) + metadata",
+      "skill": ["Ops", "Payments"],
+      "priority": "P0",
+      "requirements": {
+        "stripeSetup": [
+          "Create/confirm Pro monthly price = 30 GBP in Stripe TEST mode",
+          "Attach metadata: planId='pro', exportsPerMonth=100"
+        ],
+        "appConfig": [
+          "Set STRIPE_PRICE_ID_PRO_TEST to the new test price id",
+          "Optionally remove annual price for now (keep simple)"
+        ],
+        "constraints": [
+          "Landing page must reflect £30/month",
+          "Do not expose price ids publicly except through server allowlist"
+        ]
+      },
+      "acceptanceTests": [
+        "Checkout session uses the £30/month test price",
+        "Stripe subscription created has plan metadata"
+      ],
+      "deliverables": [
+        "docs/stripe_pricing_test_setup.md",
+        "env.example updated"
+      ]
+    },
+    {
+      "id": "S26-T03",
+      "title": "Monthly export quota: 100 PDFs/month (enforced server-side with reset)",
+      "skill": ["Convex", "Backend", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "quotaModel": {
+          "limits": {
+            "free": { "pdfExportsPerMonth": 0 },
+            "pro": { "pdfExportsPerMonth": 100 }
+          },
+          "tracking": [
+            "Track export usage per user per billing month",
+            "Reset usage at start of new billing period"
+          ]
+        },
+        "convexTables": [
+          {
+            "name": "exportUsage",
+            "fields": [
+              "id",
+              "userId",
+              "periodStart (number)",
+              "periodEnd (number)",
+              "countPdfExports (number)",
+              "updatedAt (number)"
+            ],
+            "indexes": ["by_userId_periodStart"]
+          }
+        ],
+        "billingPeriodSource": [
+          "Prefer Stripe subscription current_period_start/end from webhook-synced subscription",
+          "Fallback: calendar month if user has no subscription record (free users)"
+        ],
+        "enforcement": [
+          "Before export starts: check entitlement + remaining quota",
+          "If exceeded: block and return error EXPORT_QUOTA_EXCEEDED"
+        ],
+        "constraints": [
+          "Server-side enforcement is mandatory (UI gating is not enough)",
+          "Must work in sandbox mode and later in live mode without schema changes"
+        ]
+      },
+      "acceptanceTests": [
+        "Pro user can export up to 100 PDFs within the period",
+        "101st export is blocked with friendly error",
+        "Quota resets when billing period rolls over (simulated in tests)"
+      ],
+      "deliverables": [
+        "convex/exportUsage.ts (get/increment/reset helpers)",
+        "lib/billing/quota.ts",
+        "docs/export_quota_policy.md"
+      ]
+    },
+    {
+      "id": "S26-T04",
+      "title": "Integrate quota with export trigger (Studio Export + server guards)",
+      "skill": ["Backend", "Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Export click calls server export action/endpoint",
+          "Server checks: entitlement -> quota remaining -> proceed",
+          "On success, increment usage count",
+          "On failure (quota exceeded), show Upgrade/Manage CTA"
+        ],
+        "constraints": [
+          "Do not increment quota if export fails before PDF is produced",
+          "If exporting both digital and hardcopy, decide whether both count (v1: count each PDF file)"
+        ]
+      },
+      "acceptanceTests": [
+        "Quota increments only on successful export completion",
+        "Quota block message appears in UI with clear next step"
+      ],
+      "deliverables": [
+        "convex/export/run.ts updated (quota check + increment)",
+        "apps/web/components/studio/ExportButtonCrown.tsx updated (quota messaging)"
+      ]
+    },
+    {
+      "id": "S26-T05",
+      "title": "Navbar/Studio plan banner (Free/Pro + exports remaining + Upgrade/Manage)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Top navbar banner/chip: 'Free' or 'Pro'",
+          "Show exports remaining (e.g., '72/100 exports left this month') for Pro",
+          "CTA: Upgrade (Free) or Manage Billing (Pro)",
+          "Optional: small tooltip explaining quota"
+        ],
+        "data": [
+          "Use Convex query: billing.getEntitlementsForUser + exportUsage.getRemaining"
+        ],
+        "constraints": [
+          "Do not clutter editor; keep banner compact and dismissible (optional)",
+          "Must update reactively after webhook changes"
+        ]
+      },
+      "acceptanceTests": [
+        "Free users see Upgrade CTA",
+        "Pro users see exports remaining and Manage Billing",
+        "Banner updates after upgrade without hard refresh (within normal Convex reactivity)"
+      ],
+      "deliverables": [
+        "components/billing/PlanStatusBanner.tsx",
+        "lib/billing/usePlanStatus.ts"
+      ]
+    },
+    {
+      "id": "S26-T06",
+      "title": "Invoices page (history + links) using Stripe Customer Portal or stored invoice refs",
+      "skill": ["Frontend", "Backend (Stripe API)"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/account/invoices",
+        "approach": [
+          "Option A (fast): Link to Stripe Customer Portal 'Invoices' section (recommended)",
+          "Option B (richer): Fetch invoices via Stripe API (server) and list them in-app"
+        ],
+        "v1Decision": "Use Customer Portal as primary for invoices; optionally show last invoice summary in-app.",
+        "ui": [
+          "Invoice list (if option B) OR 'View invoices in Stripe' button (option A)",
+          "Show current plan, next billing date, and last payment status"
+        ],
+        "constraints": [
+          "Do not expose Stripe secrets client-side",
+          "Owner-only access"
+        ]
+      },
+      "acceptanceTests": [
+        "Pro user can access invoices page and view invoices via portal link",
+        "Free user sees empty state + upgrade CTA",
+        "No PII leakage in logs"
+      ],
+      "deliverables": [
+        "app/account/invoices/page.tsx",
+        "components/billing/InvoicesCard.tsx",
+        "docs/invoices_strategy_v1.md"
+      ]
+    },
+    {
+      "id": "S26-T07",
+      "title": "Landing page updates: pricing £30/mo + export gating messaging + CTAs",
+      "skill": ["Frontend", "Product/Copy"],
+      "priority": "P0",
+      "requirements": {
+        "landingChanges": [
+          "Pricing section: Pro £30/month",
+          "Highlight: 'Export up to 100 PDFs/month' and 'Hardcopy-ready export'",
+          "CTA buttons: 'Start free' and 'Upgrade to export'",
+          "FAQ update: 'Why do I need Pro to export?'"
+        ],
+        "routing": [
+          "Start free -> /create/template",
+          "Upgrade -> if logged in open billing checkout, else route to signup then billing"
+        ],
+        "constraints": [
+          "Be honest: if payments are in test mode, do not claim 'live billing' publicly (show test mode only in staging or behind admin flag)"
+        ]
+      },
+      "acceptanceTests": [
+        "Landing displays £30/mo accurately",
+        "CTAs route correctly (logged in vs logged out)",
+        "Pricing copy matches app entitlements (100 exports/month)"
+      ],
+      "deliverables": [
+        "components/landing/Pricing.tsx updated",
+        "content/pricingContent.ts updated",
+        "docs/landing_pricing_copy.md"
+      ]
+    },
+    {
+      "id": "S26-T08",
+      "title": "Upgrade UX polish: show paywall from Export + from banner; include quota messaging",
+      "skill": ["Frontend", "UX"],
+      "priority": "P1",
+      "requirements": {
+        "paywallModalEnhancements": [
+          "Show plan price £30/mo",
+          "Show quota: '100 PDF exports/month'",
+          "Show 'Already Pro?' link -> Manage Billing",
+          "Show 'Need more exports?' (future upsell placeholder)"
+        ],
+        "constraints": ["Keep it simple: one plan is fine for v1"]
+      },
+      "acceptanceTests": [
+        "Paywall is consistent across entry points (banner + export click)",
+        "User understands exactly what unlocks export"
+      ],
+      "deliverables": [
+        "apps/web/components/billing/UpgradeModal.tsx updated",
+        "components/billing/PlanBenefits.tsx"
+      ]
+    },
+    {
+      "id": "S26-T09",
+      "title": "Billing webhooks: ensure billing period dates are stored (for quota reset)",
+      "skill": ["Backend", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "webhookUpdates": [
+          "Persist subscription current_period_start and current_period_end from Stripe subscription object",
+          "Persist cancel_at_period_end and status transitions accurately",
+          "On subscription update, recompute entitlement + quota period"
+        ],
+        "constraints": [
+          "Idempotent updates (eventId tracking from Sprint 25)",
+          "Test mode webhook secret used when BILLING_MODE=test"
+        ]
+      },
+      "acceptanceTests": [
+        "Billing period dates are present in Convex for Pro user",
+        "Quota uses Stripe billing period boundaries"
+      ],
+      "deliverables": [
+        "convex/billing.ts updated (period fields)",
+        "app/api/stripe/webhook/route.ts updated (period extraction)"
+      ]
+    },
+    {
+      "id": "S26-T10",
+      "title": "QA + automated tests for sandbox mode, quota enforcement, banner and invoices",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "BILLING_MODE=test: upgrade flow works end-to-end without real charges",
+          "Pro user can export 100 times; 101st blocked",
+          "Banner shows Free/Pro correctly and updates after upgrade",
+          "Invoices page opens portal session and shows invoice history",
+          "Landing pricing shows £30/mo and correct claims"
+        ],
+        "automation": [
+          "Unit: billingMode config guard prevents test/live mixing",
+          "Unit: quota computation with Stripe period boundaries",
+          "Integration: export blocked when quota exceeded",
+          "UI test: banner shows correct state from mocked entitlements"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "Known risky scenario (test/live key mix) is prevented"
+      ],
+      "deliverables": [
+        "tests/billing/billingModeGuard.test.ts",
+        "tests/billing/quotaPeriod.test.ts",
+        "tests/export/quotaBlock.integration.test.ts",
+        "docs/qa_sprint26_stripe_sandbox_quota.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S26-T01",
+      "S26-T02",
+      "S26-T09",
+      "S26-T03",
+      "S26-T04",
+      "S26-T05",
+      "S26-T06",
+      "S26-T07",
+      "S26-T10",
+      "S26-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Running Stripe test mode in a live app is fine as long as you clearly isolate test keys/priceIds and prevent mixing. Use explicit BILLING_MODE guards.",
+      "Quota should be computed using Stripe billing period boundaries for accuracy (periodStart/periodEnd from subscription).",
+      "Invoices are best handled by Stripe Customer Portal for v1; listing invoices in-app can come later if needed."
+    ]
+  }
+}

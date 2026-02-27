@@ -5,6 +5,18 @@ on:
     branches:
       - main
   workflow_dispatch:
+  workflow_call:
+    secrets:
+      SENTRY_AUTH_TOKEN:
+        required: true
+      SENTRY_ORG:
+        required: true
+      SENTRY_PROJECT:
+        required: true
+      SENTRY_DSN:
+        required: true
+      NEXT_PUBLIC_SENTRY_DSN:
+        required: true
 
 jobs:
   build-web-with-sentry:
@@ -16,7 +28,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.30.2
 
       - name: Setup Node
         uses: actions/setup-node@v4

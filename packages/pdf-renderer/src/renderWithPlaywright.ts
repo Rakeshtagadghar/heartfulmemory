@@ -92,6 +92,7 @@ export async function renderWithPlaywright(
       height: typeof getPageFormat(firstPage?.sizePreset ?? "US_LETTER") === "object"
         ? (getPageFormat(firstPage?.sizePreset ?? "US_LETTER") as { width: string; height: string }).height
         : undefined,
+      margin: { top: "0", right: "0", bottom: "0", left: "0" },
       printBackground: targetConfig.printBackground,
       preferCSSPageSize: false,
       scale: targetConfig.pdfScale
