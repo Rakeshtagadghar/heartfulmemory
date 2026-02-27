@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveNextChapterRoute } from "../../lib/chapters/nextStepRouter";
+import type { ChapterDraftRecord, ChapterIllustrationRecord, ChapterStudioStateRecord } from "../../lib/data/create-flow";
 
 describe("nextStepRouter", () => {
   const base = {
@@ -38,7 +39,7 @@ describe("nextStepRouter", () => {
   it("routes to illustrations when draft is ready but illustrations are not", () => {
     const route = resolveNextChapterRoute({
       ...base,
-      latestDraft: { status: "ready" } as any
+      latestDraft: { status: "ready" } as unknown as ChapterDraftRecord
     });
     expect(route.kind).toBe("illustrations");
     expect(route.href).toContain("/illustrations");
@@ -47,9 +48,9 @@ describe("nextStepRouter", () => {
   it("routes to studio when draft + illustrations are ready", () => {
     const route = resolveNextChapterRoute({
       ...base,
-      latestDraft: { status: "ready" } as any,
-      latestIllustration: { status: "ready" } as any,
-      studioState: { pageIds: ["page_abc"] } as any
+      latestDraft: { status: "ready" } as unknown as ChapterDraftRecord,
+      latestIllustration: { status: "ready" } as unknown as ChapterIllustrationRecord,
+      studioState: { pageIds: ["page_abc"] } as unknown as ChapterStudioStateRecord
     });
     expect(route.kind).toBe("studio");
     expect(route.href).toContain("/studio/sb_1");
@@ -68,4 +69,3 @@ describe("nextStepRouter", () => {
     expect(route).toEqual({ kind: "chapters", href: "/book/sb_1/chapters" });
   });
 });
-

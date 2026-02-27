@@ -37,7 +37,6 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { Editor2SaveStatus } from "./SaveStatus";
 import { TemplatePicker } from "./TemplatePicker";
 import { ExportButton } from "./ExportButton";
-import { Button } from "../ui/button";
 import { buildIssueHighlightMap } from "./CanvasFocus";
 import { useInsertImage } from "./hooks/useInsertImage";
 import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
@@ -537,22 +536,6 @@ export function Editor2Shell({// NOSONAR
       setSelectedFrameDraftPatch({});
     }
     setMessage(nextPages.length === 0 ? "Page deleted. Add a new page to continue." : "Page deleted.");
-  }
-
-  async function handleAddFrame(type: FrameDTO["type"]) {
-    if (!selectedPage) return;
-    const result = await createFrameAction(storybook.id, selectedPage.id, { type });
-    if (!result.ok) {
-      setMessage(result.error);
-      return;
-    }
-    setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
-    setPrimarySelection(result.data.id, [result.data.id]);
-    setCropModeFrameId(null);
-    if (type === "IMAGE") {
-      openImagePanel();
-    }
-    setMessage(null);
   }
 
   async function handleInsertElement(itemId: ElementsCatalogItemId) {
@@ -1585,6 +1568,28 @@ export function Editor2Shell({// NOSONAR
     };
   }, [userMenuOpen]);
 
+  const enterCanvasFullscreen = useCallback(async () => {
+    setCanvasOnlyFullscreen(true);
+    const target = shellContainerRef.current;
+    if (!target) return;
+    if (document.fullscreenElement === target) return;
+    try {
+      await target.requestFullscreen();
+    } catch {
+      setMessage("Unable to enter browser fullscreen mode.");
+    }
+  }, []);
+
+  const exitCanvasFullscreen = useCallback(async () => {
+    setCanvasOnlyFullscreen(false);
+    if (!document.fullscreenElement) return;
+    try {
+      await document.exitFullscreen();
+    } catch {
+      setMessage("Unable to exit browser fullscreen mode.");
+    }
+  }, []);
+
   useEffect(() => {
     if (!canvasOnlyFullscreen) return;
 
@@ -1598,7 +1603,7 @@ export function Editor2Shell({// NOSONAR
     return () => {
       globalThis.removeEventListener("keydown", onKeyDown);
     };
-  }, [canvasOnlyFullscreen]);
+  }, [canvasOnlyFullscreen, exitCanvasFullscreen]);
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -1611,28 +1616,6 @@ export function Editor2Shell({// NOSONAR
       globalThis.removeEventListener("fullscreenchange", onFullscreenChange);
     };
   }, []);
-
-  async function enterCanvasFullscreen() {
-    setCanvasOnlyFullscreen(true);
-    const target = shellContainerRef.current;
-    if (!target) return;
-    if (document.fullscreenElement === target) return;
-    try {
-      await target.requestFullscreen();
-    } catch {
-      setMessage("Unable to enter browser fullscreen mode.");
-    }
-  }
-
-  async function exitCanvasFullscreen() {
-    setCanvasOnlyFullscreen(false);
-    if (!document.fullscreenElement) return;
-    try {
-      await document.exitFullscreen();
-    } catch {
-      setMessage("Unable to exit browser fullscreen mode.");
-    }
-  }
 
   const canvasStage = (
     <CanvasStage

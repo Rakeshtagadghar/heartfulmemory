@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Card } from "../ui/card";
 import { TrackedIllustrationActionButton } from "./TrackedIllustrationActionButton";
 
@@ -65,9 +66,12 @@ export function SlotCard({
 
       <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
         {filled?.cachedUrl ? (
-          <img
+          <Image
             src={filled.thumbUrl ?? filled.cachedUrl}
             alt={`${slot.slotId} preview`}
+            width={Math.max(1, filled.width || 1200)}
+            height={Math.max(1, filled.height || 800)}
+            unoptimized
             className="h-52 w-full object-cover"
           />
         ) : (
@@ -111,4 +115,3 @@ export function SlotCard({
     </Card>
   );
 }
-

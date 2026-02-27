@@ -25,6 +25,7 @@ import {
   listChapterIllustrationVersionsForUser,
   listGuidedChaptersByStorybookForUser,
   replaceIllustrationSlotAssignmentForUser,
+  type ChapterIllustrationSlotMap,
   type ProviderAssetCandidate,
   toggleIllustrationSlotLockForUser
 } from "../../../../../../lib/data/create-flow";
@@ -51,7 +52,13 @@ function routeUrl(
     qs.set(key, String(value));
   }
   const query = qs.toString();
-  return `/book/${storybookId}/chapters/${chapterInstanceId}/illustrations${query ? `?${query}` : ""}`;
+  const base = `/book/${storybookId}/chapters/${chapterInstanceId}/illustrations`;
+  return query ? `${base}?${query}` : base;
+}
+
+function formDataString(formData: FormData, key: string) {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : "";
 }
 
 function parseCandidateJson(raw: FormDataEntryValue | null): ProviderAssetCandidate | null {
@@ -109,7 +116,7 @@ async function resolveUploadedImageSourceUrl(input: {
   }
 }
 
-export default async function ChapterIllustrationsPage({ params, searchParams }: Props) {
+export default async function ChapterIllustrationsPage({ params, searchParams }: Props) { // NOSONAR
   const { storybookId, chapterInstanceId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const user = await requireAuthenticatedUser(routeUrl(storybookId, chapterInstanceId));
@@ -203,7 +210,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     const currentUser = await requireAuthenticatedUser(routeUrl(storybookId, chapterInstanceId));
     const currentProfile = await getOrCreateProfileForUser(currentUser);
     if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
-    const slotId = String(formData.get("slotId") ?? "");
+    const slotId = formDataString(formData, "slotId");
     if (!illustrationId || !slotId) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
     const result = await toggleIllustrationSlotLockForUser(currentUser.id, { illustrationId, slotId });
     if (!result.ok) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
@@ -216,7 +223,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     const currentProfile = await getOrCreateProfileForUser(currentUser);
     if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
 
-    const slotId = String(formData.get("slotId") ?? "");
+    const slotId = formDataString(formData, "slotId");
     const candidate = parseCandidateJson(formData.get("candidateJson"));
     if (!illustrationId || !slotId || !candidate) {
       redirect(routeUrl(storybookId, chapterInstanceId, { error: "REPLACE_FAILED" }));
@@ -372,6 +379,12 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
   const replaceQ = (getSearchString(resolvedSearchParams, "q") ?? "").trim();
   const replaceProvider = (getSearchString(resolvedSearchParams, "provider") ?? "both") as "unsplash" | "pexels" | "both";
   const replaceTarget = illustration?.slotTargets.find((slot) => slot.slotId === replaceSlot) ?? null;
+  const isDraftReady = draft?.status === "ready";
+  const currentSlotMap: ChapterIllustrationSlotMap["slots"] = slotMap?.slots ?? {};
+  const displayVersions = [...versionList];
+  if (displayVersions.length === 0 && illustration) {
+    displayVersions.push(illustration);
+  }
 
   let replaceResults: ProviderAssetCandidate[] = [];
   let replaceSearchFailed = false;
@@ -421,7 +434,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
         </div>
       </Card>
 
-      {!draft || draft.status !== "ready" ? (
+      {!isDraftReady ? (
         <Card className="p-5">
           <p className="text-sm text-amber-100">
             Chapter draft is not ready yet. Generate a chapter draft first in the Draft Review screen.
@@ -474,7 +487,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             <form action={autoIllustrateAction}>
               <TrackedIllustrationActionButton
                 type="submit"
-                disabled={!draft || draft.status !== "ready"}
+                disabled={!isDraftReady}
                 eventName="auto_illustrate_start"
                 eventProps={{ chapterKey: chapter.chapterKey }}
               >
@@ -485,7 +498,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
               <TrackedIllustrationActionButton
                 type="submit"
                 variant="secondary"
-                disabled={!draft || draft.status !== "ready"}
+                disabled={!isDraftReady}
                 eventName="illustration_regenerate"
                 eventProps={{ chapterKey: chapter.chapterKey }}
               >
@@ -495,7 +508,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
           </div>
         </div>
 
-        {!replaceSlot ? (
+        {replaceSlot ? null : (
           <UploadImagePicker
             storybookId={storybookId}
             uploadedAssets={uploadedMediaAssets.ok ? uploadedMediaAssets.data : []}
@@ -504,7 +517,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             subtitle="Upload images now and apply them later using Replace on any slot."
             uploadLabel="Upload Image"
           />
-        ) : null}
+        )}
       </Card>
 
       {illustration ? (
@@ -537,17 +550,13 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
         />
       ) : null}
 
-      {!illustration ? (
-        <Card className="p-6">
-          <p className="text-sm text-white/70">No illustration set yet. Run Auto-Illustrate to create slot assignments.</p>
-        </Card>
-      ) : (
+      {illustration ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {illustration.slotTargets.map((slot) => (
             <SlotCard
               key={slot.slotId}
               slot={slot}
-              filled={(slotMap?.slots?.[slot.slotId] as any) ?? null}
+              filled={currentSlotMap[slot.slotId] ?? null}
               isLocked={illustration.lockedSlotIds.includes(slot.slotId)}
               onToggleLock={toggleLockAction}
               replaceHref={routeUrl(storybookId, chapterInstanceId, {
@@ -559,12 +568,16 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             />
           ))}
         </div>
+      ) : (
+        <Card className="p-6">
+          <p className="text-sm text-white/70">No illustration set yet. Run Auto-Illustrate to create slot assignments.</p>
+        </Card>
       )}
 
       <Card className="p-4 sm:p-5">
         <p className="text-xs uppercase tracking-[0.14em] text-white/45">Illustration Versions</p>
         <div className="mt-3 space-y-2">
-          {(versionList.length > 0 ? versionList : illustration ? [illustration] : []).map((row) => (
+          {displayVersions.map((row) => (
             <div key={row.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2">
               <div>
                 <p className="text-sm text-white/80">v{row.version}</p>

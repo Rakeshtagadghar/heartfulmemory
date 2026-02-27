@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { getClientSttConfig } from "../../lib/config/stt";
 import { useVoiceConsent } from "../../lib/consent/useVoiceConsent";
 import { storeOrDiscardAudioForVoiceAnswer } from "../../lib/audio/audioStorage";
@@ -143,26 +143,6 @@ export function VoiceRecorder({
     };
   }, []);
 
-  useEffect(() => {
-    if (machine.state !== "recording") return;
-    timerIntervalRef.current = window.setInterval(() => {
-      const startedAt = startedAtRef.current;
-      if (!startedAt) return;
-      const elapsed = Date.now() - startedAt;
-      setTimerMs(elapsed);
-      if (elapsed >= maxMs) {
-        void stopRecording(true);
-      }
-    }, 250);
-
-    return () => {
-      if (timerIntervalRef.current) {
-        window.clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-    };
-  }, [machine.state, maxMs]);
-
   const resetError = () => {
     setErrorCode(null);
   };
@@ -193,9 +173,8 @@ export function VoiceRecorder({
     }
   };
 
-  const runTranscription = async (
-    recording: { blob: Blob; mimeType: string; durationMs: number },
-    opts?: { retry?: boolean }
+  const runTranscription = useCallback(async (
+    recording: { blob: Blob; mimeType: string; durationMs: number }
   ) => {
     resetError();
     dispatch({ type: "TRANSCRIBE_START" });
@@ -270,9 +249,9 @@ export function VoiceRecorder({
         error_code: "UNKNOWN"
       });
     }
-  };
+  }, [chapterKey, onTranscriptReady, promptHint, questionId, sttConfig.providerDefault]);
 
-  const stopRecording = async (autoStopped = false) => {
+  const stopRecording = useCallback(async (autoStopped = false) => {
     const recorder = recorderRef.current;
     if (!recorder) return;
     dispatch({ type: "STOP_RECORDING" });
@@ -297,11 +276,31 @@ export function VoiceRecorder({
       setErrorCode(error instanceof MediaRecorderClientError ? error.code : "UNKNOWN");
       dispatch({ type: "TRANSCRIBE_ERROR", message });
     }
-  };
+  }, [chapterKey, questionId, runTranscription]);
+
+  useEffect(() => {
+    if (machine.state !== "recording") return;
+    timerIntervalRef.current = window.setInterval(() => {
+      const startedAt = startedAtRef.current;
+      if (!startedAt) return;
+      const elapsed = Date.now() - startedAt;
+      setTimerMs(elapsed);
+      if (elapsed >= maxMs) {
+        void stopRecording(true);
+      }
+    }, 250);
+
+    return () => {
+      if (timerIntervalRef.current) {
+        window.clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+    };
+  }, [machine.state, maxMs, stopRecording]);
 
   const retryTranscription = async () => {
     if (!lastRecording) return;
-    await runTranscription(lastRecording, { retry: true });
+    await runTranscription(lastRecording);
   };
 
   const recordAgain = async () => {

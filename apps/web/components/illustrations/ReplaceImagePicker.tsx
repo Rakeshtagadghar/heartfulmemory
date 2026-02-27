@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Card } from "../ui/card";
 import { TrackedIllustrationActionButton } from "./TrackedIllustrationActionButton";
 import { UploadImagePicker } from "./UploadImagePicker";
@@ -100,7 +101,14 @@ export function ReplaceImagePicker({
         ) : (
           results.map((result) => (
             <div key={`${result.provider}:${result.id}`} className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
-              <img src={result.thumbUrl} alt={result.query ?? "Candidate"} className="h-36 w-full object-cover" />
+              <Image
+                src={result.thumbUrl}
+                alt={result.query ?? "Candidate"}
+                width={Math.max(1, result.width || 1200)}
+                height={Math.max(1, result.height || 800)}
+                unoptimized
+                className="h-36 w-full object-cover"
+              />
               <div className="p-3">
                 <p className="text-xs text-white/60">{result.provider}</p>
                 <p className="mt-1 text-xs text-white/50">{result.width} x {result.height}</p>

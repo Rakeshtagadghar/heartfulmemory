@@ -6,7 +6,6 @@ import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { ChapterCard } from "../../../../components/chapters/ChapterCard";
 import { NarrationSettingsPanel } from "../../../../components/story/NarrationSettingsPanel";
-import { TrackedLink } from "../../../../components/tracked-link";
 import { ViewportEvent } from "../../../../components/viewport-event";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
 import { getOrCreateProfileForUser } from "../../../../lib/profile";

@@ -1,5 +1,4 @@
 import {
-  getChapterStudioStateForUser,
   getGuidedChapterByIdForUser,
   getLatestChapterDraftForUser,
   getLatestChapterIllustrationForUser,
@@ -35,11 +34,10 @@ export async function resolveOpenInStudioForUser(
   viewerSubject: string,
   input: { storybookId: string; chapterInstanceId: string }
 ): Promise<DataResult<OpenInStudioResolution>> {
-  const [chapterResult, draftResult, illustrationResult, studioStateResult] = await Promise.all([
+  const [chapterResult, draftResult, illustrationResult] = await Promise.all([
     getGuidedChapterByIdForUser(viewerSubject, input.chapterInstanceId),
     getLatestChapterDraftForUser(viewerSubject, input.chapterInstanceId),
-    getLatestChapterIllustrationForUser(viewerSubject, input.chapterInstanceId),
-    getChapterStudioStateForUser(viewerSubject, input.chapterInstanceId)
+    getLatestChapterIllustrationForUser(viewerSubject, input.chapterInstanceId)
   ]);
 
   if (!chapterResult.ok) return chapterResult;

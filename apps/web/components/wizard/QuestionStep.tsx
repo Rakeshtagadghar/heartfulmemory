@@ -45,9 +45,13 @@ export function QuestionStep({
   const voiceEditTrackedRef = useRef(false);
 
   useEffect(() => {
-    if (currentAnswer?.source === "voice" && sttConfig.enableVoiceInput) {
+    if (currentAnswer?.source !== "voice" || !sttConfig.enableVoiceInput) return;
+    const timer = globalThis.setTimeout(() => {
       setMode("voice");
-    }
+    }, 0);
+    return () => {
+      globalThis.clearTimeout(timer);
+    };
   }, [currentAnswer?.source, sttConfig.enableVoiceInput]);
 
   return (

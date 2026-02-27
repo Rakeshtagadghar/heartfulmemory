@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useRef, useState } from "react";
 import { getClientMediaConfig } from "../../lib/config/media";
 import {
@@ -160,7 +161,7 @@ export function UploadImagePicker({
     router.refresh();
   }
 
-  async function useUploadedAsset(mediaAssetId: string) {
+  async function applyUploadedAsset(mediaAssetId: string) {
     if (!slotId || !onUseUploadedAsset) return;
     setPendingAssetId(mediaAssetId);
     setStatus({ kind: "idle" });
@@ -246,14 +247,17 @@ export function UploadImagePicker({
                 type="button"
                 className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] text-left transition hover:border-gold/45 hover:bg-white/[0.05]"
                 onClick={() => {
-                  void useUploadedAsset(asset.id);
+                  void applyUploadedAsset(asset.id);
                 }}
                 disabled={pendingAssetId === asset.id}
                 title="Use this uploaded image"
               >
-                <img
+                <Image
                   src={asset.thumbUrl ?? asset.cachedUrl}
                   alt="Uploaded image"
+                  width={Math.max(1, asset.width || 800)}
+                  height={Math.max(1, asset.height || 600)}
+                  unoptimized
                   className="h-28 w-full object-cover"
                 />
                 <div className="px-2 py-2 text-[11px] text-white/65">

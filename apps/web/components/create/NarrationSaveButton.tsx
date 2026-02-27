@@ -1,23 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 export function NarrationSaveButton({ saved = false }: { saved?: boolean }) {
   const { pending } = useFormStatus();
-  const [showSaved, setShowSaved] = useState(saved);
-
-  useEffect(() => {
-    if (!saved) return;
-    setShowSaved(true);
-    const timer = globalThis.setTimeout(() => setShowSaved(false), 2600);
-    return () => globalThis.clearTimeout(timer);
-  }, [saved]);
-
-  useEffect(() => {
-    if (!pending) return;
-    setShowSaved(false);
-  }, [pending]);
+  const showSaved = saved && !pending;
+  let statusIcon = null;
+  if (pending) {
+    statusIcon = (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4 animate-spin"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+      </svg>
+    );
+  } else if (showSaved) {
+    statusIcon = (
+      <svg
+        viewBox="0 0 24 24"
+        className="h-4 w-4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m5 12 4 4 10-10" />
+      </svg>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -25,33 +44,7 @@ export function NarrationSaveButton({ saved = false }: { saved?: boolean }) {
         aria-live="polite"
         className="inline-flex h-5 w-5 items-center justify-center text-emerald-200"
       >
-        {pending ? (
-          <svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4 animate-spin"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12a9 9 0 1 1-3.2-6.9" />
-          </svg>
-        ) : showSaved ? (
-          <svg
-            viewBox="0 0 24 24"
-            className="h-4 w-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m5 12 4 4 10-10" />
-          </svg>
-        ) : null}
+        {statusIcon}
       </span>
 
       <button
