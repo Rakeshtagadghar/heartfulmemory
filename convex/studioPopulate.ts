@@ -121,7 +121,7 @@ function fallbackChapterPageSpecs(_chapterKey: string): ChapterPageSpec[] {
 }
 
 function sanitizeKeyPart(value: string) {
-  const sanitized = value.trim().replaceAll(/[^a-zA-Z0-9_-]+/g, "_").replaceAll(/^_+/, "").replaceAll(/_+$/, "");
+  const sanitized = value.trim().replaceAll(/[^a-zA-Z0-9_-]+/g, "_").replaceAll(/^_+/g, "").replaceAll(/_+$/g, "");
   return sanitized || "item";
 }
 
