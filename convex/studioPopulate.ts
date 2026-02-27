@@ -4,9 +4,10 @@ import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import { mapDraftToTextSlots } from "../packages/shared/populate/textSlotMapper";
+import { mapDraftToTextSlots, type TextSlotMapResult } from "../packages/shared/populate/textSlotMapper";
 import { mapIllustrationsToImageSlots } from "../packages/shared/populate/imageSlotMapper";
 import { buildFillSlotWithImagePatch } from "../packages/editor/commands/fillSlotWithImage";
+import { getTemplateQuestionsForChapter } from "./templates";
 
 type PageDto = {
   id: string;
@@ -28,6 +29,14 @@ type FrameDto = {
   content: Record<string, unknown>;
   crop: Record<string, unknown> | null;
   version: number;
+};
+
+type ChapterAnswerDto = {
+  questionId: string;
+  answerText: string | null;
+  answerJson?: unknown;
+  skipped?: boolean;
+  updatedAt?: number;
 };
 
 type TextSlotSpec = {
@@ -111,67 +120,93 @@ function fallbackChapterPageSpecs(_chapterKey: string): ChapterPageSpec[] {
   ];
 }
 
+function sanitizeKeyPart(value: string) {
+  const sanitized = value.trim().replaceAll(/[^a-zA-Z0-9_-]+/g, "_").replaceAll(/^_+/, "").replaceAll(/_+$/, "");
+  return sanitized || "item";
+}
+
+function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ChapterPageSpec[] {
+  return answerEntries.map((entry, index) => {
+    const suffix = `${index + 1}_${sanitizeKeyPart(entry.questionId)}`;
+    const includeChapterHeader = index === 0;
+    const slots: SlotSpec[] = [];
+    if (includeChapterHeader) {
+      // Keep chapter header centered and fully inside default safe area (44px margins on 816px page width).
+      slots.push({ slotId: `title_${suffix}`, kind: "text", role: "title", x: 108, y: 72, w: 600, h: 56, zIndex: 1 });
+    }
+    slots.push(
+      { slotId: `body_${suffix}`, kind: "text", role: "body", x: 96, y: includeChapterHeader ? 144 : 92, w: 624, h: 260, zIndex: 2 },
+      { slotId: `image_${suffix}`, kind: "image", frameType: "FRAME", x: 76, y: includeChapterHeader ? 420 : 372, w: 664, h: 528, zIndex: 3 }
+    );
+    return {
+      pageTemplateId: `answer_page_${suffix}`,
+      slots
+    } satisfies ChapterPageSpec;
+  });
+}
+
+function parseSlotSpec(slotValue: unknown, slotIndex: number): SlotSpec | null {
+  const slot = recordOrNull(slotValue);
+  if (!slot) return null;
+  const slotKind = inferSlotKind(slot);
+  if (!slotKind) return null;
+
+  const slotId = stringValue(slot.slotId) ?? stringValue(slot.id) ?? `${slotKind}${slotIndex + 1}`;
+  const x = numberValue(slot.x) ?? (slotKind === "image" ? 60 + slotIndex * 32 : 60);
+  const y = numberValue(slot.y) ?? (slotKind === "image" ? 180 + slotIndex * 20 : 80 + slotIndex * 40);
+  const w = Math.max(40, numberValue(slot.w) ?? (slotKind === "image" ? 300 : 600));
+  const h = Math.max(40, numberValue(slot.h) ?? (slotKind === "image" ? 220 : 100));
+  const zIndex = Math.max(1, numberValue(slot.zIndex) ?? slotIndex + 1);
+
+  if (slotKind === "text") {
+    return {
+      slotId,
+      kind: "text",
+      role: inferTextRole(slotId),
+      x,
+      y,
+      w,
+      h,
+      zIndex
+    };
+  }
+
+  const roleString = stringValue(slot.role)?.toLowerCase() ?? "";
+  const typeString = stringValue(slot.type)?.toLowerCase() ?? "";
+  const frameType: "IMAGE" | "FRAME" = roleString.includes("frame") || typeString.includes("frame") ? "FRAME" : "IMAGE";
+  return {
+    slotId,
+    kind: "image",
+    frameType,
+    x,
+    y,
+    w,
+    h,
+    zIndex
+  };
+}
+
+function parseChapterPageSpec(pageValue: unknown, fallbackIndex: number): ChapterPageSpec | null {
+  const pageRecord = recordOrNull(pageValue);
+  if (!pageRecord) return null;
+
+  const slotsRaw = Array.isArray(pageRecord.slots) ? pageRecord.slots : [];
+  const slots = slotsRaw.map((slotValue, index) => parseSlotSpec(slotValue, index)).filter((slot): slot is SlotSpec => Boolean(slot));
+  if (slots.length === 0) return null;
+
+  return {
+    pageTemplateId: stringValue(pageRecord.pageTemplateId) ?? stringValue(pageRecord.layoutId) ?? `chapter_page_${fallbackIndex + 1}`,
+    slots
+  };
+}
+
 function extractChapterPageSpecs(templateJson: unknown, chapterKey: string): ChapterPageSpec[] {
   const template = recordOrNull(templateJson);
   const studioPages = Array.isArray(template?.studioPages) ? template.studioPages : [];
   const chapterPages = studioPages.filter((page) => recordOrNull(page)?.chapterKey === chapterKey);
-  const parsed: ChapterPageSpec[] = [];
-
-  for (const page of chapterPages) {
-    const pageRecord = recordOrNull(page);
-    if (!pageRecord) continue;
-    const slotsRaw = Array.isArray(pageRecord.slots) ? pageRecord.slots : [];
-    const slots: SlotSpec[] = [];
-    let slotIndex = 0;
-    for (const slotValue of slotsRaw) {
-      const slot = recordOrNull(slotValue);
-      if (!slot) continue;
-      const slotKind = inferSlotKind(slot);
-      if (!slotKind) continue;
-      const slotId = stringValue(slot.slotId) ?? stringValue(slot.id) ?? `${slotKind}${slotIndex + 1}`;
-      const x = numberValue(slot.x) ?? (slotKind === "image" ? 60 + slotIndex * 32 : 60);
-      const y = numberValue(slot.y) ?? (slotKind === "image" ? 180 + slotIndex * 20 : 80 + slotIndex * 40);
-      const w = Math.max(40, numberValue(slot.w) ?? (slotKind === "image" ? 300 : 600));
-      const h = Math.max(40, numberValue(slot.h) ?? (slotKind === "image" ? 220 : 100));
-      const zIndex = Math.max(1, numberValue(slot.zIndex) ?? slotIndex + 1);
-
-      if (slotKind === "text") {
-        slots.push({
-          slotId,
-          kind: "text",
-          role: inferTextRole(slotId),
-          x,
-          y,
-          w,
-          h,
-          zIndex
-        });
-      } else {
-        const roleString = stringValue(slot.role)?.toLowerCase() ?? "";
-        const typeString = stringValue(slot.type)?.toLowerCase() ?? "";
-        const frameType: "IMAGE" | "FRAME" =
-          roleString.includes("frame") || typeString.includes("frame") ? "FRAME" : "IMAGE";
-        slots.push({
-          slotId,
-          kind: "image",
-          frameType,
-          x,
-          y,
-          w,
-          h,
-          zIndex
-        });
-      }
-      slotIndex += 1;
-    }
-    if (slots.length > 0) {
-      parsed.push({
-        pageTemplateId: stringValue(pageRecord.pageTemplateId) ?? stringValue(pageRecord.layoutId) ?? `chapter_page_${parsed.length + 1}`,
-        slots
-      });
-    }
-  }
-
+  const parsed = chapterPages
+    .map((page, index) => parseChapterPageSpec(page, index))
+    .filter((page): page is ChapterPageSpec => Boolean(page));
   return parsed.length > 0 ? parsed : fallbackChapterPageSpecs(chapterKey);
 }
 
@@ -192,7 +227,7 @@ function populateMetaPatch(chapterKey: string, pageTemplateId: string, slotId: s
 
 function frameTextStyle(role: TextSlotSpec["role"]) {
   if (role === "title") {
-    return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: "left" };
+    return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: "center" };
   }
   if (role === "subtitle") {
     return { fontFamily: "sans", fontSize: 16, lineHeight: 1.3, fontWeight: 500, color: "#3b465a", align: "left" };
@@ -234,13 +269,15 @@ function createImagePlaceholderContent(slotId: string, frameType: "IMAGE" | "FRA
 }
 
 function fingerprintDraft(draft: { version: number; summary: string; sections: Array<{ sectionId: string; wordCount: number }> }) {
-  return `d:${draft.version}:${draft.summary.length}:${draft.sections.map((s) => `${s.sectionId}:${s.wordCount}`).join("|")}`;
+  const sections = draft.sections.map((section) => `${section.sectionId}:${section.wordCount}`).join("|");
+  return `d:${draft.version}:${draft.summary.length}:${sections}`;
 }
 
 function fingerprintIllustrations(
   illustration: { version: number; slotAssignments: Array<{ slotId: string; mediaAssetId: string }> }
 ) {
-  return `i:${illustration.version}:${illustration.slotAssignments.map((s) => `${s.slotId}:${s.mediaAssetId}`).sort().join("|")}`;
+  const assignments = illustration.slotAssignments.map((slot) => `${slot.slotId}:${slot.mediaAssetId}`).sort().join("|");
+  return `i:${illustration.version}:${assignments}`;
 }
 
 async function requireActionUser(ctx: ActionCtx, explicitSubject?: string) {
@@ -255,16 +292,35 @@ function firstStringParam(value: string | string[] | undefined) {
   return value;
 }
 
+function readAnswerText(row: ChapterAnswerDto) {
+  if (typeof row.answerText === "string" && row.answerText.trim().length > 0) {
+    return row.answerText.trim();
+  }
+  if (typeof row.answerJson === "string" && row.answerJson.trim().length > 0) {
+    return row.answerJson.trim();
+  }
+  if (row.answerJson && typeof row.answerJson === "object" && !Array.isArray(row.answerJson)) {
+    const record = row.answerJson as Record<string, unknown>;
+    const candidates = [record.answerText, record.text, record.answer, record.value];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate.trim().length > 0) {
+        return candidate.trim();
+      }
+    }
+  }
+  return "";
+}
+
 export const populateChapter = action({
   args: {
     viewerSubject: v.optional(v.string()),
     storybookId: v.id("storybooks"),
     chapterInstanceId: v.id("storybookChapters")
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args) => { // NOSONAR
     try {
       const viewer = await requireActionUser(ctx, args.viewerSubject);
-      const [storybook, chapter, draft, illustrationState, studioState] = await Promise.all([
+      const [storybook, chapter, draft, illustrationState, studioState, chapterAnswers] = await Promise.all([
         ctx.runQuery(api.storybooks.getGuidedById, { viewerSubject: viewer.subject, storybookId: args.storybookId }),
         ctx.runQuery(api.storybookChapters.get, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
         ctx.runQuery(api.chapterDrafts.getLatestByChapter, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
@@ -273,6 +329,10 @@ export const populateChapter = action({
           chapterInstanceId: args.chapterInstanceId
         }),
         ctx.runQuery(api.chapterStudioState.getByChapterInstance, {
+          viewerSubject: viewer.subject,
+          chapterInstanceId: args.chapterInstanceId
+        }),
+        ctx.runQuery(api.chapterAnswers.getByChapter, {
           viewerSubject: viewer.subject,
           chapterInstanceId: args.chapterInstanceId
         })
@@ -296,7 +356,7 @@ export const populateChapter = action({
 
       if (
         studioState &&
-        (studioState.status === "edited" || studioState.status === "finalized") &&
+        studioState.status === "finalized" &&
         studioState.pageIds.length > 0
       ) {
         return {
@@ -318,39 +378,43 @@ export const populateChapter = action({
         };
       }
 
-      if (
-        studioState &&
-        studioState.pageIds.length > 0 &&
-        studioState.lastAppliedDraftVersion === draft.version &&
-        studioState.lastAppliedIllustrationVersion === illustrationState.version
-      ) {
-        return {
-          ok: true as const,
-          storybookId: String(args.storybookId),
-          chapterInstanceId: String(args.chapterInstanceId),
-          chapterKey: chapter.chapterKey,
-          pageIds: studioState.pageIds,
-          firstPageId: studioState.pageIds[0] ?? null,
-          createdNodeIds: [] as string[],
-          updatedNodeIds: [] as string[],
-          skippedNodeIds: [] as string[],
-          reused: true as const,
-          skippedBecauseEdited: false as const,
-          versions: {
-            draftVersion: draft.version,
-            illustrationVersion: illustrationState.version
-          }
-        };
-      }
+      const answersRaw = Array.isArray(chapterAnswers) ? (chapterAnswers as ChapterAnswerDto[]) : [];
+      const answersByQuestionId = new Map(
+        answersRaw.map((row) => [row.questionId, row] as const)
+      );
+      const questionOrder =
+        template && typeof template === "object" && "questionFlow" in template
+          ? getTemplateQuestionsForChapter(template as any, chapter.chapterKey).map((question) => question.questionId)
+          : [];
+      const orderedAnswers = [
+        ...questionOrder
+          .map((questionId) => answersByQuestionId.get(questionId))
+          .filter(
+            (row): row is ChapterAnswerDto =>
+              Boolean(row && !row.skipped && readAnswerText(row).length > 0)
+          ),
+        ...answersRaw
+          .filter(
+            (row) =>
+              !questionOrder.includes(row.questionId) &&
+              !row.skipped &&
+              readAnswerText(row).length > 0
+          )
+          .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
+      ];
 
-      const pageSpecs = extractChapterPageSpecs(template?.templateJson ?? template, chapter.chapterKey);
+      const answerPageSpecs = orderedAnswers.length > 0 ? buildAnswerPerPageSpecs(orderedAnswers) : [];
+      const pageSpecs =
+        answerPageSpecs.length > 0
+          ? answerPageSpecs
+          : extractChapterPageSpecs(template?.templateJson ?? template, chapter.chapterKey);
       let pages = await ctx.runQuery(api.pages.listByStorybook, { viewerSubject: viewer.subject, storybookId: args.storybookId });
       const existingPageIds = studioState?.pageIds ?? [];
       const pageIds: string[] = [];
 
       for (let i = 0; i < pageSpecs.length; i += 1) {
         const existingPageId = existingPageIds[i];
-        if (existingPageId && pages.some((page) => String(page.id) === existingPageId)) {
+        if (existingPageId && pages.some((page: any) => String(page.id) === existingPageId)) {
           pageIds.push(existingPageId);
           continue;
         }
@@ -376,17 +440,61 @@ export const populateChapter = action({
       });
       const imageSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is ImageSlotSpec => slot.kind === "image"));
       const textSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is TextSlotSpec => slot.kind === "text"));
+      const useAnswerPages = answerPageSpecs.length > 0;
 
-      const textMapping = mapDraftToTextSlots({
-        chapterTitle: chapter.title,
-        chapterSubtitle: null,
-        draft,
-        slotIds: textSlots.map((slot) => slot.slotId)
-      });
-      const imageMapping = mapIllustrationsToImageSlots({
-        slotIds: imageSlots.map((slot) => slot.slotId),
-        slotAssets: (illustrationSlotMap?.slots ?? {}) as Record<string, any>
-      });
+      const textMapping: TextSlotMapResult = useAnswerPages
+        ? {
+            slotText: Object.fromEntries(
+              answerPageSpecs.flatMap((pageSpec, index) => {
+                const answer = orderedAnswers[index];
+                if (!answer) return [];
+                const titleSlot = pageSpec?.slots.find((slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title");
+                const bodySlot = pageSpec?.slots.find((slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "body");
+                const text = readAnswerText(answer);
+                const pairs: Array<readonly [string, string]> = [];
+                if (titleSlot?.slotId) pairs.push([titleSlot.slotId, chapter.title]);
+                if (bodySlot?.slotId) pairs.push([bodySlot.slotId, text]);
+                return pairs;
+              })
+            ),
+            warnings: []
+          }
+        : mapDraftToTextSlots({
+            chapterTitle: chapter.title,
+            chapterSubtitle: null,
+            draft,
+            slotIds: textSlots.map((slot) => slot.slotId)
+          });
+
+      let imageMapping;
+      if (useAnswerPages) {
+        const slotAssetsRecord = (illustrationSlotMap?.slots ?? {}) as Record<string, any>;
+        const orderedIllustrationAssets: any[] = [];
+        for (const assignment of illustrationState.slotAssignments ?? []) {
+          const asset = slotAssetsRecord[assignment.slotId];
+          if (asset && typeof asset === "object") orderedIllustrationAssets.push(asset);
+        }
+        if (orderedIllustrationAssets.length === 0) {
+          for (const key of Object.keys(slotAssetsRecord).sort()) {
+            const asset = slotAssetsRecord[key];
+            if (asset && typeof asset === "object") orderedIllustrationAssets.push(asset);
+          }
+        }
+        const sequentialSlotAssets: Record<string, any> = {};
+        imageSlots.forEach((slot, index) => {
+          const asset = orderedIllustrationAssets[index];
+          if (asset) sequentialSlotAssets[slot.slotId] = asset;
+        });
+        imageMapping = mapIllustrationsToImageSlots({
+          slotIds: imageSlots.map((slot) => slot.slotId),
+          slotAssets: sequentialSlotAssets
+        });
+      } else {
+        imageMapping = mapIllustrationsToImageSlots({
+          slotIds: imageSlots.map((slot) => slot.slotId),
+          slotAssets: (illustrationSlotMap?.slots ?? {}) as Record<string, any>
+        });
+      }
 
       const createdNodeIds: string[] = [];
       const updatedNodeIds: string[] = [];
@@ -396,7 +504,29 @@ export const populateChapter = action({
         const pageId = pageIds[pageIndex];
         const page = (pages as PageDto[]).find((row) => row.id === pageId);
         if (!page) continue;
-        const pageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
+        const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
+        const expectedStableKeys = new Set(
+          pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId))
+        );
+        const stalePopulateFrames = initialPageFrames.filter((frame) => {
+          const content = recordOrNull(frame.content);
+          const meta = recordOrNull(content?.populateMeta);
+          if (!meta) return false;
+          if (stringValue(meta.source) !== "studio_populate_v1") return false;
+          if (stringValue(meta.chapterKey) !== chapter.chapterKey) return false;
+          const key = stringValue(meta.stableNodeKey);
+          return !key || !expectedStableKeys.has(key);
+        });
+
+        for (const stale of stalePopulateFrames) {
+          await ctx.runMutation(api.frames.remove, {
+            viewerSubject: viewer.subject,
+            frameId: stale.id as any
+          });
+        }
+
+        const staleFrameIds = new Set(stalePopulateFrames.map((frame) => frame.id));
+        const pageFrames = initialPageFrames.filter((frame) => !staleFrameIds.has(frame.id));
 
         const byStableKey = new Map<string, FrameDto>();
         for (const frame of pageFrames) {
@@ -438,13 +568,13 @@ export const populateChapter = action({
               skippedNodeIds.push(existingFrame.id);
               continue;
             }
-            const patchContent = { ...(existingContent ?? {}), ...content };
+            const patchContent = existingContent ? { ...existingContent, ...content } : { ...content };
             const updated = await ctx.runMutation(api.frames.update, {
               viewerSubject: viewer.subject,
               frameId: existingFrame.id as any,
               patch: {
                 content: patchContent,
-                style: { ...(existingFrame.style ?? {}), ...frameTextStyle(slot.role) },
+                style: { ...existingFrame.style, ...frameTextStyle(slot.role) },
                 expectedVersion: existingFrame.version
               }
             });
@@ -457,7 +587,7 @@ export const populateChapter = action({
           const placeholderContent = createImagePlaceholderContent(slot.slotId, slot.frameType, meta);
 
           if (!existingFrame) {
-            let content = placeholderContent;
+            let content: Record<string, unknown> = placeholderContent as Record<string, unknown>;
             let crop: Record<string, unknown> | null | undefined = null;
             if (mappedImage) {
               content = {
