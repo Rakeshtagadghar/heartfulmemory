@@ -1,0 +1,264 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": "23.5",
+      "title": "Entities v2 Rollout Hardening: Review UX + Overrides + Tracking",
+      "duration": "2-3 days",
+      "goal": "Stabilize Sprint 23 entities v2 in Draft Review by making entities easier to inspect and correct, applying overrides deterministically during generation, and tracking key draft actions.",
+      "definitionOfDone": [
+        "Draft Review shows People/Places/Dates with confidence and citations deep links",
+        "Entities panel has a clear empty state when extractor is unavailable and supports retry",
+        "Chapter-level entity overrides (add/remove/reset) are persisted in Convex with owner checks",
+        "Override removals can be undone from the Draft Review UI",
+        "Draft generation applies overrides after extraction and before downstream checks",
+        "Entity cache reuse is bypassed when overrides are present",
+        "Generate/regen/approve draft actions emit analytics events",
+        "Regression tests cover entities panel rendering and extractor source contract"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript + Tailwind",
+      "backend": "Convex (queries/mutations/actions)",
+      "ai": "Current extractor contract kept stable; provider can remain heuristic for now",
+      "data": "chapterDrafts.entitiesV2 + chapterEntityOverrides table",
+      "analytics": "Existing track()/ViewportEvent event pipeline"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S23.5-T01",
+      "title": "Upgrade Entities panel UX with confidence, citations, and grouped rendering",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Render People / Places / Dates as separate sections",
+          "Show confidence badges with visual severity tiers",
+          "Show normalized date when different from source value",
+          "Show extractor metadata badge (version/generator)"
+        ],
+        "navigation": [
+          "Citations render as wizard deep links using questionId",
+          "QuestionId links are sanitized before rendering"
+        ],
+        "constraints": [
+          "No raw model payload rendering",
+          "Keep panel readable in compact right-column layout"
+        ]
+      },
+      "acceptanceTests": [
+        "Entities panel renders grouped sections and values",
+        "Citation link points to chapter wizard with questionId query param"
+      ],
+      "deliverables": [
+        "apps/web/components/draft/EntitiesPanel.tsx",
+        "apps/web/lib/routes/wizardDeepLink.ts",
+        "apps/web/tests/integration/entities-panel.test.tsx"
+      ]
+    },
+    {
+      "id": "S23.5-T02",
+      "title": "Add extractor unavailable empty state + retry path in Draft Review",
+      "skill": ["Frontend", "Backend Integration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "When ENTITY_EXTRACTOR_UNAVAILABLE warning exists and entities are missing, show fallback message",
+          "Provide Try Again CTA that calls full draft regenerate action",
+          "Keep existing non-error empty state for genuine no-entity chapters"
+        ],
+        "constraints": [
+          "Do not block user from other draft actions",
+          "Retry should reuse existing server action auth/onboarding checks"
+        ]
+      },
+      "acceptanceTests": [
+        "Extractor unavailable warning shows dedicated empty-state copy",
+        "Try Again button renders when retry action is provided"
+      ],
+      "deliverables": [
+        "apps/web/components/draft/EntitiesPanel.tsx",
+        "apps/web/app/book/[storybookId]/chapters/[chapterInstanceId]/draft/page.tsx",
+        "apps/web/tests/integration/entities-panel.test.tsx"
+      ]
+    },
+    {
+      "id": "S23.5-T03",
+      "title": "Implement chapter entity overrides persistence and owner-guarded CRUD",
+      "skill": ["Convex", "Data Modeling", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "schema": [
+          "chapterEntityOverrides table with adds{people,places,dates} + removes[]",
+          "Indexes by chapterInstanceId and storybookId"
+        ],
+        "serverFunctions": [
+          "getByChapter query",
+          "addPerson/addPlace/addDate mutations",
+          "removeEntity mutation",
+          "reset mutation"
+        ],
+        "rules": [
+          "Require owner-level access for all mutations",
+          "Normalize values and avoid duplicate add/remove entries",
+          "Adding an entity clears matching remove marker and vice versa"
+        ]
+      },
+      "acceptanceTests": [
+        "Overrides row is created lazily when first mutation is called",
+        "Case-insensitive duplicate values are deduped",
+        "Unauthorized access is rejected by authz checks"
+      ],
+      "deliverables": [
+        "convex/schema.ts",
+        "convex/chapterEntityOverrides.ts",
+        "packages/shared/entities/entitiesTypes.ts"
+      ]
+    },
+    {
+      "id": "S23.5-T04",
+      "title": "Wire override actions into Draft Review page and app data layer",
+      "skill": ["Next.js Server Actions", "Frontend", "Convex Integration"],
+      "priority": "P0",
+      "requirements": {
+        "dataLayer": [
+          "Expose get/add/remove/reset overrides helpers in create-flow data module",
+          "Normalize date overrides before persistence"
+        ],
+        "draftPageActions": [
+          "addEntityOverride(form action)",
+          "removeEntityOverride(form action)",
+          "undoRemovedEntityOverride(form action via reset+replay)",
+          "resetEntityOverrides(form action)"
+        ],
+        "ui": [
+          "Render EntityOverridesEditor below Entities panel",
+          "Show notice banner after successful override operations"
+        ]
+      },
+      "acceptanceTests": [
+        "Add/remove/reset operations redirect with entity_override_saved notice",
+        "Undo remove reconstructs prior adds and remaining removes correctly"
+      ],
+      "deliverables": [
+        "apps/web/lib/data/create-flow.ts",
+        "apps/web/app/book/[storybookId]/chapters/[chapterInstanceId]/draft/page.tsx",
+        "apps/web/components/draft/EntityOverridesEditor.tsx"
+      ]
+    },
+    {
+      "id": "S23.5-T05",
+      "title": "Apply overrides in entity resolution pipeline with deterministic cache behavior",
+      "skill": ["Backend", "Algorithms"],
+      "priority": "P0",
+      "requirements": {
+        "pipeline": [
+          "Load chapter overrides inside resolveEntitiesForChapter",
+          "Skip cached entities reuse when any override entries exist",
+          "Apply overrides on extracted entities before final persistence",
+          "Repair missing citations after overrides are applied"
+        ],
+        "overrideSemantics": [
+          "Removes filter extracted values by normalized case-insensitive match",
+          "Adds are merged and deduped for people/places/dates",
+          "Date dedupe uses normalized date key"
+        ],
+        "constraints": [
+          "Deterministic behavior for same inputs",
+          "No additional LLM calls introduced by override handling"
+        ]
+      },
+      "acceptanceTests": [
+        "Overridden entities appear in latest draft entitiesV2",
+        "Removed entities do not reappear from cached entities when overrides exist"
+      ],
+      "deliverables": [
+        "convex/ai/chapterDrafts_v2.ts",
+        "lib/entities/applyOverrides.ts"
+      ]
+    },
+    {
+      "id": "S23.5-T06",
+      "title": "Add tracked draft action button wrapper for generate/regen/approve events",
+      "skill": ["Frontend", "Analytics"],
+      "priority": "P1",
+      "requirements": {
+        "component": [
+          "Introduce reusable button wrapper that emits eventName/eventProps on click then executes original handler"
+        ],
+        "adoption": [
+          "Use wrapper in Draft page for Generate Draft and Approve Draft",
+          "Use wrapper in DraftSectionCard for Regenerate Section"
+        ],
+        "constraints": [
+          "Analytics should not block button action execution",
+          "Event payloads include chapterKey/provider and narration dimensions where available"
+        ]
+      },
+      "acceptanceTests": [
+        "Generate/regen/approve buttons still submit forms correctly",
+        "Expected analytics events are emitted on user click paths"
+      ],
+      "deliverables": [
+        "apps/web/components/draft/TrackedDraftActionButton.tsx",
+        "apps/web/components/draft/DraftSectionCard.tsx",
+        "apps/web/app/book/[storybookId]/chapters/[chapterInstanceId]/draft/page.tsx"
+      ]
+    },
+    {
+      "id": "S23.5-T07",
+      "title": "Regression tests and docs pass for entities v2 hardening paths",
+      "skill": ["QA", "Testing", "Documentation"],
+      "priority": "P0",
+      "requirements": {
+        "tests": [
+          "Integration test for entities panel grouping + citation deep links",
+          "Integration contract test confirming extractor action source shape",
+          "Unit tests for entity post-processing and entity sanity v2",
+          "Unit tests for theme generation using entitiesV2 inputs"
+        ],
+        "docs": [
+          "Refresh entities schema and extractor contract docs",
+          "Record QA checklist for sprint entities flow"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 relevant tests exist and pass in CI/local suite",
+        "Docs reflect entitiesV2 + overrides behavior used by draft pipeline"
+      ],
+      "deliverables": [
+        "apps/web/tests/integration/entities-panel.test.tsx",
+        "apps/web/tests/integration/entities-extractor-source.test.ts",
+        "apps/web/tests/unit/entities-postprocess.test.ts",
+        "apps/web/tests/unit/entity-sanity-v2.test.ts",
+        "apps/web/tests/unit/theme-from-entities.test.ts",
+        "docs/entities_schema_v2.json",
+        "docs/entities_extractor_contract.md",
+        "docs/qa_sprint23_entities_v2.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S23.5-T03",
+      "S23.5-T05",
+      "S23.5-T04",
+      "S23.5-T01",
+      "S23.5-T02",
+      "S23.5-T06",
+      "S23.5-T07"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 2,
+      "P1_total_days": 1,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "This sprint hardens the Sprint 23 entities pipeline for real draft-review usage, especially correction workflows.",
+      "Overrides are applied at generation time so UI corrections feed directly into downstream checks and image query logic.",
+      "Tracking key draft actions improves observability for drop-off and retry behavior before Sprint 24 changes."
+    ]
+  }
+}
