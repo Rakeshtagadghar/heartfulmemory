@@ -23,7 +23,7 @@ export async function startCheckout(input: StartCheckoutInput): Promise<StartChe
     | { ok?: false; error?: string }
     | null;
 
-  if (!response.ok || !body || body.ok !== true || typeof body.checkoutUrl !== "string") {
+  if (!response.ok || body?.ok !== true || typeof body?.checkoutUrl !== "string") {
     const bodyError = (body as { error?: unknown } | null)?.error;
     const error = typeof bodyError === "string" ? bodyError : "Unable to start checkout.";
     return { ok: false, error };

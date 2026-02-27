@@ -82,7 +82,8 @@ function renderContractErrorRow(input: {
   const key = `${issue.code}-${issue.nodeId ?? issue.pageId ?? "na"}-${index}`;
   const location = formatContractIssueLocation(issue, issueDisplayMeta);
   const navigationIssue = toNavigationIssue(target, issue);
-  const label = `${issue.code}: ${issue.message}${location ? ` (${location})` : ""}`;
+  const locationSuffix = location ? ` (${location})` : "";
+  const label = `${issue.code}: ${issue.message}${locationSuffix}`;
 
   if (!navigationIssue) {
     return (

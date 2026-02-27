@@ -5,6 +5,26 @@ import { requireUser } from "./authz";
 import { resolveBillingEntitlements } from "../packages/shared/billing/entitlementRules";
 
 type Ctx = MutationCtx | QueryCtx;
+type BillingCustomerRow = {
+  _id: unknown;
+  userId: string;
+  email?: string | null;
+  stripeCustomerId: string;
+  createdAt: number;
+  updatedAt: number;
+} | null;
+type BillingSubscriptionRow = {
+  _id: unknown;
+  userId: string;
+  stripeCustomerId: string;
+  stripeSubscriptionId: string;
+  planId: string;
+  status: string;
+  currentPeriodEnd?: number | null;
+  cancelAtPeriodEnd: boolean;
+  latestInvoiceId?: string | null;
+  updatedAt: number;
+} | null;
 
 const subscriptionStatusValidator = v.union(
   v.literal("trialing"),
@@ -30,7 +50,7 @@ async function getLatestSubscriptionByUserId(ctx: Ctx, userId: string) {
   return rows.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
 }
 
-function toCustomerDto(row: Awaited<ReturnType<typeof getCustomerByUserId>>) {
+function toCustomerDto(row: BillingCustomerRow) {
   if (!row) return null;
   return {
     id: String(row._id),
@@ -42,7 +62,7 @@ function toCustomerDto(row: Awaited<ReturnType<typeof getCustomerByUserId>>) {
   };
 }
 
-function toSubscriptionDto(row: Awaited<ReturnType<typeof getLatestSubscriptionByUserId>>) {
+function toSubscriptionDto(row: BillingSubscriptionRow) {
   if (!row) return null;
   return {
     id: String(row._id),

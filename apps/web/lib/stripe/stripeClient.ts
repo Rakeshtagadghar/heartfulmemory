@@ -15,14 +15,11 @@ export function getStripeWebhookSecret() {
 export function getStripeClient() {
   const secret = getStripeSecretKey();
   if (!secret) return null;
-  if (!stripeClient) {
-    stripeClient = new Stripe(secret, {
-      appInfo: {
-        name: "memorioso-web",
-        version: "sprint25"
-      }
-    });
-  }
+  stripeClient ??= new Stripe(secret, {
+    appInfo: {
+      name: "memorioso-web",
+      version: "sprint25"
+    }
+  });
   return stripeClient;
 }
-
