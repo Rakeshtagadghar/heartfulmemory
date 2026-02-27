@@ -11,6 +11,7 @@ import { fetchIllustrationCandidates } from "./illustrate/fetchCandidates";
 import { selectCandidatesForSlots } from "./illustrate/selectForSlots";
 import { cacheSelectedProviderAssets } from "./illustrate/cacheAssets";
 import { extractSlotTargetsForChapter } from "../packages/shared/templates/slotTargets";
+import { captureConvexError, captureConvexWarning, withConvexSpan } from "./observability/sentry";
 
 type ConvexCtx = MutationCtx | QueryCtx;
 type ChapterIllustrationDoc = Doc<"chapterIllustrations">;
@@ -387,6 +388,12 @@ export const autoIllustrate = action({
       const config = getConvexAutoIllustrateEnv();
       const rate = checkAndRecordAutoIllustrateRateLimit(viewer.subject, config.rateLimitPerUser);
       if (!rate.allowed) {
+        captureConvexWarning("Auto-illustrate rate limit reached", {
+          flow: "auto_illustrate",
+          code: "RATE_LIMIT",
+          storybookId: String(args.storybookId),
+          chapterInstanceId: String(args.chapterInstanceId)
+        });
         return {
           ok: false as const,
           errorCode: "RATE_LIMIT" as const,
@@ -463,19 +470,32 @@ export const autoIllustrate = action({
       }
 
       const providerMode = (args.providerMode ?? config.providerModeDefault) as "unsplash" | "pexels" | "both";
-      const allCandidates: Array<any> = [];
-        for (const slot of slotTargets) {
-        const fetched = await fetchIllustrationCandidates({
-          providerMode,
-          queries: theme.queries,
-          orientation: slot.orientation,
-          minShortSidePx: slot.minShortSidePx,
-          perQueryLimit: config.maxCandidatesPerSlot
-        });
-        if (fetched.ok) {
-          allCandidates.push(...fetched.candidates);
+      const allCandidates = await withConvexSpan(
+        "illustrations_fetch_candidates",
+        {
+          flow: "auto_illustrate",
+          provider: providerMode,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        async () => {
+          const candidates: Array<any> = [];
+          for (const slot of slotTargets) {
+            const fetched = await fetchIllustrationCandidates({
+              providerMode,
+              queries: theme.queries,
+              orientation: slot.orientation,
+              minShortSidePx: slot.minShortSidePx,
+              perQueryLimit: config.maxCandidatesPerSlot
+            });
+            if (fetched.ok) {
+              candidates.push(...fetched.candidates);
+            }
+          }
+          return candidates;
         }
-      }
+      );
 
         const lockedSlotIds = existingIllustration?.lockedSlotIds ?? [];
         const unlockedSlotTargets = slotTargets.filter((slot) => !lockedSlotIds.includes(slot.slotId));
@@ -492,6 +512,14 @@ export const autoIllustrate = action({
         .map((row) => ({ slotId: row.slotId, candidate: row.candidate! }));
 
       if (chosen.length === 0) {
+        captureConvexWarning("No illustration candidates available", {
+          flow: "auto_illustrate",
+          code: "NO_CANDIDATES",
+          provider: providerMode,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        });
         await ctx.runMutation(api.chapterIllustrations.setError, {
           viewerSubject: viewer.subject,
             illustrationId: begin.illustrationId,
@@ -506,13 +534,24 @@ export const autoIllustrate = action({
         };
       }
 
-      const cached = await cacheSelectedProviderAssets({
-        ctx,
-        viewerSubject: viewer.subject,
-        assets: chosen.map((row) => row.candidate),
-        maxDownloadMb: config.maxDownloadMb,
-        timeoutMs: 45000
-      });
+      const cached = await withConvexSpan(
+        "illustrations_cache_assets",
+        {
+          flow: "auto_illustrate",
+          provider: providerMode,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          cacheSelectedProviderAssets({
+            ctx,
+            viewerSubject: viewer.subject,
+            assets: chosen.map((row) => row.candidate),
+            maxDownloadMb: config.maxDownloadMb,
+            timeoutMs: 45000
+          })
+      );
 
       const cachedByProviderId = new Map(cached.map((row) => [`${row.providerAsset.provider}:${row.providerAsset.id}`, row] as const));
       const slotAssignments = chosen.flatMap((row) => {
@@ -558,6 +597,12 @@ export const autoIllustrate = action({
         warnings: selection.warnings
       };
     } catch (error) {
+      captureConvexError(error, {
+        flow: "auto_illustrate",
+        code: "AUTO_ILLUSTRATE_FAILED",
+        storybookId: String(args.storybookId),
+        chapterInstanceId: String(args.chapterInstanceId)
+      });
       return {
         ok: false as const,
         errorCode: "AUTO_ILLUSTRATE_FAILED" as const,

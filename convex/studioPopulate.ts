@@ -8,6 +8,7 @@ import { mapDraftToTextSlots, type TextSlotMapResult } from "../packages/shared/
 import { mapIllustrationsToImageSlots } from "../packages/shared/populate/imageSlotMapper";
 import { buildFillSlotWithImagePatch } from "../packages/editor/commands/fillSlotWithImage";
 import { getTemplateQuestionsForChapter } from "./templates";
+import { captureConvexError, withConvexSpan } from "./observability/sentry";
 
 type PageDto = {
   id: string;
@@ -320,23 +321,32 @@ export const populateChapter = action({
   handler: async (ctx, args) => { // NOSONAR
     try {
       const viewer = await requireActionUser(ctx, args.viewerSubject);
-      const [storybook, chapter, draft, illustrationState, studioState, chapterAnswers] = await Promise.all([
-        ctx.runQuery(api.storybooks.getGuidedById, { viewerSubject: viewer.subject, storybookId: args.storybookId }),
-        ctx.runQuery(api.storybookChapters.get, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
-        ctx.runQuery(api.chapterDrafts.getLatestByChapter, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
-        ctx.runQuery(api.chapterIllustrations.getLatestByChapterInstance, {
-          viewerSubject: viewer.subject,
-          chapterInstanceId: args.chapterInstanceId
-        }),
-        ctx.runQuery(api.chapterStudioState.getByChapterInstance, {
-          viewerSubject: viewer.subject,
-          chapterInstanceId: args.chapterInstanceId
-        }),
-        ctx.runQuery(api.chapterAnswers.getByChapter, {
-          viewerSubject: viewer.subject,
-          chapterInstanceId: args.chapterInstanceId
-        })
-      ]);
+      const [storybook, chapter, draft, illustrationState, studioState, chapterAnswers] = await withConvexSpan(
+        "studio_populate_fetch_inputs",
+        {
+          flow: "studio_populate",
+          storybookId: String(args.storybookId),
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          Promise.all([
+            ctx.runQuery(api.storybooks.getGuidedById, { viewerSubject: viewer.subject, storybookId: args.storybookId }),
+            ctx.runQuery(api.storybookChapters.get, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
+            ctx.runQuery(api.chapterDrafts.getLatestByChapter, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
+            ctx.runQuery(api.chapterIllustrations.getLatestByChapterInstance, {
+              viewerSubject: viewer.subject,
+              chapterInstanceId: args.chapterInstanceId
+            }),
+            ctx.runQuery(api.chapterStudioState.getByChapterInstance, {
+              viewerSubject: viewer.subject,
+              chapterInstanceId: args.chapterInstanceId
+            }),
+            ctx.runQuery(api.chapterAnswers.getByChapter, {
+              viewerSubject: viewer.subject,
+              chapterInstanceId: args.chapterInstanceId
+            })
+          ])
+      );
 
       const template = storybook.templateId
         ? await ctx.runQuery(api.templates.getById, { templateId: storybook.templateId })
@@ -716,6 +726,12 @@ export const populateChapter = action({
         }
       };
     } catch (error) {
+      captureConvexError(error, {
+        flow: "studio_populate",
+        code: "POPULATE_FAILED",
+        storybookId: String(args.storybookId),
+        chapterInstanceId: String(args.chapterInstanceId)
+      });
       return {
         ok: false as const,
         errorCode: "POPULATE_FAILED",

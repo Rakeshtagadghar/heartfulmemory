@@ -45,7 +45,7 @@ function splitSentences(value: string) {
 }
 
 function normalizeSentenceForOverlap(value: string) {
-  return value.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  return value.toLowerCase().replaceAll(/[^\w\s]/g, " ").replaceAll(/\s+/g, " ").trim();
 }
 
 function clampWords(text: string, maxWords: number) {
@@ -116,29 +116,37 @@ function sectionCitations(
   return citations;
 }
 
-function sectionLeadPhrase(sectionId: string, narration: DraftNarrationSettings) {
+type SectionLeadPhraseKey = "timeline" | "reflection" | "intro" | "main" | "closing" | "default";
+
+function sectionLeadPhraseKey(sectionId: string): SectionLeadPhraseKey {
   const key = sectionId.toLowerCase();
-  if (key.includes("timeline")) {
+  if (key.includes("timeline")) return "timeline";
+  if (key.includes("reflection")) return "reflection";
+  if (key.includes("intro")) return "intro";
+  if (key.includes("main")) return "main";
+  if (key.includes("closing")) return "closing";
+  return "default";
+}
+
+function sectionLeadPhrase(sectionId: string, narration: DraftNarrationSettings) {
+  const key = sectionLeadPhraseKey(sectionId);
+  if (key === "intro") {
+    return "This story begins in a specific place, with the people and atmosphere that shaped the start.";
+  }
+  if (key === "main") {
+    return "The central events become clear through concrete details and interactions.";
+  }
+  if (key === "timeline") {
     return narration.voice === "first_person"
       ? "I can trace the memory step by step, with one moment leading into the next."
       : "They move through the memory step by step, with one moment leading into the next.";
   }
-  if (key.includes("reflection")) {
+  if (key === "reflection") {
     return narration.voice === "first_person"
       ? "When I look back, the meaning of this chapter comes into focus."
       : "When they look back, the meaning of this chapter comes into focus.";
   }
-  if (key.includes("intro")) {
-    return narration.voice === "first_person"
-      ? "This story begins in a specific place, with the people and atmosphere that shaped the start."
-      : "This story begins in a specific place, with the people and atmosphere that shaped the start.";
-  }
-  if (key.includes("main")) {
-    return narration.voice === "first_person"
-      ? "The central events become clear through concrete details and interactions."
-      : "The central events become clear through concrete details and interactions.";
-  }
-  if (key.includes("closing")) {
+  if (key === "closing") {
     return narration.voice === "first_person"
       ? "By the end, I can see what I carry forward from these memories."
       : "By the end, they can see what they carry forward from these memories.";

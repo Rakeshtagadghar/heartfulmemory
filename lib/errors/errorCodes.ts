@@ -1,0 +1,48 @@
+export const STABLE_AI_ERROR_CODES = [
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "CHAPTER_NOT_COMPLETED",
+  "NO_ANSWERS",
+  "RATE_LIMIT",
+  "DRAFT_ALREADY_GENERATING",
+  "INVALID_SECTION",
+  "GENERATION_EMPTY",
+  "PROMPT_LEAK",
+  "REPEATED_SECTION_TEXT",
+  "PROVIDER_ERROR",
+  "UNKNOWN"
+] as const;
+
+export const STABLE_STT_ERROR_CODES = [
+  "PROVIDER_RATE_LIMIT",
+  "INVALID_AUDIO",
+  "PROVIDER_ERROR",
+  "UNKNOWN"
+] as const;
+
+export const STABLE_STUDIO_ERROR_CODES = [
+  "DRAFT_NOT_READY",
+  "ILLUSTRATIONS_NOT_READY",
+  "POPULATE_FAILED"
+] as const;
+
+export const STABLE_ILLUSTRATION_ERROR_CODES = [
+  "RATE_LIMIT",
+  "DRAFT_NOT_READY",
+  "NO_CANDIDATES",
+  "AUTO_ILLUSTRATE_FAILED",
+  "ILLUSTRATION_ALREADY_SELECTING"
+] as const;
+
+export const STABLE_ERROR_CODES = [
+  ...STABLE_AI_ERROR_CODES,
+  ...STABLE_STT_ERROR_CODES,
+  ...STABLE_STUDIO_ERROR_CODES,
+  ...STABLE_ILLUSTRATION_ERROR_CODES
+] as const;
+
+export type StableErrorCode = (typeof STABLE_ERROR_CODES)[number];
+
+export function isStableErrorCode(value: string): value is StableErrorCode {
+  return (STABLE_ERROR_CODES as readonly string[]).includes(value);
+}

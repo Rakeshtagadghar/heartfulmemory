@@ -8,6 +8,11 @@ import { normalizeStorybookExportSettingsV1 } from "../../../../packages/shared-
 import type { ExportPreflightResponse } from "../../lib/export/client";
 import { requestExportPreflight, requestPdfExport, triggerBlobDownload } from "../../lib/export/client";
 import { updateLayoutStorybookSettingsAction } from "../../lib/actions/editor2";
+import {
+  captureStudioError,
+  recordStudioMilestone,
+  withStudioSpan
+} from "../studio/observability";
 import { Button } from "../ui/button";
 import { ExportHistory } from "./ExportHistory";
 import { ExportIssuesPanel } from "./ExportIssuesPanel";
@@ -72,10 +77,33 @@ export function ExportModal({
 
   async function runPreflightForTarget(target: ExportTarget) {
     setRunState((current) => ({ ...current, [target]: { status: "checking" } }));
-    const result = await requestExportPreflight({ storybookId, exportTarget: target });
+    recordStudioMilestone("export_step", "export_preflight", {
+      flow: "studio_export",
+      storybookId,
+      mode: target
+    }, "start");
+    const result = await withStudioSpan(
+      "export_preflight",
+      {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      },
+      () => requestExportPreflight({ storybookId, exportTarget: target })
+    );
     if (!result.ok) {
       setRunState((current) => ({ ...current, [target]: { status: "failed", error: result.error } }));
       setGlobalError(result.error);
+      captureStudioError(result.error, {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      });
+      recordStudioMilestone("export_step", "export_preflight", {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      }, "failed");
       return null;
     }
     setPreflightByTarget((current) => ({ ...current, [target]: result.data }));
@@ -83,6 +111,11 @@ export function ExportModal({
       ...current,
       [target]: { status: result.data.canProceed ? "idle" : "blocked" }
     }));
+    recordStudioMilestone("export_step", "export_preflight", {
+      flow: "studio_export",
+      storybookId,
+      mode: target
+    }, result.data.canProceed ? "success" : "failed");
     return result.data;
   }
 
@@ -109,10 +142,33 @@ export function ExportModal({
     }
 
     setRunState((current) => ({ ...current, [target]: { status: "generating" } }));
-    const result = await requestPdfExport({ storybookId, exportTarget: target, preview });
+    recordStudioMilestone("export_step", "export_generate", {
+      flow: "studio_export",
+      storybookId,
+      mode: target
+    }, "start");
+    const result = await withStudioSpan(
+      "export_generate",
+      {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      },
+      () => requestPdfExport({ storybookId, exportTarget: target, preview })
+    );
     if (!result.ok) {
       setRunState((current) => ({ ...current, [target]: { status: "failed", error: result.error } }));
       setGlobalError(result.error);
+      captureStudioError(result.error, {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      });
+      recordStudioMilestone("export_step", "export_generate", {
+        flow: "studio_export",
+        storybookId,
+        mode: target
+      }, "failed");
       return;
     }
 
@@ -138,6 +194,11 @@ export function ExportModal({
     ]);
 
     setRunState((current) => ({ ...current, [target]: { status: "done" } }));
+    recordStudioMilestone("export_step", "export_generate", {
+      flow: "studio_export",
+      storybookId,
+      mode: target
+    }, "success");
   }
 
   async function generateSelected(preview: boolean) {
@@ -340,4 +401,3 @@ export function ExportModal({
     </div>
   );
 }
-

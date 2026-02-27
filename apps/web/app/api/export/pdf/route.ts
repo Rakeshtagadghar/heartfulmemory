@@ -19,6 +19,8 @@ import {
   type ExportValidationIssue,
   validateExportContract
 } from "../../../../../../packages/rules-engine/src";
+import { captureAppError, captureAppWarning } from "../../../../../../lib/observability/capture";
+import { withSentrySpan } from "../../../../../../lib/observability/spans";
 
 export const runtime = "nodejs";
 
@@ -304,6 +306,17 @@ export async function GET(request: Request) {
     return NextResponse.redirect(signed, { status: 302 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to sign export download URL.";
+    captureAppError(error, {
+      runtime: "server",
+      flow: "export_pdf_get",
+      feature: "export_pdf",
+      code: "EXPORT_INTERNAL",
+      storybookId,
+      extra: {
+        exportTarget,
+        exportHash
+      }
+    });
     return jsonError(500, message);
   }
 }
@@ -417,6 +430,19 @@ export async function POST(request: Request) { // NOSONAR
   if (!parsed.validateOnly) {
     const rate = checkExportRateLimit(user.id);
     if (!rate.ok) {
+      captureAppWarning("Export rate limited", {
+        runtime: "server",
+        flow: "export_pdf_post",
+        feature: "export_pdf",
+        code: "EXPORT_RATE_LIMITED",
+        storybookId: parsed.storybookId,
+        extra: {
+          traceId,
+          retryAfterSeconds: rate.retryAfterSeconds,
+          limit: rate.limit,
+          remaining: rate.remaining
+        }
+      });
       return jsonExportError({
         status: 429,
         code: "EXPORT_RATE_LIMITED",
@@ -437,6 +463,16 @@ export async function POST(request: Request) { // NOSONAR
   });
   if (!payloadResult.ok) {
     const status = payloadResult.error.toLowerCase().includes("forbidden") ? 403 : 500;
+    captureAppWarning("Export payload build failed", {
+      runtime: "server",
+      flow: "export_pdf_post",
+      feature: "export_pdf",
+      code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
+      storybookId: parsed.storybookId,
+      extra: {
+        traceId
+      }
+    });
     return jsonExportError({
       status,
       code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
@@ -473,6 +509,20 @@ export async function POST(request: Request) { // NOSONAR
   }
 
   if (!preflight.ok) {
+    captureAppWarning("Export preflight blocked", {
+      runtime: "server",
+      flow: "export_pdf_post",
+      feature: "export_pdf",
+      code: "EXPORT_VALIDATION_FAILED",
+      storybookId: parsed.storybookId,
+      extra: {
+        traceId,
+        exportHash,
+        exportTarget: parsed.exportTarget,
+        blockingIssues: preflight.blockingIssues.length,
+        contractErrors: preflight.contractErrors.length
+      }
+    });
     return jsonExportError({
       status: 400,
       code: "EXPORT_VALIDATION_FAILED",
@@ -534,7 +584,19 @@ export async function POST(request: Request) { // NOSONAR
 
   try {
     const startedAt = Date.now();
-    const resolvedPayload = await resolveExportAssetUrls(payload, user.id);
+    const resolvedPayload = await withSentrySpan(
+      "export_resolve_assets",
+      {
+        flow: "export_pdf_post",
+        feature: "export_pdf",
+        mode: parsed.exportTarget,
+        storybookId: parsed.storybookId,
+        extra: {
+          traceId
+        }
+      },
+      () => resolveExportAssetUrls(payload, user.id)
+    );
     const contract = toContract(resolvedPayload, parsed.exportTarget);
     const debug =
       typeof parsed.debug === "boolean"
@@ -548,7 +610,20 @@ export async function POST(request: Request) { // NOSONAR
               showNodeIds: parsed.debug.showNodeIds
             }
           : undefined;
-    const rendered = await createPdfDocument({ contract, exportHash, debug });
+    const rendered = await withSentrySpan(
+      "export_render_pdf",
+      {
+        flow: "export_pdf_post",
+        feature: "export_pdf",
+        mode: parsed.exportTarget,
+        storybookId: parsed.storybookId,
+        extra: {
+          traceId,
+          pageCount: payload.pages.length
+        }
+      },
+      () => createPdfDocument({ contract, exportHash, debug })
+    );
     const filename = `${toSafeFilenameBase(payload.storybook.title)}-${parsed.exportTarget.toLowerCase()}.pdf`;
     let storedFileKey: string | undefined;
     let storedFileUrl: string | undefined;
@@ -606,6 +681,18 @@ export async function POST(request: Request) { // NOSONAR
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDF generation failed.";
+    captureAppError(error, {
+      runtime: "server",
+      flow: "export_pdf_post",
+      feature: "export_pdf",
+      code: "EXPORT_RENDER_FAILED",
+      storybookId: parsed.storybookId,
+      extra: {
+        traceId,
+        exportHash,
+        exportTarget: parsed.exportTarget
+      }
+    });
     await recordExportAttemptSafe({
       viewerSubject: user.id,
       storybookId: payload.storybook.id,

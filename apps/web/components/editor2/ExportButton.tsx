@@ -12,7 +12,8 @@ export function ExportButton({
   issueDisplayMeta,
   onExportSettingsChange,
   onIssueNavigate,
-  onIssuesUpdate
+  onIssuesUpdate,
+  onOpen
 }: {
   storybookId: string;
   storybookSettings: StorybookExportSettingsV1;
@@ -23,12 +24,20 @@ export function ExportButton({
   onExportSettingsChange?: (next: StorybookExportSettingsV1) => void;
   onIssueNavigate?: (issue: ExportValidationIssue) => void;
   onIssuesUpdate?: (issues: ExportValidationIssue[]) => void;
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <Button type="button" size="sm" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        size="sm"
+        onClick={() => {
+          onOpen?.();
+          setOpen(true);
+        }}
+      >
         Export
       </Button>
       <ExportModal

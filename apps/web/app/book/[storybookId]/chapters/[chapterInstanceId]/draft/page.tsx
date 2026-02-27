@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppShell } from "../../../../../../components/app/app-shell";
 import { Card } from "../../../../../../components/ui/card";
+import { ErrorBanner } from "../../../../../../components/ui/ErrorBanner";
 import { ButtonLink } from "../../../../../../components/ui/button";
 import { ViewportEvent } from "../../../../../../components/viewport-event";
 import { DraftSectionCard } from "../../../../../../components/draft/DraftSectionCard";
@@ -28,6 +29,9 @@ import {
   resetChapterEntityOverridesForUser,
   updateGuidedNarrationForUser
 } from "../../../../../../lib/data/create-flow";
+import { mapErrorCodeToUserMessage } from "../../../../../../../../lib/errors/userMessages";
+import { captureAppWarning } from "../../../../../../../../lib/observability/capture";
+import { createCorrelationId } from "../../../../../../../../lib/observability/correlation";
 
 type Props = {
   params: Promise<{ storybookId: string; chapterInstanceId: string }>;
@@ -88,19 +92,7 @@ function sameNarration(a: Record<string, unknown> | null | undefined, b: Record<
 
 function mapDraftErrorCode(errorCode: string | undefined) {
   if (!errorCode) return null;
-  const mapping: Record<string, string> = {
-    RATE_LIMIT: "Too many generation requests. Please wait a minute and try again.",
-    CHAPTER_NOT_COMPLETED: "Complete this chapter before generating a draft.",
-    NO_ANSWERS: "No usable answers were found for this chapter.",
-    DRAFT_ALREADY_GENERATING: "A draft generation job is already running for this chapter.",
-    INVALID_SECTION: "That section could not be regenerated.",
-    GENERATION_EMPTY: "The generated draft was empty. Try again.",
-    PROVIDER_ERROR: "The AI provider failed. Please try again.",
-    generation_failed: "Draft generation failed. Please try again.",
-    regen_failed: "Section regeneration failed. Please try again.",
-    approve_failed: "Could not approve the draft."
-  };
-  return mapping[errorCode] ?? "Something went wrong while generating the draft.";
+  return mapErrorCodeToUserMessage(errorCode, "Something went wrong while generating the draft.");
 }
 
 function readNarrationAnalyticsString(
@@ -178,6 +170,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
       </div>
     );
   }
+  const chapterKey = chapter.chapterKey;
 
   const latest = latestDraft.ok ? latestDraft.data : null;
   const versions = draftVersions.ok ? draftVersions.data : [];
@@ -201,10 +194,37 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
     const result = await generateChapterDraftForUser(currentUser.id, { storybookId, chapterInstanceId });
     if (!result.ok) {
-      redirect(draftUrl(storybookId, chapterInstanceId, { error: "generation_failed" }));
+      const errRef = createCorrelationId();
+      captureAppWarning("Draft generate request failed", {
+        runtime: "server",
+        flow: "draft_generate",
+        feature: "draft_review",
+        code: "generation_failed",
+        storybookId,
+        chapterInstanceId,
+        chapterKey,
+        extra: {
+          correlationId: errRef
+        }
+      });
+      redirect(draftUrl(storybookId, chapterInstanceId, { error: "generation_failed", errRef }));
     }
     if (!result.data.ok) {
-      redirect(draftUrl(storybookId, chapterInstanceId, { error: result.data.errorCode }));
+      const errRef = createCorrelationId();
+      captureAppWarning("Draft generate returned application error", {
+        runtime: "server",
+        flow: "draft_generate",
+        feature: "draft_review",
+        code: result.data.errorCode,
+        storybookId,
+        chapterInstanceId,
+        chapterKey,
+        extra: {
+          correlationId: errRef,
+          retryable: result.data.retryable ?? null
+        }
+      });
+      redirect(draftUrl(storybookId, chapterInstanceId, { error: result.data.errorCode, errRef }));
     }
     redirect(
       draftUrl(storybookId, chapterInstanceId, {
@@ -228,10 +248,39 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
       sectionId
     });
     if (!result.ok) {
-      redirect(draftUrl(storybookId, chapterInstanceId, { error: "regen_failed" }));
+      const errRef = createCorrelationId();
+      captureAppWarning("Draft section regenerate request failed", {
+        runtime: "server",
+        flow: "draft_regen_section",
+        feature: "draft_review",
+        code: "regen_failed",
+        storybookId,
+        chapterInstanceId,
+        chapterKey,
+        extra: {
+          sectionId,
+          correlationId: errRef
+        }
+      });
+      redirect(draftUrl(storybookId, chapterInstanceId, { error: "regen_failed", errRef }));
     }
     if (!result.data.ok) {
-      redirect(draftUrl(storybookId, chapterInstanceId, { error: result.data.errorCode }));
+      const errRef = createCorrelationId();
+      captureAppWarning("Draft section regenerate returned application error", {
+        runtime: "server",
+        flow: "draft_regen_section",
+        feature: "draft_review",
+        code: result.data.errorCode,
+        storybookId,
+        chapterInstanceId,
+        chapterKey,
+        extra: {
+          sectionId,
+          correlationId: errRef,
+          retryable: result.data.retryable ?? null
+        }
+      });
+      redirect(draftUrl(storybookId, chapterInstanceId, { error: result.data.errorCode, errRef }));
     }
     redirect(
       draftUrl(storybookId, chapterInstanceId, {
@@ -251,7 +300,23 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
     const draftIdValue = formData.get("draftId");
     const draftId = typeof draftIdValue === "string" ? draftIdValue : "";
     const result = await approveChapterDraftForUser(currentUser.id, draftId);
-    if (!result.ok) redirect(draftUrl(storybookId, chapterInstanceId, { error: "approve_failed" }));
+    if (!result.ok) {
+      const errRef = createCorrelationId();
+      captureAppWarning("Draft approval failed", {
+        runtime: "server",
+        flow: "draft_approve",
+        feature: "draft_review",
+        code: "approve_failed",
+        storybookId,
+        chapterInstanceId,
+        chapterKey,
+        extra: {
+          draftId,
+          correlationId: errRef
+        }
+      });
+      redirect(draftUrl(storybookId, chapterInstanceId, { error: "approve_failed", errRef }));
+    }
     redirect(draftUrl(storybookId, chapterInstanceId, { notice: "approved" }));
   }
 
@@ -359,6 +424,7 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
   const notice = getSearchString(resolvedSearchParams, "notice");
   const providerFromQuery = getSearchString(resolvedSearchParams, "provider") ?? "heuristic";
   const errorCode = getSearchString(resolvedSearchParams, "error");
+  const errorRef = getSearchString(resolvedSearchParams, "errRef");
   const narrationMismatch = latest ? !sameNarration(latest.narration, storybook.data.narration) : false;
   const narrationForAnalytics = buildNarrationAnalyticsProps(storybook.data.narration);
   const errorEventName = errorCode === "regen_failed" ? "draft_regen_section_error" : "draft_generate_error";
@@ -473,9 +539,11 @@ export default async function ChapterDraftReviewPage({ params, searchParams }: P
         </Card>
       ) : null}
       {errorCode ? (
-        <Card className="p-4">
-          <p className="text-sm text-rose-100">{mapDraftErrorCode(errorCode)}</p>
-        </Card>
+        <ErrorBanner
+          title="Draft action failed"
+          message={mapDraftErrorCode(errorCode) ?? "Something went wrong while generating the draft."}
+          referenceId={errorRef}
+        />
       ) : null}
 
       <Card className="p-6 sm:p-8">

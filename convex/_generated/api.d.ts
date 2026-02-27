@@ -31,6 +31,7 @@ import type * as illustrate_scoring from "../illustrate/scoring.js";
 import type * as illustrate_selectForSlots from "../illustrate/selectForSlots.js";
 import type * as illustrate_themeGenerator from "../illustrate/themeGenerator.js";
 import type * as mediaAssets from "../mediaAssets.js";
+import type * as observability_sentry from "../observability/sentry.js";
 import type * as pages from "../pages.js";
 import type * as storybookChapters from "../storybookChapters.js";
 import type * as storybooks from "../storybooks.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   "illustrate/selectForSlots": typeof illustrate_selectForSlots;
   "illustrate/themeGenerator": typeof illustrate_themeGenerator;
   mediaAssets: typeof mediaAssets;
+  "observability/sentry": typeof observability_sentry;
   pages: typeof pages;
   storybookChapters: typeof storybookChapters;
   storybooks: typeof storybooks;

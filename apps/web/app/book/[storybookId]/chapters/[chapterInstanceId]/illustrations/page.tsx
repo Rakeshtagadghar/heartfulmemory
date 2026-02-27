@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppShell } from "../../../../../../components/app/app-shell";
 import { Card } from "../../../../../../components/ui/card";
+import { ErrorBanner } from "../../../../../../components/ui/ErrorBanner";
 import { Badge } from "../../../../../../components/ui/badge";
 import { ButtonLink } from "../../../../../../components/ui/button";
 import { ViewportEvent } from "../../../../../../components/viewport-event";
@@ -29,6 +30,9 @@ import {
   type ProviderAssetCandidate,
   toggleIllustrationSlotLockForUser
 } from "../../../../../../lib/data/create-flow";
+import { mapErrorCodeToUserMessage } from "../../../../../../../../lib/errors/userMessages";
+import { captureAppWarning } from "../../../../../../../../lib/observability/capture";
+import { createCorrelationId } from "../../../../../../../../lib/observability/correlation";
 
 type Props = {
   params: Promise<{ storybookId: string; chapterInstanceId: string }>;
@@ -88,18 +92,7 @@ function parseCandidateJson(raw: FormDataEntryValue | null): ProviderAssetCandid
 
 function mapError(code: string | undefined) {
   if (!code) return null;
-  const map: Record<string, string> = {
-    DRAFT_NOT_READY: "Generate a chapter draft first before auto-illustrating.",
-    RATE_LIMIT: "Too many illustration requests. Please wait and try again.",
-    NO_CANDIDATES: "No print-safe images were found. Try regenerate or replace manually.",
-    AUTO_ILLUSTRATE_FAILED: "Auto-illustrate failed. Please try again.",
-    SEARCH_FAILED: "Could not load replacement search results.",
-    REPLACE_FAILED: "Could not replace the selected slot.",
-    LOCK_FAILED: "Could not update slot lock state.",
-    UPLOAD_FAILED: "Could not upload and apply your image.",
-    UPLOAD_NOT_FOUND: "Uploaded image was not found in your library."
-  };
-  return map[code] ?? "Something went wrong while loading illustrations.";
+  return mapErrorCodeToUserMessage(code, "Something went wrong while loading illustrations.");
 }
 
 async function resolveUploadedImageSourceUrl(input: {
@@ -166,12 +159,31 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       </div>
     );
   }
+  const chapterKey = chapter.chapterKey;
 
   const draft = latestDraft.ok ? latestDraft.data : null;
   const illustration = latestIllustration.ok ? latestIllustration.data : null;
   const illustrationId = illustration?.id ?? null;
   const slotMap = illustrationSlotMap.ok ? illustrationSlotMap.data : null;
   const versionList = versions.ok ? versions.data : [];
+
+  function buildIllustrationErrorRedirect(errorCode: string, extra?: Record<string, unknown>) {
+    const errRef = createCorrelationId();
+    captureAppWarning("Illustration action failed", {
+      runtime: "server",
+      flow: "illustrations_review",
+      feature: "illustrations_review",
+      code: errorCode,
+      storybookId,
+      chapterKey,
+      chapterInstanceId,
+      extra: {
+        correlationId: errRef,
+        ...(extra ?? {})
+      }
+    });
+    return routeUrl(storybookId, chapterInstanceId, { error: errorCode, errRef });
+  }
 
   async function runAutoIllustrate(regenerate: boolean) {
     "use server";
@@ -185,8 +197,14 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       providerMode: "both",
       regenerate
     });
-    if (!result.ok) redirect(routeUrl(storybookId, chapterInstanceId, { error: "AUTO_ILLUSTRATE_FAILED" }));
-    if (!result.data.ok) redirect(routeUrl(storybookId, chapterInstanceId, { error: result.data.errorCode }));
+    if (!result.ok) redirect(buildIllustrationErrorRedirect("AUTO_ILLUSTRATE_FAILED"));
+    if (!result.data.ok) {
+      redirect(
+        buildIllustrationErrorRedirect(result.data.errorCode, {
+          retryable: result.data.retryable ?? null
+        })
+      );
+    }
     redirect(
       routeUrl(storybookId, chapterInstanceId, {
         notice: regenerate ? "regenerated" : "generated",
@@ -211,9 +229,9 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     const currentProfile = await getOrCreateProfileForUser(currentUser);
     if (!currentProfile.onboarding_completed) redirect("/app/onboarding");
     const slotId = formDataString(formData, "slotId");
-    if (!illustrationId || !slotId) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
+    if (!illustrationId || !slotId) redirect(buildIllustrationErrorRedirect("LOCK_FAILED"));
     const result = await toggleIllustrationSlotLockForUser(currentUser.id, { illustrationId, slotId });
-    if (!result.ok) redirect(routeUrl(storybookId, chapterInstanceId, { error: "LOCK_FAILED" }));
+    if (!result.ok) redirect(buildIllustrationErrorRedirect("LOCK_FAILED", { slotId }));
     redirect(routeUrl(storybookId, chapterInstanceId, { notice: "lock_updated", slotId }));
   }
 
@@ -226,12 +244,12 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
     const slotId = formDataString(formData, "slotId");
     const candidate = parseCandidateJson(formData.get("candidateJson"));
     if (!illustrationId || !slotId || !candidate) {
-      redirect(routeUrl(storybookId, chapterInstanceId, { error: "REPLACE_FAILED" }));
+      redirect(buildIllustrationErrorRedirect("REPLACE_FAILED", { slotId }));
     }
 
     const cached = await cacheIllustrationAssetsForUser(currentUser.id, [candidate]);
     if (!cached.ok || !cached.data.ok || cached.data.assets.length === 0) {
-      redirect(routeUrl(storybookId, chapterInstanceId, { error: "REPLACE_FAILED" }));
+      redirect(buildIllustrationErrorRedirect("REPLACE_FAILED", { slotId }));
     }
     const cachedRow = cached.data.assets[0];
     const replaced = await replaceIllustrationSlotAssignmentForUser(currentUser.id, {
@@ -250,7 +268,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       }
     });
     if (!replaced.ok) {
-      redirect(routeUrl(storybookId, chapterInstanceId, { error: "REPLACE_FAILED" }));
+      redirect(buildIllustrationErrorRedirect("REPLACE_FAILED", { slotId }));
     }
     redirect(routeUrl(storybookId, chapterInstanceId, { notice: "replaced", slotId }));
   }
@@ -401,6 +419,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
   }
 
   const errorCode = getSearchString(resolvedSearchParams, "error");
+  const errorRef = getSearchString(resolvedSearchParams, "errRef");
   const notice = getSearchString(resolvedSearchParams, "notice");
 
   return renderInAppShell(
@@ -469,7 +488,11 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
         <Card className="p-4"><p className="text-sm text-emerald-100">Lock updated for {getSearchString(resolvedSearchParams, "slotId")}.</p></Card>
       ) : null}
       {errorCode ? (
-        <Card className="p-4"><p className="text-sm text-rose-100">{mapError(errorCode)}</p></Card>
+        <ErrorBanner
+          title="Illustration action failed"
+          message={mapError(errorCode) ?? "Something went wrong while loading illustrations."}
+          referenceId={errorRef}
+        />
       ) : null}
       {replaceSearchFailed ? (
         <Card className="p-4"><p className="text-sm text-rose-100">{mapError("SEARCH_FAILED")}</p></Card>

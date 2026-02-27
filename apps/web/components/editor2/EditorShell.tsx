@@ -44,6 +44,11 @@ import { showStudioToast } from "../studio/ui/toasts";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
 import type { StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
+import {
+  captureStudioError,
+  recordStudioMilestone,
+  withStudioSpan
+} from "../studio/observability";
 import { MemoriosoLogo } from "../memorioso-logo";
 import { trackAuthLogout } from "../../lib/analytics/events_auth";
 import { TextPanel } from "../studio/panels/TextPanel";
@@ -367,6 +372,14 @@ export function Editor2Shell({// NOSONAR
     } as Record<string, Record<string, unknown>>;
   }, [cropDraft]);
 
+  useEffect(() => {
+    recordStudioMilestone("ui_action", "studio_open", {
+      flow: "studio_open",
+      storybookId: storybook.id,
+      pageId: effectiveSelectedPageId ?? undefined
+    }, "success");
+  }, [effectiveSelectedPageId, storybook.id]);
+
   const persistFramePatch = useCallback(async (frameId: string, patch: Parameters<typeof updateFrameAction>[2]) => {
     const result = await updateFrameAction(storybook.id, frameId, patch);
     if (!result.ok) {
@@ -540,6 +553,12 @@ export function Editor2Shell({// NOSONAR
 
   async function handleInsertElement(itemId: ElementsCatalogItemId) {
     if (!selectedPage) return;
+    recordStudioMilestone("editor_action", "insert_element", {
+      flow: "studio_insert_element",
+      storybookId: storybook.id,
+      pageId: selectedPage.id,
+      nodeType: itemId
+    }, "start");
     let input:
       | Parameters<typeof createFrameAction>[2]
       | null = null;
@@ -578,6 +597,12 @@ export function Editor2Shell({// NOSONAR
     const result = await createFrameAction(storybook.id, selectedPage.id, input);
     if (!result.ok) {
       setMessage(result.error);
+      captureStudioError(result.error, {
+        flow: "studio_insert_element",
+        storybookId: storybook.id,
+        pageId: selectedPage.id,
+        nodeType: itemId
+      });
       return;
     }
     setFramesByPageId((current) => mergeFrameIntoMap(current, result.data));
@@ -586,6 +611,12 @@ export function Editor2Shell({// NOSONAR
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
     setMessage(null);
+    recordStudioMilestone("editor_action", "insert_element", {
+      flow: "studio_insert_element",
+      storybookId: storybook.id,
+      pageId: selectedPage.id,
+      nodeType: result.data.type
+    }, "success");
   }
 
   async function handleAddTextPreset(presetId: TextPresetId) {
@@ -777,6 +808,13 @@ export function Editor2Shell({// NOSONAR
     if (frame?.type === "IMAGE" && !options?.additive) {
       openImagePanel();
     }
+    recordStudioMilestone("editor_action", "selection_change", {
+      flow: "studio_selection",
+      storybookId: storybook.id,
+      pageId: frame?.page_id ?? selectedPage?.id ?? undefined,
+      nodeType: frame?.type ?? undefined,
+      selectionCount: options?.additive ? selectedFrameIds.length + 1 : 1
+    });
   }
 
   function handleStartTextEdit(frameId: string) {
@@ -807,6 +845,12 @@ export function Editor2Shell({// NOSONAR
       previousPinnedPanelId: studioShell.pinnedPanelId
     });
     studioShell.openPanel("crop", "mouse", true);
+    recordStudioMilestone("editor_action", "crop_enter", {
+      flow: "studio_crop",
+      storybookId: storybook.id,
+      pageId: frame.page_id,
+      nodeType: frame.type
+    }, "start");
   }
 
   function handleCropChange(frameId: string, crop: Record<string, unknown>) {
@@ -842,19 +886,50 @@ export function Editor2Shell({// NOSONAR
     if (session?.frameId !== frameId) return;
     const frame = findFrameById(frameId);
     if (!frame) return;
-    const result = await persistFramePatch(frameId, buildApplyCropPatch({
-      cropDraft: session.value,
-      expectedVersion: frame.version
-    }));
+    const startedAt = Date.now();
+    const result = await withStudioSpan(
+      "studio_crop_apply",
+      {
+        flow: "studio_crop",
+        storybookId: storybook.id,
+        pageId: frame.page_id,
+        nodeType: frame.type
+      },
+      () =>
+        persistFramePatch(frameId, buildApplyCropPatch({
+          cropDraft: session.value,
+          expectedVersion: frame.version
+        }))
+    );
     if (!result.ok) {
       setMessage(result.error);
       showStudioToast({ kind: "error", title: "Crop apply failed", message: result.error });
+      captureStudioError(result.error, {
+        flow: "studio_crop",
+        storybookId: storybook.id,
+        pageId: frame.page_id,
+        nodeType: frame.type
+      });
+      recordStudioMilestone("editor_action", "crop_apply", {
+        flow: "studio_crop",
+        storybookId: storybook.id,
+        pageId: frame.page_id,
+        nodeType: frame.type,
+        durationMs: Date.now() - startedAt
+      }, "failed");
       return;
     }
     setCropModeFrameId((current) => (current === frameId ? null : current));
     setCropDraft(null);
     restorePanelAfterCropExit(session);
     showStudioToast({ kind: "success", title: "Crop applied", message: "Image crop was saved." });
+    recordStudioMilestone("editor_action", "crop_apply", {
+      flow: "studio_crop",
+      storybookId: storybook.id,
+      pageId: frame.page_id,
+      nodeType: frame.type,
+      durationMs: Date.now() - startedAt
+    }, "success");
   }
 
   function handleCancelCropEdit(frameId: string) {
@@ -1040,7 +1115,13 @@ export function Editor2Shell({// NOSONAR
     const result = await persistFramePatches(patches);
     if (!result.ok) return;
     setMessage("Layer order updated.");
-  }, [currentFrames, persistFramePatches, selectedFrameIds, selectedFrames]);
+    recordStudioMilestone("editor_action", "layer_operation", {
+      flow: "studio_layers",
+      storybookId: storybook.id,
+      pageId: selectedPageId ?? undefined,
+      selectionCount: selectedFrameIds.length
+    }, "success");
+  }, [currentFrames, persistFramePatches, selectedFrameIds, selectedFrames, selectedPageId, storybook.id]);
 
   async function handleAlignToPage(
     action: Parameters<typeof buildAlignToPagePatches>[2]
@@ -1230,20 +1311,62 @@ export function Editor2Shell({// NOSONAR
     height?: number | null;
     sizeBytes: number;
   }) {
+    recordStudioMilestone("editor_action", "upload_asset_create", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: selectedPage?.id ?? undefined,
+      nodeType: "upload"
+    }, "start");
     const result = await createUploadAssetAction(storybook.id, input);
     if (!result.ok) {
       setMessage(result.error);
+      captureStudioError(result.error, {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: selectedPage?.id ?? undefined,
+        nodeType: "upload"
+      });
+      recordStudioMilestone("editor_action", "upload_asset_create", {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: selectedPage?.id ?? undefined,
+        nodeType: "upload"
+      }, "failed");
       return { ok: false as const, error: result.error };
     }
     setAssets((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
+    recordStudioMilestone("editor_action", "upload_asset_create", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: selectedPage?.id ?? undefined,
+      nodeType: "upload"
+    }, "success");
     return { ok: true as const, asset: result.data };
   }
 
   async function handleInsertStockResult(result: NormalizedStockResult) {
+    recordStudioMilestone("editor_action", "insert_photo", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: selectedPage?.id ?? undefined,
+      provider: result.provider
+    }, "start");
     const created = await createStockAssetAction(storybook.id, buildStockAssetCreateInput(result));
     if (!created.ok) {
       setMessage(created.error);
       showStudioToast({ kind: "error", title: "Photo insert failed", message: created.error });
+      captureStudioError(created.error, {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: selectedPage?.id ?? undefined,
+        provider: result.provider
+      });
+      recordStudioMilestone("editor_action", "insert_photo", {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: selectedPage?.id ?? undefined,
+        provider: result.provider
+      }, "failed");
       return;
     }
     setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
@@ -1276,9 +1399,22 @@ export function Editor2Shell({// NOSONAR
     setSelectedFrameDraftPatch({});
     setMessage(null);
     showStudioToast({ kind: "success", title: "Photo inserted", message: "Added to the active page." });
+    recordStudioMilestone("editor_action", "insert_photo", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: selectedPage?.id ?? undefined,
+      provider: result.provider
+    }, "success");
   }
 
   async function handleDropMediaOnFrame(frameId: string, payload: DraggedMediaPayload) {
+    const targetFrame = findFrameById(frameId);
+    recordStudioMilestone("editor_action", "drop_media_on_frame", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: targetFrame?.page_id ?? selectedPage?.id ?? undefined,
+      nodeType: targetFrame?.type ?? "FRAME"
+    }, "start");
     if (payload.kind === "asset") {
       const targetAsset =
         assets.find((item) => item.id === payload.assetId) ??
@@ -1296,6 +1432,13 @@ export function Editor2Shell({// NOSONAR
         previewUrl: sourceUrl,
         attribution: { provider: "upload" }
       });
+      recordStudioMilestone("editor_action", "drop_media_on_frame", {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: targetFrame?.page_id ?? selectedPage?.id ?? undefined,
+        nodeType: targetFrame?.type ?? "FRAME",
+        provider: "upload"
+      }, "success");
       return;
     }
 
@@ -1304,6 +1447,19 @@ export function Editor2Shell({// NOSONAR
     if (!created.ok) {
       setMessage(created.error);
       showStudioToast({ kind: "error", title: "Photo insert failed", message: created.error });
+      captureStudioError(created.error, {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: targetFrame?.page_id ?? selectedPage?.id ?? undefined,
+        provider: result.provider
+      });
+      recordStudioMilestone("editor_action", "drop_media_on_frame", {
+        flow: "studio_insert_media",
+        storybookId: storybook.id,
+        pageId: targetFrame?.page_id ?? selectedPage?.id ?? undefined,
+        nodeType: targetFrame?.type ?? "FRAME",
+        provider: result.provider
+      }, "failed");
       return;
     }
     setAssets((current) => [created.data, ...current.filter((item) => item.id !== created.data.id)]);
@@ -1314,6 +1470,13 @@ export function Editor2Shell({// NOSONAR
       previewUrl: result.previewUrl,
       attribution: buildStockFrameAttribution(result)
     });
+    recordStudioMilestone("editor_action", "drop_media_on_frame", {
+      flow: "studio_insert_media",
+      storybookId: storybook.id,
+      pageId: targetFrame?.page_id ?? selectedPage?.id ?? undefined,
+      nodeType: targetFrame?.type ?? "FRAME",
+      provider: result.provider
+    }, "success");
   }
 
   const studioPanelContents = {
@@ -1671,19 +1834,22 @@ export function Editor2Shell({// NOSONAR
       onClearSelection={handleClearSelection}
     />
   );
+  const shellClassName = (() => {
+    if (canvasOnlyFullscreen) {
+      return "fixed inset-0 z-[80] flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]";
+    }
+    if (fullscreen) {
+      return "flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]";
+    }
+    return "flex h-[calc(100vh-5.5rem)] min-h-[680px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a111d] shadow-[0_24px_80px_rgba(0,0,0,0.35)]";
+  })();
 
   return (
     <div
       ref={shellContainerRef}
-      className={
-        canvasOnlyFullscreen
-          ? "fixed inset-0 z-[80] flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]"
-          : fullscreen
-          ? "flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]"
-          : "flex h-[calc(100vh-5.5rem)] min-h-[680px] flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a111d] shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
-      }
+      className={shellClassName}
     >
-      {!canvasOnlyFullscreen ? (
+      {canvasOnlyFullscreen ? null : (
         <>
       <div className="relative z-40 border-b border-white/10 px-0 py-0">
         <div className="relative overflow-visible rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] shadow-[0_12px_40px_rgba(4,10,20,0.35)] backdrop-blur-2xl">
@@ -1722,6 +1888,13 @@ export function Editor2Shell({// NOSONAR
                 onExportSettingsChange={setStorybookExportSettings}
                 onIssueNavigate={handleNavigateToExportIssue}
                 onIssuesUpdate={setPreflightIssues}
+                onOpen={() =>
+                  recordStudioMilestone("export_step", "export_click", {
+                    flow: "studio_export",
+                    storybookId: storybook.id,
+                    pageId: effectiveSelectedPageId ?? undefined
+                  }, "start")
+                }
               />
               <div ref={userMenuRef} className="relative ml-1">
                 <button
@@ -1789,7 +1962,7 @@ export function Editor2Shell({// NOSONAR
         </div>
       ) : null}
         </>
-      ) : null}
+      )}
 
       <div className="flex min-h-0 flex-1">
         {canvasOnlyFullscreen ? (
@@ -1854,9 +2027,7 @@ export function Editor2Shell({// NOSONAR
                 onBringToFront={handleBringToFront}
                 onSendBackward={handleSendBackward}
                 onOpenImagePicker={
-                  selectedFrame &&
-                  (selectedFrame.type === "IMAGE" ||
-                    selectedFrame.type === "FRAME")
+                  selectedFrame?.type === "IMAGE" || selectedFrame?.type === "FRAME"
                     ? openImagePanel
                     : undefined
                 }
@@ -1881,7 +2052,7 @@ export function Editor2Shell({// NOSONAR
         )}
       </div>
 
-      {!canvasOnlyFullscreen ? (
+      {canvasOnlyFullscreen ? null : (
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <p>WYSIWYG canvas v1</p>
@@ -2034,7 +2205,7 @@ export function Editor2Shell({// NOSONAR
           </p>
         </div>
       </div>
-      ) : null}
+      )}
 
       {isPending ? (
         <div className="pointer-events-none absolute right-4 top-14 rounded-lg border border-white/10 bg-[#0d1626]/90 px-3 py-1 text-xs text-white/80">

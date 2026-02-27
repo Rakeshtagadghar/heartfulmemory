@@ -3,6 +3,8 @@
 import { v } from "convex/values";
 import { action } from "../_generated/server";
 import type { ActionCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import type { FunctionReference } from "convex/server";
 import { api } from "../_generated/api";
 import { getConvexAiEnv } from "../env";
 import { checkAndRecordAiRateLimit } from "./rateLimit";
@@ -14,6 +16,7 @@ import { runDraftQualityChecks } from "../../lib/ai/qualityChecks";
 import { computeAnswersHash } from "../../lib/hash/answersHash";
 import { toLegacyDraftEntities } from "../../lib/entities/entitiesV2ToLegacy";
 import { applyEntityOverrides } from "../../lib/entities/applyOverrides";
+import { captureConvexError, withConvexSpan } from "../observability/sentry";
 import type {
   ChapterDraftSection,
   ChapterDraftSectionDefinition,
@@ -38,6 +41,21 @@ type StableAiErrorCode =
   | "REPEATED_SECTION_TEXT"
   | "PROVIDER_ERROR"
   | "UNKNOWN";
+
+type DraftWarning = {
+  code: string;
+  message: string;
+  severity: "info" | "warning" | "error";
+  sectionId?: string;
+};
+
+type StoredChapterAnswer = {
+  questionId: string;
+  answerText?: string | null;
+  skipped?: boolean;
+};
+
+type AnyActionRef = FunctionReference<"action", "public", Record<string, unknown>, unknown>;
 
 async function requireActionUser(ctx: ActionCtx, explicitSubject?: string) {
   const identity = await ctx.auth.getUserIdentity();
@@ -169,8 +187,8 @@ function mergeRegeneratedSectionText(
 }
 
 function combineWarnings(
-  qualityWarnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>,
-  validatorWarnings: Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>
+  qualityWarnings: DraftWarning[],
+  validatorWarnings: DraftWarning[]
 ) {
   return [...qualityWarnings, ...validatorWarnings];
 }
@@ -193,7 +211,7 @@ function hasOverrideEntries(overrides: ChapterEntityOverrides | null | undefined
 
 function mapExtractorWarningsToDraftWarnings(
   warnings: ExtractorWarning[]
-): Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }> {
+): DraftWarning[] {
   return warnings.map((warning) => ({
     code: warning.code,
     message: warning.message,
@@ -202,7 +220,7 @@ function mapExtractorWarningsToDraftWarnings(
 }
 
 function extractorApiRef() {
-  return (api as unknown as Record<string, { extractFromAnswers: unknown }>)["ai/entitiesExtractor"];
+  return (api as unknown as Record<string, { extractFromAnswers: AnyActionRef }>)["ai/entitiesExtractor"];
 }
 
 function normalizeEntityText(value: string) {
@@ -252,8 +270,8 @@ function repairMissingEntityCitations(
 async function resolveEntitiesForChapter(args: {
   ctx: ActionCtx;
   viewerSubject: string;
-  storybookId: string;
-  chapterInstanceId: string;
+  storybookId: Id<"storybooks">;
+  chapterInstanceId: Id<"storybookChapters">;
   chapterKey: string;
   chapterTitle: string;
   groundedAnswers: GroundedAnswer[];
@@ -265,7 +283,7 @@ async function resolveEntitiesForChapter(args: {
 
   const overrides = (await args.ctx.runQuery(api.chapterEntityOverrides.getByChapter, {
     viewerSubject: args.viewerSubject,
-    chapterInstanceId: args.chapterInstanceId as any
+    chapterInstanceId: args.chapterInstanceId
   })) as ChapterEntityOverrides | null;
 
   const canReuseCachedEntities =
@@ -278,12 +296,12 @@ async function resolveEntitiesForChapter(args: {
     return {
       entitiesV2: repairedCached,
       answersHash,
-      warnings: [] as Array<{ code: string; message: string; severity: "info" | "warning" | "error"; sectionId?: string }>,
+      warnings: [] as DraftWarning[],
       usedCache: true
     };
   }
 
-  const extractResult = (await args.ctx.runAction(extractorApiRef().extractFromAnswers as any, {
+  const extractResult = (await args.ctx.runAction(extractorApiRef().extractFromAnswers, {
     viewerSubject: args.viewerSubject,
     storybookId: args.storybookId,
     chapterInstanceId: args.chapterInstanceId,
@@ -383,9 +401,10 @@ export const generateV2 = action({
         template: (templateResult as Record<string, unknown> | null) ?? null
       });
 
-      const groundedAnswers = answers
-        .filter((answer) => hasMeaningfulAnswer(answer))
-        .map((answer) => ({
+      const answerRows = (Array.isArray(answers) ? answers : []) as StoredChapterAnswer[];
+      const groundedAnswers: GroundedAnswer[] = answerRows
+        .filter((answer: StoredChapterAnswer) => hasMeaningfulAnswer(answer))
+        .map((answer: StoredChapterAnswer): GroundedAnswer => ({
           questionId: answer.questionId,
           prompt: promptMap.get(answer.questionId) ?? `Question ${answer.questionId}`,
           answerText: (answer.answerText ?? "").trim()
@@ -401,16 +420,27 @@ export const generateV2 = action({
         };
       }
 
-      const entitiesResolution = await resolveEntitiesForChapter({
-        ctx,
-        viewerSubject: viewer.subject,
-        storybookId: args.storybookId as any,
-        chapterInstanceId: args.chapterInstanceId as any,
-        chapterKey: chapter.chapterKey,
-        chapterTitle: chapter.title,
-        groundedAnswers,
-        latestDraft
-      });
+      const entitiesResolution = await withConvexSpan(
+        "chapter_draft_entities_resolve",
+        {
+          flow: "draft_generate_v2",
+          provider: aiEnv.providerDefault,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          resolveEntitiesForChapter({
+            ctx,
+            viewerSubject: viewer.subject,
+            storybookId: args.storybookId,
+            chapterInstanceId: args.chapterInstanceId,
+            chapterKey: chapter.chapterKey,
+            chapterTitle: chapter.title,
+            groundedAnswers,
+            latestDraft
+          })
+      );
 
       const sectionPlan = getSectionFrameworkForChapterKeyV2(chapter.chapterKey);
       const narration = normalizeNarration((storybook.narration ?? null) as Record<string, unknown> | null);
@@ -449,17 +479,28 @@ export const generateV2 = action({
         targetSections: sectionPlan
       });
 
-      const generated = await llm.generateChapterDraft({
-        templateId: storybook.templateId ?? null,
-        chapterKey: chapter.chapterKey,
-        chapterTitle: chapter.title,
-        questionAnswers: groundedAnswers,
-        narrationSettings: narration,
-        targetSections: sectionPlan,
-        promptText,
-        timeoutMs: aiEnv.timeoutMs,
-        maxWordsByLength: aiEnv.maxWordsByLength
-      });
+      const generated = await withConvexSpan(
+        "chapter_draft_generate",
+        {
+          flow: "draft_generate_v2",
+          provider: aiEnv.providerDefault,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          llm.generateChapterDraft({
+            templateId: storybook.templateId ?? null,
+            chapterKey: chapter.chapterKey,
+            chapterTitle: chapter.title,
+            questionAnswers: groundedAnswers,
+            narrationSettings: narration,
+            targetSections: sectionPlan,
+            promptText,
+            timeoutMs: aiEnv.timeoutMs,
+            maxWordsByLength: aiEnv.maxWordsByLength
+          })
+      );
 
       const normalizedSections = normalizeGeneratedSectionsForFramework(sectionPlan, generated.sections);
       const validator = validateDraftOutputV1({
@@ -530,6 +571,12 @@ export const generateV2 = action({
       };
     } catch (error) {
       const mapped = mapAiActionError(error);
+      captureConvexError(error, {
+        flow: "draft_generate_v2",
+        code: mapped.code,
+        storybookId: String(args.storybookId),
+        chapterInstanceId: String(args.chapterInstanceId)
+      });
       return {
         ok: false as const,
         errorCode: mapped.code,
@@ -610,9 +657,10 @@ export const regenSectionV2 = action({
         template: (templateResult as Record<string, unknown> | null) ?? null
       });
 
-      const groundedAnswers = answers
-        .filter((answer) => hasMeaningfulAnswer(answer))
-        .map((answer) => ({
+      const answerRows = (Array.isArray(answers) ? answers : []) as StoredChapterAnswer[];
+      const groundedAnswers: GroundedAnswer[] = answerRows
+        .filter((answer: StoredChapterAnswer) => hasMeaningfulAnswer(answer))
+        .map((answer: StoredChapterAnswer): GroundedAnswer => ({
           questionId: answer.questionId,
           prompt: promptMap.get(answer.questionId) ?? `Question ${answer.questionId}`,
           answerText: (answer.answerText ?? "").trim()
@@ -620,16 +668,27 @@ export const regenSectionV2 = action({
         .filter((answer) => answer.answerText.length > 0);
 
       const narration = normalizeNarration((storybook.narration ?? null) as Record<string, unknown> | null);
-      const entitiesResolution = await resolveEntitiesForChapter({
-        ctx,
-        viewerSubject: viewer.subject,
-        storybookId: args.storybookId as any,
-        chapterInstanceId: args.chapterInstanceId as any,
-        chapterKey: chapter.chapterKey,
-        chapterTitle: chapter.title,
-        groundedAnswers,
-        latestDraft
-      });
+      const entitiesResolution = await withConvexSpan(
+        "chapter_draft_entities_resolve",
+        {
+          flow: "draft_regen_section_v2",
+          provider: aiEnv.providerDefault,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          resolveEntitiesForChapter({
+            ctx,
+            viewerSubject: viewer.subject,
+            storybookId: args.storybookId,
+            chapterInstanceId: args.chapterInstanceId,
+            chapterKey: chapter.chapterKey,
+            chapterTitle: chapter.title,
+            groundedAnswers,
+            latestDraft
+          })
+      );
       const begin = await ctx.runMutation(api.chapterDrafts.beginVersion, {
         viewerSubject: viewer.subject,
         storybookId: args.storybookId,
@@ -658,17 +717,28 @@ export const regenSectionV2 = action({
         narration,
         targetSections: [targetSection]
       });
-      const generated = await llm.generateChapterDraft({
-        templateId: storybook.templateId ?? null,
-        chapterKey: chapter.chapterKey,
-        chapterTitle: chapter.title,
-        questionAnswers: groundedAnswers,
-        narrationSettings: narration,
-        targetSections: [targetSection],
-        promptText,
-        timeoutMs: aiEnv.timeoutMs,
-        maxWordsByLength: aiEnv.maxWordsByLength
-      });
+      const generated = await withConvexSpan(
+        "chapter_draft_regen_section",
+        {
+          flow: "draft_regen_section_v2",
+          provider: aiEnv.providerDefault,
+          storybookId: String(args.storybookId),
+          chapterKey: chapter.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () =>
+          llm.generateChapterDraft({
+            templateId: storybook.templateId ?? null,
+            chapterKey: chapter.chapterKey,
+            chapterTitle: chapter.title,
+            questionAnswers: groundedAnswers,
+            narrationSettings: narration,
+            targetSections: [targetSection],
+            promptText,
+            timeoutMs: aiEnv.timeoutMs,
+            maxWordsByLength: aiEnv.maxWordsByLength
+          })
+      );
 
       const mergedSections = mergeRegeneratedSectionText(
         latestDraft.sections as ChapterDraftSection[],
@@ -744,6 +814,12 @@ export const regenSectionV2 = action({
       };
     } catch (error) {
       const mapped = mapAiActionError(error);
+      captureConvexError(error, {
+        flow: "draft_regen_section_v2",
+        code: mapped.code,
+        storybookId: String(args.storybookId),
+        chapterInstanceId: String(args.chapterInstanceId)
+      });
       return {
         ok: false as const,
         errorCode: mapped.code,

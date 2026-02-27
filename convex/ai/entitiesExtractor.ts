@@ -6,6 +6,7 @@ import type { ActionCtx } from "../_generated/server";
 import { buildEntitiesExtractorPromptV2 } from "../../lib/ai/prompts/entitiesExtractorPrompt_v2";
 import { normalizeEntityDateValue } from "../../lib/entities/normalizeDates";
 import type { ChapterDraftEntitiesV2, ExtractorAnswerInput } from "../../packages/shared/entities/entitiesTypes";
+import { captureConvexError, withConvexSpan } from "../observability/sentry";
 
 type ExtractErrorCode = "UNAUTHORIZED" | "NO_ANSWERS" | "EXTRACTOR_FAILED";
 
@@ -195,7 +196,16 @@ export const extractFromAnswers = action({
         answers
       });
 
-      const rawEntities = heuristicExtractRaw({ answers });
+      const rawEntities = await withConvexSpan(
+        "entities_extract",
+        {
+          flow: "entities_extract",
+          storybookId: String(args.storybookId),
+          chapterKey: args.chapterKey,
+          chapterInstanceId: String(args.chapterInstanceId)
+        },
+        () => heuristicExtractRaw({ answers })
+      );
 
       return {
         ok: true as const,
@@ -206,6 +216,13 @@ export const extractFromAnswers = action({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Entity extraction failed";
       const unauthorized = message.toLowerCase().includes("unauthorized");
+      captureConvexError(error, {
+        flow: "entities_extract",
+        code: unauthorized ? "UNAUTHORIZED" : "EXTRACTOR_FAILED",
+        storybookId: String(args.storybookId),
+        chapterKey: args.chapterKey,
+        chapterInstanceId: String(args.chapterInstanceId)
+      });
       return {
         ok: false as const,
         errorCode: (unauthorized ? "UNAUTHORIZED" : "EXTRACTOR_FAILED") as ExtractErrorCode,

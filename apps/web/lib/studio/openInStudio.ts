@@ -5,6 +5,9 @@ import {
   populateStudioChapterForUser
 } from "../data/create-flow";
 import type { DataResult } from "../data/_shared";
+import { captureAppWarning } from "../../../../lib/observability/capture";
+import { createCorrelationId } from "../../../../lib/observability/correlation";
+import { withSentrySpan } from "../../../../lib/observability/spans";
 
 export type OpenInStudioResolution =
   | {
@@ -21,6 +24,7 @@ export type OpenInStudioResolution =
       message: string;
       retryable?: boolean;
       href?: string;
+      correlationId?: string;
     };
 
 function studioHref(storybookId: string, chapterInstanceId: string, firstPageId?: string | null) {
@@ -58,7 +62,7 @@ export async function resolveOpenInStudioForUser(
   }
 
   if (!draftResult.ok) return { ok: false, error: draftResult.error };
-  if (!draftResult.data || draftResult.data.status !== "ready") {
+  if (draftResult.data?.status !== "ready") {
     return {
       ok: true,
       data: {
@@ -73,7 +77,7 @@ export async function resolveOpenInStudioForUser(
   }
 
   if (!illustrationResult.ok) return { ok: false, error: illustrationResult.error };
-  if (!illustrationResult.data || illustrationResult.data.status !== "ready") {
+  if (illustrationResult.data?.status !== "ready") {
     return {
       ok: true,
       data: {
@@ -87,16 +91,41 @@ export async function resolveOpenInStudioForUser(
     };
   }
 
-  const populate = await populateStudioChapterForUser(viewerSubject, input);
+  const populate = await withSentrySpan(
+    "studio_open_populate_chapter",
+    {
+      flow: "studio_open_populate",
+      feature: "studio_open",
+      storybookId: input.storybookId,
+      chapterKey: chapter.chapterKey,
+      chapterInstanceId: input.chapterInstanceId
+    },
+    () => populateStudioChapterForUser(viewerSubject, input)
+  );
   if (!populate.ok) return { ok: false, error: populate.error };
   if (!populate.data.ok) {
+    const correlationId = createCorrelationId();
+    captureAppWarning("Studio chapter populate failed", {
+      runtime: "server",
+      flow: "studio_open_populate",
+      feature: "studio_open",
+      code: populate.data.errorCode,
+      storybookId: input.storybookId,
+      chapterKey: chapter.chapterKey,
+      chapterInstanceId: input.chapterInstanceId,
+      extra: {
+        correlationId,
+        retryable: populate.data.retryable ?? null
+      }
+    });
     return {
       ok: true,
       data: {
         ok: false,
         errorCode: populate.data.errorCode,
         message: populate.data.message,
-        retryable: populate.data.retryable
+        retryable: populate.data.retryable,
+        correlationId
       }
     };
   }

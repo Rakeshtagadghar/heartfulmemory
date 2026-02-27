@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { captureAppError } from "../../../../lib/observability/capture";
 
 export default function AppRouteError({
   error,
@@ -10,6 +12,19 @@ export default function AppRouteError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    captureAppError(error, {
+      runtime: "client",
+      flow: "app_route_error",
+      feature: "app_shell",
+      route: "/app",
+      code: error.digest,
+      extra: {
+        digest: error.digest ?? null
+      }
+    });
+  }, [error]);
+
   return (
     <Card className="p-6">
       <p className="text-xs uppercase tracking-[0.18em] text-rose-200/80">App Error</p>
@@ -25,4 +40,3 @@ export default function AppRouteError({
     </Card>
   );
 }
-

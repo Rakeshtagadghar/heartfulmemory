@@ -6,6 +6,7 @@ import type { ActionCtx } from "./_generated/server";
 import { getConvexSttEnv } from "./env";
 import { mapSttError } from "../lib/stt/errorMap";
 import { createSttProviderRegistry } from "../lib/stt/providerRegistry";
+import { captureConvexError, captureConvexWarning, withConvexSpan } from "./observability/sentry";
 
 const providerValidator = v.union(v.literal("groq"), v.literal("elevenlabs"));
 const softRateWindowMs = 60 * 60 * 1000;
@@ -49,6 +50,11 @@ export const transcribe = action({
     const env = getConvexSttEnv();
     const rateCheck = checkAndRecordSoftRateLimit(viewer.subject, env.rateLimitPerUserSoft);
     if (!rateCheck.allowed) {
+      captureConvexWarning("STT rate limit reached", {
+        flow: "stt_transcribe",
+        code: "PROVIDER_RATE_LIMIT",
+        provider: args.provider ?? env.providerDefault
+      });
       return {
         ok: false as const,
         errorCode: "PROVIDER_RATE_LIMIT" as const,
@@ -73,13 +79,21 @@ export const transcribe = action({
     });
 
     try {
-      const result = await registry.transcribe({
-        audioBase64: args.audioBase64,
-        mimeType: args.mimeType,
-        language: args.language ?? env.languageDefault,
-        prompt: args.prompt ?? null,
-        provider
-      });
+      const result = await withConvexSpan(
+        "stt_transcribe",
+        {
+          flow: "stt_transcribe",
+          provider
+        },
+        () =>
+          registry.transcribe({
+            audioBase64: args.audioBase64,
+            mimeType: args.mimeType,
+            language: args.language ?? env.languageDefault,
+            prompt: args.prompt ?? null,
+            provider
+          })
+      );
 
       return {
         ok: true as const,
@@ -92,6 +106,15 @@ export const transcribe = action({
       };
     } catch (error) {
       const mapped = mapSttError(error);
+      captureConvexError(error, {
+        flow: "stt_transcribe",
+        code: mapped.code,
+        provider,
+        extra: {
+          mimeType: args.mimeType,
+          durationMs: args.durationMs ?? null
+        }
+      });
       return {
         ok: false as const,
         errorCode: mapped.code,
