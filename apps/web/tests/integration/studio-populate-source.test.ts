@@ -33,8 +33,8 @@ describe("Sprint 21 studio populate source contracts", () => {
     expect(populate).toContain("stableNodeKey(");
     expect(populate).toContain("const key = String(meta.stableNodeKey)");
     expect(populate).toContain("byStableKey");
-    expect(populate).toContain("lastAppliedDraftVersion === draft.version");
-    expect(populate).toContain("lastAppliedIllustrationVersion === illustrationState.version");
+    expect(populate).toContain("lastAppliedDraftVersion: draft.version");
+    expect(populate).toContain("lastAppliedIllustrationVersion: illustrationState.version");
     expect(populate).toContain("api.chapterStudioState.upsertPopulationState");
     expect(populate).toContain("skippedBecauseEdited");
     expect(contractTypes).toContain("stableNodeIdStrategy: \"chapterKey:pageTemplateId:slotId\"");

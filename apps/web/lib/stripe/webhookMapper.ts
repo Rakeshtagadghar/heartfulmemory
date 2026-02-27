@@ -7,6 +7,7 @@ export type NormalizedStripeSubscription = {
   stripeSubscriptionId: string;
   planId: string;
   status: "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+  currentPeriodStart: number | null;
   currentPeriodEnd: number | null;
   cancelAtPeriodEnd: boolean;
   latestInvoiceId: string | null;
@@ -34,14 +35,31 @@ function planIdFromSubscription(subscription: Stripe.Subscription) {
   return getAllowedPriceById(firstPriceId)?.planId ?? "free";
 }
 
-function getCurrentPeriodEndMs(subscription: Stripe.Subscription) {
-  const firstItemPeriodEnd = subscription.items.data
+function getCurrentPeriodBoundsMs(subscription: Stripe.Subscription) {
+  const earliestItemPeriodStart = subscription.items.data
+    .map((item) => item.current_period_start)
+    .filter((value): value is number => typeof value === "number")
+    .sort((a, b) => a - b)[0];
+  const latestItemPeriodEnd = subscription.items.data
     .map((item) => item.current_period_end)
     .filter((value): value is number => typeof value === "number")
     .sort((a, b) => b - a)[0];
-  if (typeof firstItemPeriodEnd === "number") return firstItemPeriodEnd * 1000;
-  if (typeof subscription.trial_end === "number") return subscription.trial_end * 1000;
-  return null;
+  const periodStartMs =
+    typeof earliestItemPeriodStart === "number"
+      ? earliestItemPeriodStart * 1000
+      : typeof subscription.trial_start === "number"
+        ? subscription.trial_start * 1000
+        : subscription.start_date * 1000;
+  const periodEndMs =
+    typeof latestItemPeriodEnd === "number"
+      ? latestItemPeriodEnd * 1000
+      : typeof subscription.trial_end === "number"
+        ? subscription.trial_end * 1000
+        : null;
+  return {
+    periodStartMs,
+    periodEndMs
+  };
 }
 
 export function mapStripeSubscriptionForUpsert(input: {
@@ -54,13 +72,15 @@ export function mapStripeSubscriptionForUpsert(input: {
       : input.subscription.customer?.id ?? "";
   const userId = (input.subscription.metadata?.userId ?? input.fallbackUserId ?? "").trim();
   if (!customerId || !userId) return null;
+  const period = getCurrentPeriodBoundsMs(input.subscription);
   return {
     userId,
     stripeCustomerId: customerId,
     stripeSubscriptionId: input.subscription.id,
     planId: planIdFromSubscription(input.subscription),
     status: normalizeStatus(input.subscription.status),
-    currentPeriodEnd: getCurrentPeriodEndMs(input.subscription),
+    currentPeriodStart: period.periodStartMs,
+    currentPeriodEnd: period.periodEndMs,
     cancelAtPeriodEnd: Boolean(input.subscription.cancel_at_period_end),
     latestInvoiceId:
       typeof input.subscription.latest_invoice === "string"

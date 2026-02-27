@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { anyApi, convexMutation, convexQuery } from "../../../../lib/convex/ops";
-import { getStripeClient, getStripeWebhookSecret } from "../../../../lib/stripe/stripeClient";
+import { getStripeClientForBilling, getStripeWebhookSecretForBilling } from "../../../../lib/stripe/stripeClientFactory";
 import { mapStripeSubscriptionForUpsert } from "../../../../lib/stripe/webhookMapper";
 import { captureAppError, captureAppWarning } from "../../../../../../lib/observability/capture";
 
@@ -65,11 +65,12 @@ async function upsertFromSubscription(input: {
 }
 
 export async function POST(request: Request) {
-  const stripe = getStripeClient();
-  const webhookSecret = getStripeWebhookSecret();
-  if (!stripe || !webhookSecret) {
+  const stripeFactory = getStripeClientForBilling();
+  const webhookSecret = getStripeWebhookSecretForBilling();
+  if (!stripeFactory.ok || !webhookSecret) {
     return NextResponse.json({ ok: false, error: "Stripe webhook is not configured." }, { status: 500 });
   }
+  const stripe = stripeFactory.stripe;
 
   const signature = request.headers.get("stripe-signature");
   if (!signature) {

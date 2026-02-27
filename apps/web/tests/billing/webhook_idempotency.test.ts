@@ -7,6 +7,24 @@ const convexMutationMock = vi.fn();
 const convexQueryMock = vi.fn();
 const mapSubscriptionMock = vi.fn();
 
+vi.mock("../../lib/stripe/stripeClientFactory", () => ({
+  getStripeClientForBilling: () => ({
+    ok: true,
+    billing: {
+      mode: "test"
+    },
+    stripe: {
+      webhooks: {
+        constructEvent: constructEventMock
+      },
+      subscriptions: {
+        retrieve: retrieveSubscriptionMock
+      }
+    }
+  }),
+  getStripeWebhookSecretForBilling: () => "whsec_test"
+}));
+
 vi.mock("../../lib/stripe/stripeClient", () => ({
   getStripeClient: () => ({
     webhooks: {
@@ -82,6 +100,7 @@ describe("stripe webhook idempotency behavior", () => {
       stripeSubscriptionId: "sub_123",
       planId: "pro",
       status: "active",
+      currentPeriodStart: null,
       currentPeriodEnd: null,
       cancelAtPeriodEnd: false,
       latestInvoiceId: null

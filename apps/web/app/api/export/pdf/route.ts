@@ -267,6 +267,31 @@ async function recordExportAttemptSafe(input: {
   });
 }
 
+async function incrementExportUsageSafe(input: {
+  viewerSubject: string;
+  storybookId: string;
+  traceId: string;
+  exportTarget: ExportTarget;
+  incrementBy?: number;
+}) {
+  const result = await convexMutation<{ used: number }>(anyApi.exportUsage.incrementUsageForViewer, {
+    viewerSubject: input.viewerSubject,
+    incrementBy: input.incrementBy ?? 1
+  });
+  if (result.ok) return;
+  captureAppWarning("Export usage increment failed", {
+    runtime: "server",
+    flow: "export_pdf_post",
+    feature: "export_quota",
+    code: "EXPORT_USAGE_INCREMENT_FAILED",
+    storybookId: input.storybookId,
+    extra: {
+      traceId: input.traceId,
+      target: input.exportTarget
+    }
+  });
+}
+
 type ExportLookupRecord = {
   id: string;
   storybookId: string;
@@ -442,6 +467,11 @@ export async function POST(request: Request) { // NOSONAR
         canExportHardcopy: boolean;
         exportsRemaining: number | null;
       };
+      usage?: {
+        used: number;
+        periodStart: number;
+        periodEnd: number;
+      };
     }>(anyApi.billing.getEntitlementsForViewer, {
       viewerSubject: user.id
     });
@@ -482,12 +512,17 @@ export async function POST(request: Request) { // NOSONAR
       return jsonExportError({
         status: 402,
         code: decision.code,
-        message: "Upgrade to Pro to export PDFs.",
+        message:
+          decision.code === "EXPORT_QUOTA_EXCEEDED"
+            ? "Export quota reached for the current billing period."
+            : "Upgrade to Pro to export PDFs.",
         traceId,
         details: {
           target: parsed.exportTarget,
           planId: entitlements.data.entitlements.planId,
-          subscriptionStatus: entitlements.data.entitlements.subscriptionStatus
+          subscriptionStatus: entitlements.data.entitlements.subscriptionStatus,
+          exportsRemaining: entitlements.data.entitlements.exportsRemaining,
+          usage: entitlements.data.usage ?? null
         }
       });
     }
@@ -630,6 +665,14 @@ export async function POST(request: Request) { // NOSONAR
       fileKey: cached.fileKey,
       fileUrl
     });
+    if (!parsed.preview) {
+      await incrementExportUsageSafe({
+        viewerSubject: user.id,
+        storybookId: payload.storybook.id,
+        traceId,
+        exportTarget: parsed.exportTarget
+      });
+    }
     const response = new NextResponse(new Uint8Array(cached.pdf), {
       status: 200,
       headers: {
@@ -733,6 +776,14 @@ export async function POST(request: Request) { // NOSONAR
       fileKey: storedFileKey,
       fileUrl: storedFileUrl
     });
+    if (!parsed.preview) {
+      await incrementExportUsageSafe({
+        viewerSubject: user.id,
+        storybookId: payload.storybook.id,
+        traceId,
+        exportTarget: parsed.exportTarget
+      });
+    }
     const response = new NextResponse(new Uint8Array(rendered.pdf), {
       status: 200,
       headers: {

@@ -5,15 +5,16 @@ export type ExportGuardDecision = {
   allowed: true;
 } | {
   allowed: false;
-  code: "EXPORT_PLAN_UPGRADE_REQUIRED";
+  code: "EXPORT_PLAN_UPGRADE_REQUIRED" | "EXPORT_QUOTA_EXCEEDED";
 };
 
 export function evaluateExportAccess(
   entitlements: BillingEntitlements,
   target: "DIGITAL_PDF" | "HARDCOPY_PRINT_PDF"
 ): ExportGuardDecision {
-  if (canExportTarget(entitlements, target) && ((entitlements.exportsRemaining ?? 1) > 0)) {
-    return { allowed: true };
+  if (!canExportTarget(entitlements, target)) return { allowed: false, code: "EXPORT_PLAN_UPGRADE_REQUIRED" };
+  if (entitlements.exportsRemaining !== null && entitlements.exportsRemaining <= 0) {
+    return { allowed: false, code: "EXPORT_QUOTA_EXCEEDED" };
   }
-  return { allowed: false, code: "EXPORT_PLAN_UPGRADE_REQUIRED" };
+  return { allowed: true };
 }

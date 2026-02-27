@@ -38,6 +38,7 @@ export default defineSchema({
       v.literal("unpaid"),
       v.literal("incomplete")
     ),
+    currentPeriodStart: v.optional(v.union(v.number(), v.null())),
     currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
     cancelAtPeriodEnd: v.boolean(),
     latestInvoiceId: v.optional(v.union(v.string(), v.null())),
@@ -52,6 +53,13 @@ export default defineSchema({
     processedAt: v.number(),
     subscriptionId: v.optional(v.union(v.string(), v.null()))
   }).index("by_stripeEventId", ["stripeEventId"]),
+  exportUsage: defineTable({
+    userId: v.string(),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    countPdfExports: v.number(),
+    updatedAt: v.number()
+  }).index("by_userId_periodStart", ["userId", "periodStart"]),
   waitlist: defineTable({
     email: v.string(),
     email_lower: v.string(),

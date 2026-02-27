@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { anyApi, convexQuery } from "../../../../lib/convex/ops";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
-import { getStripeClient } from "../../../../lib/stripe/stripeClient";
+import { getStripeClientForBilling } from "../../../../lib/stripe/stripeClientFactory";
 import { resolveAbsoluteUrl } from "../../../../lib/billing/urls";
 import { captureAppError } from "../../../../../../lib/observability/capture";
 
@@ -12,10 +12,11 @@ type PortalBody = {
 };
 
 export async function POST(request: Request) {
-  const stripe = getStripeClient();
-  if (!stripe) {
-    return NextResponse.json({ ok: false, error: "Stripe is not configured." }, { status: 500 });
+  const stripeFactory = getStripeClientForBilling();
+  if (!stripeFactory.ok) {
+    return NextResponse.json({ ok: false, error: stripeFactory.error }, { status: 500 });
   }
+  const stripe = stripeFactory.stripe;
 
   const user = await requireAuthenticatedUser("/app/account/billing");
   let body: PortalBody = {};
@@ -47,8 +48,13 @@ export async function POST(request: Request) {
   });
 
   try {
+    const configuration =
+      stripeFactory.billing.mode === "test"
+        ? stripeFactory.billing.stripePortalConfigIdTest
+        : stripeFactory.billing.stripePortalConfigIdLive;
     const session = await stripe.billingPortal.sessions.create({
       customer: customer.data.stripeCustomerId,
+      configuration: configuration ?? undefined,
       return_url: returnUrl
     });
     return NextResponse.json({ ok: true, portalUrl: session.url });
@@ -68,4 +74,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

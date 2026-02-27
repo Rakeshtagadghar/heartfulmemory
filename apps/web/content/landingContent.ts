@@ -34,7 +34,7 @@ export const heroCopy = {
   badge: brand.name,
   headline: "Turn family memories into a royal heirloom storybook.",
   subheadline:
-    "Record or write stories. Get guided prompts. Edit chapters. Export a beautiful PDF in minutes.",
+    "Record or write stories. Get guided prompts. Edit chapters. Start free, then upgrade to Pro export when ready.",
   socialProof:
     "Inspired by modern memoir services that preserve stories with prompts, recordings, and keepsake books."
 } as const;
@@ -43,7 +43,7 @@ export const heroBullets = [
   "Record voice/video or type stories",
   "AI-guided interview prompts",
   "Chapters + photos, beautifully arranged",
-  "Export a premium PDF storybook (Phase 1)"
+  "Pro export: up to 100 PDFs/month + hardcopy-ready mode"
 ] as const;
 
 export const howItWorks: readonly HowItWorksStep[] = [
@@ -96,35 +96,38 @@ export const testimonials: readonly TestimonialItem[] = [
 
 export const pricingPlans: readonly PricingPlan[] = [
   {
-    id: "digital",
-    name: "Digital Storybook",
-    price: "GBP 19",
-    period: "one-time",
-    features: ["Unlimited chapters", "Record or type stories", "Template library", "Photo uploads", "PDF export"],
-    cta: "Get Digital",
-    href: "/checkout?plan=digital"
+    id: "free",
+    name: "Free",
+    price: "GBP 0",
+    period: "per month",
+    features: [
+      "Create and edit storybooks",
+      "Guided prompts and chapter drafting",
+      "Photo uploads and studio layout tools"
+    ],
+    cta: "Start free",
+    href: "/create/template"
   },
   {
-    id: "gift",
-    name: "Gift a Storybook",
-    price: "GBP 29",
-    period: "one-time",
-    features: ["Everything in Digital", "Gift email + printable card", "Invite storyteller flow", "Private family contributions"],
-    cta: "Gift it",
-    href: "/checkout?plan=gift"
-  },
-  {
-    id: "print_future",
-    name: "Print Upgrade",
-    price: "Coming soon",
-    period: "",
-    features: ["Hardcover print-ready layout", "QR codes to recordings", "Multiple copies"],
-    cta: "Notify me",
-    href: "#email_capture"
+    id: "pro",
+    name: "Pro Export",
+    price: "GBP 30",
+    period: "per month",
+    features: [
+      "Up to 100 PDF exports/month",
+      "Digital and hardcopy-ready PDF export",
+      "Manage billing and invoices in Stripe portal"
+    ],
+    cta: "Upgrade to export",
+    href: "/app/account/billing?intent=upgrade"
   }
 ];
 
 export const faqs: readonly FaqItem[] = [
+  {
+    q: "Why do I need Pro to export?",
+    a: "PDF export is part of Pro. The Free plan is for writing, editing, and preparing your storybook before export."
+  },
   {
     q: "Do I have to write?",
     a: "No. You can record voice or video and turn it into an editable story. Phase 1 includes recording and a transcription-ready pipeline."
@@ -167,16 +170,16 @@ export const landingPageConfig: MarketingPageConfig = {
         socialProof: heroCopy.socialProof,
         ctas: [
           {
-            label: "Start your Storybook",
-            href: "/app/start",
+            label: "Start free",
+            href: "/create/template",
             eventName: "cta_start_click",
             eventProps: { section: "hero" },
             variant: "primary"
           },
           {
-            label: "Gift a Storybook",
-            href: "/gift",
-            eventName: "cta_gift_click",
+            label: "Upgrade to export",
+            href: "/app/account/billing?intent=upgrade",
+            eventName: "cta_upgrade_click",
             eventProps: { section: "hero" },
             variant: "secondary"
           }
@@ -258,12 +261,12 @@ export const landingPageConfig: MarketingPageConfig = {
             href: plan.href,
             eventName: "pricing_plan_select",
             eventProps: { plan_id: plan.id },
-            variant: index === 2 ? "secondary" : "primary"
+            variant: index === 0 ? "secondary" : "primary"
           },
-          badge: index === 1 ? "Popular gift" : undefined
+          badge: index === 1 ? "Most popular" : undefined
         })),
         note:
-          "The digital storybook includes everything you need to create and export your storybook as a PDF. The print upgrade, launching later, will add features for a print-ready layout and QR codes linking to recordings."
+          "Pro includes up to 100 PDF exports per month and hardcopy-ready output."
       }
     },
     {

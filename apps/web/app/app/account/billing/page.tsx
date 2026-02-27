@@ -3,9 +3,21 @@ import { Card } from "../../../../components/ui/card";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
 import { anyApi, convexQuery } from "../../../../lib/convex/ops";
 import { ManageBillingButton } from "../../../../components/billing/ManageBillingButton";
+import { PlanBenefits } from "../../../../components/billing/PlanBenefits";
+import { UpgradeCheckoutButton } from "../../../../components/billing/UpgradeCheckoutButton";
+import { UpgradeCheckoutLauncher } from "../../../../components/billing/UpgradeCheckoutLauncher";
 
-export default async function BillingAccountPage() {
+export default async function BillingAccountPage({
+  searchParams
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireAuthenticatedUser("/app/account/billing");
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const intentParam = resolvedSearchParams.intent;
+  const checkoutErrorParam = resolvedSearchParams.checkoutError;
+  const intent = Array.isArray(intentParam) ? intentParam[0] : intentParam;
+  const checkoutError = Array.isArray(checkoutErrorParam) ? checkoutErrorParam[0] : checkoutErrorParam;
 
   const billingState = await convexQuery<{
     entitlements: {
@@ -28,6 +40,7 @@ export default async function BillingAccountPage() {
 
   const planId = billingState.ok ? billingState.data.entitlements.planId : "free";
   const subscription = billingState.ok ? billingState.data.subscription : null;
+  const shouldAutostartUpgrade = planId !== "pro" && intent === "upgrade";
 
   return (
     <div className="space-y-6">
@@ -53,8 +66,19 @@ export default async function BillingAccountPage() {
           </div>
         </div>
 
+        {planId === "pro" ? <PlanBenefits className="mt-5 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80" /> : null}
+
+        <UpgradeCheckoutLauncher enabled={shouldAutostartUpgrade} returnTo="/app/account/billing" />
+
         <div className="mt-6 flex flex-wrap items-center gap-3">
-          <ManageBillingButton returnUrl="/app/account/billing" />
+          {planId === "pro" ? (
+            <ManageBillingButton returnUrl="/app/account/billing" />
+          ) : (
+            <UpgradeCheckoutButton returnTo="/app/account/billing" />
+          )}
+          <Link href="/app/account/invoices" className="text-sm text-gold hover:text-[#e8cc95]">
+            Invoices
+          </Link>
           <Link href="/app" className="text-sm text-gold hover:text-[#e8cc95]">
             Back to dashboard
           </Link>
@@ -65,6 +89,9 @@ export default async function BillingAccountPage() {
             Could not load billing entitlements. You can still open Stripe portal if you already upgraded.
           </p>
         )}
+        {checkoutError ? (
+          <p className="mt-2 text-xs text-rose-100">Checkout could not be started: {checkoutError}</p>
+        ) : null}
       </Card>
     </div>
   );

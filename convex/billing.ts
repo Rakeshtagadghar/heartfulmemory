@@ -3,6 +3,7 @@ import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from
 import { v } from "convex/values";
 import { requireUser } from "./authz";
 import { resolveBillingEntitlements } from "../packages/shared/billing/entitlementRules";
+import { getPdfExportUsageForPeriod, resolveQuotaPeriodForUser } from "./exportUsage";
 
 type Ctx = MutationCtx | QueryCtx;
 type BillingCustomerRow = {
@@ -20,6 +21,7 @@ type BillingSubscriptionRow = {
   stripeSubscriptionId: string;
   planId: string;
   status: string;
+  currentPeriodStart?: number | null;
   currentPeriodEnd?: number | null;
   cancelAtPeriodEnd: boolean;
   latestInvoiceId?: string | null;
@@ -71,6 +73,7 @@ function toSubscriptionDto(row: BillingSubscriptionRow) {
     stripeSubscriptionId: row.stripeSubscriptionId,
     planId: row.planId,
     status: row.status,
+    currentPeriodStart: row.currentPeriodStart ?? null,
     currentPeriodEnd: row.currentPeriodEnd ?? null,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     latestInvoiceId: row.latestInvoiceId ?? null,
@@ -153,11 +156,16 @@ export const getEntitlementsForViewer = queryGeneric({
       getCustomerByUserId(ctx, viewer.subject),
       getLatestSubscriptionByUserId(ctx, viewer.subject)
     ]);
+    const quotaPeriod = await resolveQuotaPeriodForUser(ctx, viewer.subject);
+    const resolvedExportsUsed =
+      typeof args.exportsUsedThisMonth === "number"
+        ? Math.max(0, args.exportsUsedThisMonth)
+        : await getPdfExportUsageForPeriod(ctx, viewer.subject, quotaPeriod.periodStart);
 
     const entitlements = resolveBillingEntitlements({
       planId: subscription?.planId ?? "free",
       subscriptionStatus: subscription?.status ?? "none",
-      exportsUsedThisMonth: args.exportsUsedThisMonth ?? 0,
+      exportsUsedThisMonth: resolvedExportsUsed,
       currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
       gracePeriodDays: args.gracePeriodDays ?? 0
     });
@@ -165,7 +173,13 @@ export const getEntitlementsForViewer = queryGeneric({
     return {
       entitlements,
       customer: toCustomerDto(customer),
-      subscription: toSubscriptionDto(subscription)
+      subscription: toSubscriptionDto(subscription),
+      usage: {
+        used: resolvedExportsUsed,
+        periodStart: quotaPeriod.periodStart,
+        periodEnd: quotaPeriod.periodEnd,
+        periodSource: quotaPeriod.periodSource
+      }
     };
   }
 });
@@ -234,6 +248,7 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
     stripeSubscriptionId: v.string(),
     planId: v.string(),
     status: subscriptionStatusValidator,
+    currentPeriodStart: v.optional(v.union(v.number(), v.null())),
     currentPeriodEnd: v.optional(v.union(v.number(), v.null())),
     cancelAtPeriodEnd: v.boolean(),
     latestInvoiceId: v.optional(v.union(v.string(), v.null()))
@@ -275,6 +290,7 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
         stripeCustomerId: args.stripeCustomerId,
         planId: args.planId,
         status: args.status,
+        currentPeriodStart: args.currentPeriodStart ?? null,
         currentPeriodEnd: args.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
         latestInvoiceId: args.latestInvoiceId ?? null,
@@ -288,6 +304,7 @@ export const upsertSubscriptionFromStripeInternal = internalMutation({
         stripeSubscriptionId: args.stripeSubscriptionId,
         planId: args.planId,
         status: args.status,
+        currentPeriodStart: args.currentPeriodStart ?? null,
         currentPeriodEnd: args.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: args.cancelAtPeriodEnd,
         latestInvoiceId: args.latestInvoiceId ?? null,

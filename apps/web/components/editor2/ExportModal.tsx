@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ExportTarget } from "../../../../packages/pdf-renderer/src/contracts";
 import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
 import type { StorybookExportSettingsV1 } from "../../../../packages/shared-schema/storybookSettings.types";
 import { normalizeStorybookExportSettingsV1 } from "../../../../packages/shared-schema/storybookSettings.types";
-import type { ExportPreflightResponse } from "../../lib/export/client";
+import type { ExportPreflightResponse, ExportRequestError } from "../../lib/export/client";
 import { requestExportPreflight, requestPdfExport, triggerBlobDownload } from "../../lib/export/client";
 import { updateLayoutStorybookSettingsAction } from "../../lib/actions/editor2";
 import {
@@ -22,6 +23,7 @@ import { ExportResultsPanel, type ExportResultItem } from "./ExportResultsPanel"
 type TargetRunState = "idle" | "checking" | "blocked" | "generating" | "done" | "failed";
 type ExportSelection = "DIGITAL_ONLY" | "HARDCOPY_ONLY" | "BOTH";
 type ExportRunMap = Record<ExportTarget, { status: TargetRunState; error?: string }>;
+type BillingActionHint = "upgrade" | "manage" | null;
 
 const targetLabels: Record<ExportTarget, string> = {
   DIGITAL_PDF: "Digital PDF",
@@ -47,6 +49,16 @@ function summarizePreflightBlock(preflight: ExportPreflightResponse) {
     parts.push(`${contractErrorCount} contract error${contractErrorCount === 1 ? "" : "s"}`);
   }
   return parts.join(", ");
+}
+
+function resolveBillingActionHint(error: ExportRequestError): BillingActionHint {
+  if (error.code === "EXPORT_PLAN_UPGRADE_REQUIRED") return "upgrade";
+  if (error.code === "EXPORT_QUOTA_EXCEEDED") {
+    const details = error.details as { planId?: string } | undefined;
+    if (details?.planId === "pro") return "manage";
+    return "upgrade";
+  }
+  return null;
 }
 
 export function ExportModal({
@@ -82,6 +94,7 @@ export function ExportModal({
   });
   const [results, setResults] = useState<ExportResultItem[]>([]);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [billingActionHint, setBillingActionHint] = useState<BillingActionHint>(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
   const activeTargets = useMemo(() => targetsFor(selection), [selection]);
@@ -139,6 +152,7 @@ export function ExportModal({
 
   async function runChecks() {
     setGlobalError(null);
+    setBillingActionHint(null);
     const mergedIssues: ExportValidationIssue[] = [];
     for (const target of activeTargets) {
       const result = await runPreflightForTarget(target);
@@ -196,9 +210,10 @@ export function ExportModal({
       () => requestPdfExport({ storybookId, exportTarget: target, preview })
     );
     if (!result.ok) {
-      setRunState((current) => ({ ...current, [target]: { status: "failed", error: result.error } }));
-      setGlobalError(result.error);
-      captureStudioError(result.error, {
+      setRunState((current) => ({ ...current, [target]: { status: "failed", error: result.error.message } }));
+      setGlobalError(result.error.message);
+      setBillingActionHint(resolveBillingActionHint(result.error));
+      captureStudioError(result.error.message, {
         flow: "studio_export",
         storybookId,
         mode: target
@@ -242,6 +257,7 @@ export function ExportModal({
 
   async function generateSelected(preview: boolean) {
     setGlobalError(null);
+    setBillingActionHint(null);
     for (const target of activeTargets) {
       if (preview && activeTargets.length > 1) break;
       await runTargetExport(target, preview);
@@ -421,6 +437,26 @@ export function ExportModal({
               {globalError ? (
                 <div className="rounded-lg border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
                   {globalError}
+                  {billingActionHint === "upgrade" ? (
+                    <div className="mt-2">
+                      <Link
+                        href="/app/account/billing?intent=upgrade"
+                        className="inline-flex items-center rounded-lg border border-gold/55 bg-gold/90 px-2 py-1 text-xs font-semibold text-ink hover:bg-[#e3c17b]"
+                      >
+                        Upgrade to export
+                      </Link>
+                    </div>
+                  ) : null}
+                  {billingActionHint === "manage" ? (
+                    <div className="mt-2">
+                      <Link
+                        href="/app/account/billing"
+                        className="inline-flex items-center rounded-lg border border-white/20 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white hover:bg-white/[0.08]"
+                      >
+                        Manage billing
+                      </Link>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
 

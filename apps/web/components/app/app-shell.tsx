@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProfileRecord } from "../../lib/profile";
 import { trackAuthLogout } from "../../lib/analytics/events_auth";
 import { MemoriosoLogo } from "../memorioso-logo";
+import { PlanStatusBanner } from "../billing/PlanStatusBanner";
 
 function getDisplayLabel(profile: ProfileRecord | null, email: string | null | undefined, suppressFallback: boolean) {
   return profile?.display_name || email || (suppressFallback ? "" : "Member");
@@ -150,6 +151,9 @@ export function AppShell({
                 ) : null}
                   </div>
                 </div>
+              </div>
+              <div className="relative border-t border-white/10 px-4 py-2 sm:px-6">
+                <PlanStatusBanner compact />
               </div>
             </div>
           </div>

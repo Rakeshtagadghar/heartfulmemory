@@ -7,7 +7,7 @@ export function PricingSection() {
     <SectionShell
       id="pricing"
       title="Simple pricing"
-      kicker="Start digital. Upgrade to print later."
+      kicker="Start free. Upgrade to export when ready."
       theme="gold"
     >
       <div className="grid gap-4 lg:grid-cols-3">
@@ -47,7 +47,7 @@ export function PricingSection() {
               eventName="pricing_plan_select"
               eventProps={{ plan_id: plan.id }}
               className={`mt-6 inline-flex h-11 w-full items-center justify-center rounded-xl border text-sm font-semibold transition ${
-                index !== 2
+                index !== 0
                   ? "border-gold/65 bg-gold text-ink hover:bg-[#e3c17b]"
                   : "border-white/15 bg-white/[0.03] text-white hover:border-gold/40"
               }`}
@@ -58,8 +58,7 @@ export function PricingSection() {
         ))}
       </div>
       <p className="mt-4 text-sm text-white/55">
-        Pricing should remain configurable server-side and can be localized by
-        region later.
+        Pro includes up to 100 PDF exports per month and hardcopy-ready output.
       </p>
     </SectionShell>
   );

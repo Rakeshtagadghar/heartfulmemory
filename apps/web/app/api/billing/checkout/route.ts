@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { anyApi, convexMutation, convexQuery } from "../../../../lib/convex/ops";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
-import { getStripeClient } from "../../../../lib/stripe/stripeClient";
+import { getStripeClientForBilling } from "../../../../lib/stripe/stripeClientFactory";
 import { getAllowedPriceByCadence, getAllowedPriceById } from "../../../../lib/stripe/priceAllowlist";
 import { resolveAbsoluteUrl } from "../../../../lib/billing/urls";
 import { captureAppError, captureAppWarning } from "../../../../../../lib/observability/capture";
@@ -16,13 +16,14 @@ type CheckoutBody = {
 };
 
 export async function POST(request: Request) {
-  const stripe = getStripeClient();
-  if (!stripe) {
+  const stripeFactory = getStripeClientForBilling();
+  if (!stripeFactory.ok) {
     return NextResponse.json(
-      { ok: false, error: "Stripe is not configured." },
+      { ok: false, error: stripeFactory.error },
       { status: 500 }
     );
   }
+  const stripe = stripeFactory.stripe;
 
   const user = await requireAuthenticatedUser("/app");
 

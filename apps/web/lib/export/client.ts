@@ -33,13 +33,20 @@ export type ExportPreflightResponse = {
   contractWarnings?: RenderableValidationIssue[];
 };
 
+export type ExportRequestError = {
+  message: string;
+  code?: string;
+  traceId?: string;
+  details?: unknown;
+};
+
 export async function requestPdfExport(
   input: {
     storybookId: string;
     exportTarget: ExportTarget;
     preview?: boolean;
   }
-): Promise<{ ok: true; blob: Blob; meta: ExportPdfResponseMeta } | { ok: false; error: string }> {
+): Promise<{ ok: true; blob: Blob; meta: ExportPdfResponseMeta } | { ok: false; error: ExportRequestError }> {
   const response = await fetch("/api/export/pdf", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -47,27 +54,59 @@ export async function requestPdfExport(
   });
 
   if (!response.ok) {
-    let message = "PDF export failed.";
+    const fallbackMessage = "PDF export failed.";
     try {
-      const body = (await response.json()) as { error?: string; code?: string; traceId?: string };
-      if (body.error) message = body.traceId ? `${body.error} (${body.traceId})` : body.error;
+      const body = (await response.json()) as {
+        error?: string;
+        code?: string;
+        traceId?: string;
+        details?: unknown;
+      };
+      const message = body.error
+        ? body.traceId
+          ? `${body.error} (${body.traceId})`
+          : body.error
+        : fallbackMessage;
+      return {
+        ok: false,
+        error: {
+          message,
+          code: body.code,
+          traceId: body.traceId,
+          details: body.details
+        }
+      };
     } catch {
-      // ignore non-json error response
+      return {
+        ok: false,
+        error: {
+          message: fallbackMessage
+        }
+      };
     }
-    return { ok: false, error: message };
   }
 
   const blob = await response.blob();
   const headerMeta = response.headers.get("x-export-meta");
   if (!headerMeta) {
-    return { ok: false, error: "Missing export metadata." };
+    return {
+      ok: false,
+      error: {
+        message: "Missing export metadata."
+      }
+    };
   }
 
   try {
     const meta = JSON.parse(headerMeta) as ExportPdfResponseMeta;
     return { ok: true, blob, meta };
   } catch {
-    return { ok: false, error: "Invalid export metadata." };
+    return {
+      ok: false,
+      error: {
+        message: "Invalid export metadata."
+      }
+    };
   }
 }
 

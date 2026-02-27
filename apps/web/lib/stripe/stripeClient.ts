@@ -1,25 +1,17 @@
 import Stripe from "stripe";
-
-let stripeClient: Stripe | null = null;
+import { getBillingRuntimeConfig } from "../config/billingMode";
+import { getStripeClientForBilling, getStripeWebhookSecretForBilling } from "./stripeClientFactory";
 
 export function getStripeSecretKey() {
-  const key = process.env.STRIPE_SECRET_KEY?.trim() ?? "";
-  return key.length > 0 ? key : null;
+  return getBillingRuntimeConfig().stripeSecretKey;
 }
 
 export function getStripeWebhookSecret() {
-  const secret = process.env.STRIPE_WEBHOOK_SECRET?.trim() ?? "";
-  return secret.length > 0 ? secret : null;
+  return getStripeWebhookSecretForBilling();
 }
 
 export function getStripeClient() {
-  const secret = getStripeSecretKey();
-  if (!secret) return null;
-  stripeClient ??= new Stripe(secret, {
-    appInfo: {
-      name: "memorioso-web",
-      version: "sprint25"
-    }
-  });
-  return stripeClient;
+  const result = getStripeClientForBilling();
+  if (!result.ok) return null;
+  return result.stripe as Stripe;
 }

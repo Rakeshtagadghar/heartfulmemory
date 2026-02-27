@@ -6,7 +6,7 @@ function getSiteUrl() {
 
 export function StructuredData() {
   const siteUrl = getSiteUrl();
-  const digitalPlan = pricingPlans.find((plan) => plan.id === "digital");
+  const proPlan = pricingPlans.find((plan) => plan.id === "pro");
 
   const productJsonLd = {
     "@context": "https://schema.org",
@@ -20,13 +20,13 @@ export function StructuredData() {
       "Record or write family stories, organize chapters with photos, and export a premium PDF keepsake.",
     category: "Family Storytelling Software",
     url: siteUrl,
-    offers: digitalPlan
+    offers: proPlan
       ? {
           "@type": "Offer",
           priceCurrency: "GBP",
-          price: "19",
+          price: "30",
           availability: "https://schema.org/InStock",
-          url: `${siteUrl}${digitalPlan.href}`
+          url: `${siteUrl}${proPlan.href}`
         }
       : undefined
   };
@@ -57,4 +57,3 @@ export function StructuredData() {
     </>
   );
 }
-

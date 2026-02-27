@@ -18,9 +18,9 @@ export const pricingPageConfig: MarketingPageConfig = {
       id: "hero",
       content: {
         badge: "Pricing",
-        headline: "Choose the right way to preserve your family stories.",
+        headline: "Start free, then unlock Pro export at GBP 30/month.",
         subheadline:
-          "Start digital now, gift a storyteller, and upgrade to print when your keepsake is ready.",
+          "Use Free to write and design your storybook. Upgrade when you are ready to export PDFs.",
         visual: {
           type: "media_mock",
           items: [
@@ -49,8 +49,19 @@ export const pricingPageConfig: MarketingPageConfig = {
           ]
         },
         ctas: [
-          { label: "Get Digital", href: "/checkout?plan=digital", eventName: "pricing_plan_select", eventProps: { plan_id: "digital", section: "hero" } },
-          { label: "Gift a Storybook", href: "/gift", eventName: "cta_gift_click", eventProps: { section: "hero" }, variant: "secondary" }
+          {
+            label: "Start free",
+            href: "/create/template",
+            eventName: "pricing_plan_select",
+            eventProps: { plan_id: "free", section: "hero" }
+          },
+          {
+            label: "Upgrade to export",
+            href: "/app/account/billing?intent=upgrade",
+            eventName: "cta_upgrade_click",
+            eventProps: { section: "hero" },
+            variant: "secondary"
+          }
         ]
       }
     },
@@ -61,7 +72,7 @@ export const pricingPageConfig: MarketingPageConfig = {
       content: {
         kicker: "Simple plans",
         title: "Pricing",
-        subtitle: "Digital first. Print upgrade later.",
+        subtitle: "Pro export includes 100 PDF exports/month.",
         plans: pricingPlans.map((plan, index) => ({
           ...plan,
           cta: {
@@ -70,9 +81,9 @@ export const pricingPageConfig: MarketingPageConfig = {
             eventName: "pricing_plan_select",
             eventProps: { plan_id: plan.id }
           },
-          badge: index === 1 ? "Popular gift" : undefined
+          badge: index === 1 ? "Most popular" : undefined
         })),
-        note: "Phase 1 supports digital exports. Hardcover print upgrade is marked as coming soon."
+        note: "Free supports creation. Pro unlocks digital and hardcopy-ready PDF export with monthly quota."
       }
     },
     {

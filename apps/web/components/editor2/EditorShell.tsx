@@ -51,6 +51,7 @@ import {
 } from "../studio/observability";
 import { MemoriosoLogo } from "../memorioso-logo";
 import { trackAuthLogout } from "../../lib/analytics/events_auth";
+import { PlanStatusBanner } from "../billing/PlanStatusBanner";
 import { TextPanel } from "../studio/panels/TextPanel";
 import { ElementsPanel } from "../studio/panels/ElementsPanel";
 import { UploadsPanel } from "../studio/panels/UploadsPanel";
@@ -1960,6 +1961,9 @@ export function Editor2Shell({// NOSONAR
                 ) : null}
               </div>
             </div>
+          </div>
+          <div className="relative border-t border-white/10 px-3 py-2 sm:px-4">
+            <PlanStatusBanner compact />
           </div>
         </div>
       </div>

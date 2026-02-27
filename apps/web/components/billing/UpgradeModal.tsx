@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { trackCheckoutRedirected, trackPaywallShown, trackPaywallUpgradeClick } from "../../lib/analytics/billingEvents";
 import { startCheckout } from "../../lib/billing/startCheckout";
 import { Button } from "../ui/button";
+import { PlanBenefits } from "./PlanBenefits";
 
-type UpgradeCadence = "monthly" | "annual";
+type UpgradeCadence = "monthly";
 
 export function UpgradeModal({
   open,
@@ -17,7 +19,7 @@ export function UpgradeModal({
   onClose: () => void;
   source?: "studio_export";
 }) {
-  const [cadence, setCadence] = useState<UpgradeCadence>("monthly");
+  const cadence: UpgradeCadence = "monthly";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,47 +76,26 @@ export function UpgradeModal({
         <p className="text-xs uppercase tracking-[0.16em] text-gold/80">Memorioso Pro</p>
         <h3 className="mt-2 text-2xl font-semibold text-parchment">Upgrade to Export</h3>
         <p className="mt-3 text-sm leading-6 text-white/75">
-          Unlock digital PDF export, hardcopy print mode, and higher creation limits.
+          Unlock Pro export at GBP 30/month with 100 PDF exports each month.
         </p>
 
-        <div className="mt-5 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            className={`cursor-pointer rounded-xl border px-4 py-3 text-left transition ${
-              cadence === "monthly"
-                ? "border-gold/60 bg-gold/10 text-parchment"
-                : "border-white/15 bg-white/[0.02] text-white/80 hover:bg-white/[0.04]"
-            }`}
-            onClick={() => setCadence("monthly")}
-          >
-            <p className="text-sm font-semibold">Monthly</p>
-            <p className="text-xs text-white/60">Flexible billing</p>
-          </button>
-          <button
-            type="button"
-            className={`cursor-pointer rounded-xl border px-4 py-3 text-left transition ${
-              cadence === "annual"
-                ? "border-gold/60 bg-gold/10 text-parchment"
-                : "border-white/15 bg-white/[0.02] text-white/80 hover:bg-white/[0.04]"
-            }`}
-            onClick={() => setCadence("annual")}
-          >
-            <p className="text-sm font-semibold">Annual</p>
-            <p className="text-xs text-white/60">Best value</p>
-          </button>
-        </div>
-
-        <ul className="mt-5 space-y-2 rounded-xl border border-white/10 bg-white/[0.02] p-4 text-sm text-white/80">
-          <li>Digital PDF export</li>
-          <li>Hardcopy print export mode</li>
-          <li>Higher monthly export limits</li>
-        </ul>
+        <PlanBenefits />
 
         {error ? (
           <p className="mt-4 rounded-lg border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
             {error}
           </p>
         ) : null}
+
+        <p className="mt-4 text-sm text-white/70">
+          Already Pro?{" "}
+          <Link href="/app/account/billing" className="text-gold hover:text-[#e8cc95]">
+            Manage Billing
+          </Link>
+        </p>
+        <p className="mt-1 text-xs text-white/55">
+          Need more exports? Volume plans are coming soon.
+        </p>
 
         <div className="mt-6 flex flex-wrap items-center gap-2">
           <Button type="button" size="lg" loading={loading} onClick={() => void handleUpgradeClick()}>

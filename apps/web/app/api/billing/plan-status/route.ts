@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { anyApi, convexQuery } from "../../../../lib/convex/ops";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
+import { getBillingRuntimeConfig } from "../../../../lib/config/billingMode";
+import { BILLING_PLAN_CATALOG } from "../../../../../../packages/shared/billing/entitlements";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   const user = await requireAuthenticatedUser("/app");
+  const billingMode = getBillingRuntimeConfig().mode;
   const result = await convexQuery<{
     entitlements: {
       planId: "free" | "pro";
@@ -35,5 +38,26 @@ export async function GET() {
   if (!result.ok) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, data: result.data });
+
+  const quotaLimit = BILLING_PLAN_CATALOG[result.data.entitlements.planId].limits.exportsPerMonth ?? 0;
+  const used = result.data.usage?.used ?? 0;
+  const remaining =
+    typeof result.data.entitlements.exportsRemaining === "number"
+      ? result.data.entitlements.exportsRemaining
+      : null;
+
+  return NextResponse.json({
+    ok: true,
+    data: {
+      billingMode,
+      entitlements: result.data.entitlements,
+      subscription: result.data.subscription,
+      usage: result.data.usage ?? null,
+      quota: {
+        used,
+        limit: quotaLimit,
+        remaining
+      }
+    }
+  });
 }

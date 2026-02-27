@@ -11,7 +11,7 @@ describe("resolveBillingEntitlements", () => {
 
     expect(entitlements.canExportDigital).toBe(true);
     expect(entitlements.canExportHardcopy).toBe(true);
-    expect(entitlements.exportsRemaining).toBe(40);
+    expect(entitlements.exportsRemaining).toBe(90);
   });
 
   it("disables export for free users", () => {

@@ -39,9 +39,9 @@ export const BILLING_PLAN_CATALOG: Record<BillingPlanId, BillingPlanDefinition> 
   },
   pro: {
     id: "pro",
-    features: ["Digital PDF export", "Hardcopy PDF export", "Higher monthly limits"],
+    features: ["Digital PDF export", "Hardcopy PDF export", "100 exports per month"],
     limits: {
-      exportsPerMonth: 50,
+      exportsPerMonth: 100,
       canExportDigital: true,
       canExportHardcopy: true
     }
@@ -70,4 +70,3 @@ export function normalizeSubscriptionStatus(
       return "none";
   }
 }
-

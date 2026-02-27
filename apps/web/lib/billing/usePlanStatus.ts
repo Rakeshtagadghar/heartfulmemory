@@ -1,69 +1,65 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { BillingEntitlements } from "../../../../packages/shared/billing/entitlements";
 
-type BillingEntitlementsResponse = {
-  entitlements: BillingEntitlements;
+type PlanStatusResponse = {
+  billingMode: "test" | "live";
+  entitlements: {
+    planId: "free" | "pro";
+    subscriptionStatus: "none" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
+    canExportDigital: boolean;
+    canExportHardcopy: boolean;
+    exportsRemaining: number | null;
+  };
   subscription: {
+    stripeSubscriptionId: string;
     planId: string;
     status: string;
-    stripeSubscriptionId: string;
     currentPeriodStart: number | null;
     currentPeriodEnd: number | null;
     cancelAtPeriodEnd: boolean;
   } | null;
-  usage?: {
+  usage: {
     used: number;
     periodStart: number;
     periodEnd: number;
     periodSource: "subscription" | "calendar";
+  } | null;
+  quota: {
+    used: number;
+    limit: number;
+    remaining: number | null;
   };
 };
 
-type UseEntitlementsOptions = {
-  initialData?: BillingEntitlementsResponse | null;
+type UsePlanStatusOptions = {
   enabled?: boolean;
   pollIntervalMs?: number;
 };
 
-export function useEntitlements(options?: UseEntitlementsOptions) {
-  const [data, setData] = useState<BillingEntitlementsResponse | null>(options?.initialData ?? null);
-  const [loading, setLoading] = useState(!options?.initialData);
-  const [error, setError] = useState<string | null>(null);
+export function usePlanStatus(options?: UsePlanStatusOptions) {
   const enabled = options?.enabled ?? true;
-  const pollIntervalMs = options?.pollIntervalMs ?? 0;
+  const pollIntervalMs = options?.pollIntervalMs ?? 15000;
+  const [data, setData] = useState<PlanStatusResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!enabled) return;
-    setLoading(true);
     setError(null);
-    let response: Response;
-    try {
-      response = await fetch("/api/billing/entitlements", {
-        method: "GET",
-        cache: "no-store"
-      });
-    } catch {
-      setError("Unable to load entitlements.");
-      setLoading(false);
-      return;
-    }
-
+    const response = await fetch("/api/billing/plan-status", {
+      method: "GET",
+      cache: "no-store"
+    });
     const body = (await response.json().catch(() => null)) as
-      | { ok: true; data: BillingEntitlementsResponse }
+      | { ok: true; data: PlanStatusResponse }
       | { ok?: false; error?: string }
       | null;
     if (!response.ok || !body || body.ok !== true) {
-      if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
-        setError(body.error);
-      } else {
-        setError("Unable to load entitlements.");
-      }
+      setError(body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "Unable to load plan status.");
       setLoading(false);
       return;
     }
-
     setData(body.data);
     setLoading(false);
   }, [enabled]);
@@ -87,14 +83,14 @@ export function useEntitlements(options?: UseEntitlementsOptions) {
     };
   }, [enabled, pollIntervalMs, refresh]);
 
-  const entitlements = useMemo(() => data?.entitlements ?? null, [data]);
+  const planId = useMemo(() => data?.entitlements.planId ?? "free", [data]);
 
   return {
-    entitlements,
-    subscription: data?.subscription ?? null,
-    usage: data?.usage ?? null,
+    planId,
+    data,
     loading,
     error,
     refresh
   };
 }
+
