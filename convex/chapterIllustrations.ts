@@ -382,7 +382,7 @@ export const autoIllustrate = action({
     providerMode: v.optional(providerModeValidator),
     regenerate: v.optional(v.boolean())
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     try {
       const viewer = await requireActionUser(ctx, args.viewerSubject);
       const config = getConvexAutoIllustrateEnv();
@@ -402,43 +402,50 @@ export const autoIllustrate = action({
         };
       }
 
-        const [storybook, chapter, draft, existingIllustration] = await Promise.all([
-          ctx.runQuery(api.storybooks.getGuidedById, {
-            viewerSubject: viewer.subject,
-            storybookId: args.storybookId
+      const [storybook, chapter, narrative, existingIllustration] = await Promise.all([
+        ctx.runQuery(api.storybooks.getGuidedById, {
+          viewerSubject: viewer.subject,
+          storybookId: args.storybookId
         }),
         ctx.runQuery(api.storybookChapters.get, {
           viewerSubject: viewer.subject,
           chapterInstanceId: args.chapterInstanceId
         }),
-        ctx.runQuery(api.chapterDrafts.getLatestByChapter, {
+        ctx.runQuery(api.chapterNarratives.getByChapterInstanceId, {
+          chapterInstanceId: args.chapterInstanceId
+        }),
+        ctx.runQuery(api.chapterIllustrations.getLatestByChapterInstance, {
           viewerSubject: viewer.subject,
           chapterInstanceId: args.chapterInstanceId
-          }),
-          ctx.runQuery(api.chapterIllustrations.getLatestByChapterInstance, {
-            viewerSubject: viewer.subject,
-            chapterInstanceId: args.chapterInstanceId
-          })
-        ]);
-        const templateJson = storybook.templateId
-          ? await ctx.runQuery(api.templates.getById, { templateId: storybook.templateId })
-          : null;
+        })
+      ]);
+      const templateJson = storybook.templateId
+        ? await ctx.runQuery(api.templates.getById, { templateId: storybook.templateId })
+        : null;
 
-      if (!draft || draft.status !== "ready") {
+      if (!narrative || narrative.status !== "ready") {
         return {
           ok: false as const,
           errorCode: "DRAFT_NOT_READY" as const,
-          message: "Generate a chapter draft first before auto-illustrating.",
+          message: "Generate a chapter narrative first before auto-illustrating.",
           retryable: false
         };
       }
 
       const slotTargets = extractSlotTargetsForChapter((templateJson as any) ?? { chapters: [] }, chapter.chapterKey);
+
+      // Adapt narrative to a faux-draft object for the theme generator
+      const mockSections = [
+        { sectionId: "opening", title: "Opening", text: narrative.paragraphs?.opening ?? "" },
+        { sectionId: "story", title: "Story", text: narrative.paragraphs?.story ?? "" },
+        { sectionId: "closing", title: "Closing", text: narrative.paragraphs?.closing ?? "" }
+      ];
+
       const theme = generateThemeForChapterDraft({
         chapterTitle: chapter.title,
         chapterKey: chapter.chapterKey,
         storybook,
-        chapterDraft: draft as any
+        chapterDraft: { sections: mockSections } as any
       });
 
       const begin = await ctx.runMutation(api.chapterIllustrations.beginVersion, {
@@ -447,10 +454,10 @@ export const autoIllustrate = action({
         chapterInstanceId: args.chapterInstanceId,
         chapterKey: chapter.chapterKey,
         theme,
-          slotTargets,
-          lockedSlotIds: existingIllustration?.lockedSlotIds ?? [],
-          reuseIfReady: args.regenerate ? false : true
-        });
+        slotTargets,
+        lockedSlotIds: existingIllustration?.lockedSlotIds ?? [],
+        reuseIfReady: args.regenerate ? false : true
+      });
 
       if (!begin.ok) {
         return {
@@ -497,15 +504,15 @@ export const autoIllustrate = action({
         }
       );
 
-        const lockedSlotIds = existingIllustration?.lockedSlotIds ?? [];
-        const unlockedSlotTargets = slotTargets.filter((slot) => !lockedSlotIds.includes(slot.slotId));
-        const selection = selectCandidatesForSlots({
-          slotTargets: unlockedSlotTargets,
-          candidates: allCandidates,
-          keywords: theme.keywords,
-          lockedSlotIds,
-          existingAssignments: []
-        });
+      const lockedSlotIds = existingIllustration?.lockedSlotIds ?? [];
+      const unlockedSlotTargets = slotTargets.filter((slot) => !lockedSlotIds.includes(slot.slotId));
+      const selection = selectCandidatesForSlots({
+        slotTargets: unlockedSlotTargets,
+        candidates: allCandidates,
+        keywords: theme.keywords,
+        lockedSlotIds,
+        existingAssignments: []
+      });
 
       const chosen = selection.selections
         .filter((row) => row.candidate)
@@ -522,10 +529,10 @@ export const autoIllustrate = action({
         });
         await ctx.runMutation(api.chapterIllustrations.setError, {
           viewerSubject: viewer.subject,
-            illustrationId: begin.illustrationId,
-            errorCode: "NO_CANDIDATES",
-            errorMessage: "No print-safe images found for this chapter."
-          });
+          illustrationId: begin.illustrationId,
+          errorCode: "NO_CANDIDATES",
+          errorMessage: "No print-safe images found for this chapter."
+        });
         return {
           ok: false as const,
           errorCode: "NO_CANDIDATES" as const,
@@ -553,14 +560,14 @@ export const autoIllustrate = action({
           })
       );
 
-      const cachedByProviderId = new Map(cached.map((row) => [`${row.providerAsset.provider}:${row.providerAsset.id}`, row] as const));
+      const cachedByProviderId = new Map(cached.map((row: any) => [`${row.providerAsset.provider}:${row.providerAsset.id}`, row] as const));
       const slotAssignments = chosen.flatMap((row) => {
         const cachedRow = cachedByProviderId.get(`${row.candidate.provider}:${row.candidate.id}`);
         if (!cachedRow) return [];
         return [
           {
             slotId: row.slotId,
-              mediaAssetId: cachedRow.mediaAssetId,
+            mediaAssetId: (cachedRow as any).mediaAssetId,
             providerMetaSnapshot: {
               provider: row.candidate.provider,
               sourceId: row.candidate.id,
@@ -569,26 +576,26 @@ export const autoIllustrate = action({
               authorUrl: row.candidate.authorUrl ?? null,
               assetUrl: row.candidate.assetUrl ?? null,
               licenseUrl: row.candidate.licenseUrl ?? null,
-              cacheMode: cachedRow.cacheMode
+              cacheMode: (cachedRow as any).cacheMode
             }
           }
         ];
       });
 
-        const preservedLockedAssignments =
-          existingIllustration?.slotAssignments.filter((assignment) => lockedSlotIds.includes(assignment.slotId)) ?? [];
-        const mergedAssignments = [...preservedLockedAssignments, ...slotAssignments].sort((a, b) =>
-          a.slotId.localeCompare(b.slotId)
-        );
+      const preservedLockedAssignments =
+        existingIllustration?.slotAssignments.filter((assignment: any) => lockedSlotIds.includes(assignment.slotId)) ?? [];
+      const mergedAssignments = [...preservedLockedAssignments, ...slotAssignments].sort((a, b) =>
+        a.slotId.localeCompare(b.slotId)
+      );
 
-        const ready = await ctx.runMutation(api.chapterIllustrations.setReady, {
-          viewerSubject: viewer.subject,
-          illustrationId: begin.illustrationId,
-          theme,
-          slotTargets,
-          slotAssignments: mergedAssignments as any,
-          lockedSlotIds
-        });
+      const ready = await ctx.runMutation(api.chapterIllustrations.setReady, {
+        viewerSubject: viewer.subject,
+        illustrationId: begin.illustrationId,
+        theme,
+        slotTargets,
+        slotAssignments: mergedAssignments as any,
+        lockedSlotIds
+      });
 
       return {
         ok: true as const,

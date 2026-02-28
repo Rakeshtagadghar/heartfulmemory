@@ -1,0 +1,370 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 28,
+      "title": "Guided Flow v3: Continue → Auto-Resume Q&A → Upload Photos (max 20) → Auto-Populate Studio",
+      "duration": "1.5 weeks",
+      "goal": "Streamline the product flow into one primary CTA ('Continue your story'). Users always resume at the next unanswered question. After all questions are done, they are routed to an 'Upload your photos' step (max 20). After upload completion, the app auto-populates Studio with answers + selected uploaded photos.",
+      "definitionOfDone": [
+        "New story starts directly on Chapter 1 Question 1 (no chapter list decision)",
+        "Resume always lands on the exact next unanswered question (chapter + question or photos page) across refresh/devices",
+        "Finish chapter routes directly to next chapter’s first question; after last chapter, prompt optional 'Anything else?' question",
+        "After all questions complete, 'Continue your story' routes to Upload Photos step",
+        "Upload Photos step accepts up to 20 images from device, shows progress, allows remove/reorder",
+        "After upload done (or user skips), system auto-populates Studio with chapter answers + uploaded photos placed into template image slots",
+        "UI removes Review/Illustrations buttons and shows only one CTA: Continue your story (routes to next step or Studio)",
+        "Optional: per-question 'AI narrate' rewrite remains available (if you keep it), and accepted text becomes the stored answer used for population",
+        "Auto-populate is idempotent and does not duplicate nodes or re-upload images"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "backend": "Convex (queries/mutations/actions)",
+      "storage": "Existing upload pipeline (Uploads library) is available and can store user images",
+      "editor": "Studio populate pipeline exists (will be triggered after photo step)",
+      "templates": "Template JSON provides image slots (image1/image2/image3 etc.)",
+      "stt": "Voice input exists (Sprint 18) and continues to work"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S28-T01",
+      "title": "Update flow state machine v3.1 (adds Upload Photos step) + deriveNextStep()",
+      "skill": ["Architecture", "Product", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "states": [
+          "needs_questions",
+          "needs_extra_question",
+          "needs_upload_photos",
+          "populating",
+          "ready_in_studio",
+          "error"
+        ],
+        "derivedFrom": [
+          "wizard progress (answers complete?)",
+          "extra question answered or skipped",
+          "photo step status (not_started|in_progress|done|skipped)",
+          "studio population status"
+        ],
+        "ctaRules": [
+          "Continue routes to Wizard when needs_questions/needs_extra_question",
+          "Continue routes to Upload Photos when needs_upload_photos",
+          "Continue routes to Studio when ready_in_studio",
+          "If populating, Continue is disabled and shows progress"
+        ],
+        "constraints": [
+          "No Review or Illustrations steps in routing",
+          "Deterministic on refresh"
+        ]
+      },
+      "acceptanceTests": [
+        "Given a story state, deriveNextStep returns the correct route every time",
+        "When questions complete, next step is Upload Photos (not Studio)"
+      ],
+      "deliverables": [
+        "docs/flow_state_machine_v3_1.md",
+        "lib/flow/deriveNextStep.ts updated",
+        "packages/shared/flow/flowTypes.ts updated"
+      ]
+    },
+    {
+      "id": "S28-T02",
+      "title": "Auto-resume wizard improvements (start new story at first question; resume exactly where left off)",
+      "skill": ["Frontend", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "New story: go to chapter 1 question 1",
+          "In-progress: go to first unanswered required question in earliest incomplete chapter",
+          "Persist resume pointer (chapterInstanceId + questionId) for fast resume",
+          "On 'Finish chapter' jump to next chapter question 1"
+        ],
+        "persistence": [
+          "Convex: storybooks.lastPointer { chapterInstanceId, questionId, updatedAt }"
+        ],
+        "constraints": [
+          "Works after refresh",
+          "Skip counts as answered when allowed"
+        ]
+      },
+      "acceptanceTests": [
+        "User resumes at correct question after refresh",
+        "Finish chapter routes to next chapter question 1"
+      ],
+      "deliverables": [
+        "convex/storyProgress.ts (get/set lastPointer)",
+        "lib/wizard/computeResumeIndex.ts updated",
+        "components/wizard/useResumePointer.ts"
+      ]
+    },
+    {
+      "id": "S28-T03",
+      "title": "Add final optional 'Anything else?' question after last chapter",
+      "skill": ["Product", "Frontend", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "question": {
+          "id": "q_anything_else",
+          "prompt": "Do you want to add any more information or memories?",
+          "helpText": "Anything that matters—even if it doesn’t fit a specific question.",
+          "required": false
+        },
+        "storage": [
+          "Store as special answer record: chapterKey='__extra__' OR storybooks.extraAnswer"
+        ],
+        "constraints": [
+          "User can Skip",
+          "If answered, it must be included in studio population text"
+        ]
+      },
+      "acceptanceTests": [
+        "After last chapter, extra question appears",
+        "Skipping extra question still proceeds to Upload Photos"
+      ],
+      "deliverables": [
+        "convex/storyExtraAnswer.ts (or extend chapterAnswers)",
+        "components/wizard/ExtraQuestionStep.tsx"
+      ]
+    },
+    {
+      "id": "S28-T04",
+      "title": "Upload Photos page v1 (max 20) + device upload + preview grid",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/book/{storybookId}/photos",
+        "ui": [
+          "Header: 'Upload your photos' + helper text",
+          "Upload button (multi-select) + drag & drop (optional)",
+          "Grid preview with remove button per photo",
+          "Counter: 0/20",
+          "Primary CTA: 'Continue to Studio'",
+          "Secondary: 'Skip for now'"
+        ],
+        "limits": [
+          "Max 20 images per storybook (enforced client + server)",
+          "Allowed types: jpg/png/webp (configurable)"
+        ],
+        "constraints": [
+          "Elder-friendly: large buttons, clear progress",
+          "Do not block user if they upload fewer than 20"
+        ]
+      },
+      "acceptanceTests": [
+        "User can upload images and see previews",
+        "User cannot exceed 20 images",
+        "User can remove an uploaded image before continuing"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/photos/page.tsx",
+        "components/photos/StoryPhotoUploader.tsx",
+        "components/photos/PhotoGrid.tsx"
+      ]
+    },
+    {
+      "id": "S28-T05",
+      "title": "Persist uploaded photos as story-scoped assets (Convex + storage) with ordering",
+      "skill": ["Convex", "Storage", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "dataModel": {
+          "table": "storybookPhotos",
+          "fields": [
+            "id",
+            "storybookId",
+            "ownerUserId",
+            "mediaAssetId (Id<'mediaAssets'>)",
+            "orderIndex",
+            "createdAt"
+          ],
+          "indexes": ["by_storybookId", "by_storybookId_orderIndex"]
+        },
+        "behavior": [
+          "On upload success: create mediaAssets record (source='upload') + storybookPhotos row",
+          "Enforce max 20 per storybook server-side",
+          "Allow reorder by updating orderIndex (optional P1) or keep upload order in v1"
+        ],
+        "constraints": [
+          "Do not store raw bytes in Convex docs",
+          "Reuse existing upload pipeline if you already have one in Uploads Library"
+        ]
+      },
+      "acceptanceTests": [
+        "Uploaded images persist and reload on refresh",
+        "Server rejects uploads beyond 20 for the storybook"
+      ],
+      "deliverables": [
+        "convex/storybookPhotos.ts (queries/mutations)",
+        "convex/schema.ts updated",
+        "docs/storybook_photos_model.md"
+      ]
+    },
+    {
+      "id": "S28-T06",
+      "title": "Auto-populate Studio after photos step (answers + uploaded images)",
+      "skill": ["Backend Orchestration", "Editor Engineering", "Convex"],
+      "priority": "P0",
+      "requirements": {
+        "convexAction": "studio.populateFromAnswersAndPhotos",
+        "inputs": ["storybookId"],
+        "steps": [
+          "Validate Q&A complete (incl. extra question skipped/answered)",
+          "Load storybookPhotos ordered list (0..20)",
+          "For each chapter: populate text slots from answers (question order) + extra answer appended at end of book or last chapter",
+          "Assign uploaded images to template image slots in order (image1 gets photo[0], image2 gets photo[1], etc.)",
+          "If more slots than photos, leave remaining empty",
+          "If more photos than slots, store extras in uploads panel (available to insert manually later)"
+        ],
+        "idempotency": [
+          "Stable node ids per (chapterKey,pageId,slotId); do not duplicate",
+          "Do not overwrite user-edited nodes"
+        ],
+        "constraints": [
+          "Keep everything inside safe area by default (use existing safe-area guardrails if present; otherwise at least clamp basics)",
+          "No separate auto-illustrate provider search in this flow (uploaded photos are the source)"
+        ]
+      },
+      "acceptanceTests": [
+        "After photos step, Studio opens with text populated and photos placed in frames",
+        "Re-running population does not duplicate nodes",
+        "If user uploaded 0 photos, text still populates and image slots remain empty"
+      ],
+      "deliverables": [
+        "convex/studioPopulateFromPhotos.ts",
+        "packages/shared/populate/photoSlotMapper.ts",
+        "docs/populate_from_uploaded_photos.md"
+      ]
+    },
+    {
+      "id": "S28-T07",
+      "title": "UI changes: remove Review/Illustrations buttons and replace with one CTA: Continue your story",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "screenChanges": [
+          "Chapter list page: remove Review buttons and icon buttons shown in screenshot",
+          "Add a single 'Continue your story' CTA (top-right, and optionally one per template header)",
+          "Show 'Next step' hint: e.g., 'Next: School Days – Question 2' or 'Next: Upload Photos'"
+        ],
+        "behavior": ["CTA calls deriveNextStep and routes accordingly"],
+        "constraints": ["Keep layout clean", "No multiple CTAs competing"]
+      },
+      "acceptanceTests": [
+        "Only one primary CTA exists",
+        "CTA routes to wizard, photos, or studio based on state"
+      ],
+      "deliverables": [
+        "app/book/[storybookId]/chapters/page.tsx updated",
+        "components/chapters/ContinueYourStoryButton.tsx",
+        "components/chapters/NextStepHint.tsx"
+      ]
+    },
+    {
+      "id": "S28-T08",
+      "title": "Optional: keep per-question 'AI narrate' rewrite button (if still desired)",
+      "skill": ["Frontend", "Convex", "LLM Integration"],
+      "priority": "P1",
+      "requirements": {
+        "behavior": [
+          "Button 'AI narrate' on each question",
+          "Preview -> Accept replaces answer text",
+          "Store source='ai_narrated' and preserve original text in history"
+        ],
+        "constraints": ["Must not invent new facts, only rephrase"]
+      },
+      "acceptanceTests": [
+        "AI narrate updates answer and persists",
+        "Updated answers appear in Studio population"
+      ],
+      "deliverables": [
+        "components/wizard/AINarratePanel.tsx",
+        "convex/ai/answersNarrate.ts",
+        "convex/chapterAnswers.ts updated"
+      ]
+    },
+    {
+      "id": "S28-T09",
+      "title": "Progress + recovery: photo-step status, populating status, retry paths",
+      "skill": ["Convex", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "statusFields": [
+          "storybooks.flowStatus: needs_questions|needs_extra_question|needs_upload_photos|populating|ready_in_studio|error",
+          "storybooks.lastErrorStep + lastErrorCode (optional)"
+        ],
+        "ui": [
+          "Show 'Preparing your studio…' progress on photos page after Continue",
+          "If failure: show Retry / Contact support"
+        ]
+      },
+      "acceptanceTests": [
+        "Failures show a recoverable UI path",
+        "Retry completes and routes to Studio"
+      ],
+      "deliverables": [
+        "convex/storybooks.ts updated",
+        "components/photos/PopulateProgress.tsx"
+      ]
+    },
+    {
+      "id": "S28-T10",
+      "title": "QA + automated tests for the new end-to-end flow",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "New story -> lands on first question",
+          "Answer some questions -> refresh -> resumes correctly",
+          "Finish chapter 1 -> lands on chapter 2 Q1",
+          "Finish last chapter -> extra question -> skip -> routes to Upload Photos",
+          "Upload 3 photos -> Continue -> Studio opens and photos placed",
+          "Try to upload 21 photos -> blocked",
+          "Skip photos -> Studio opens with text only"
+        ],
+        "automation": [
+          "Unit: deriveNextStep returns photos step when answers complete",
+          "Integration: server enforces max 20 storybookPhotos",
+          "Integration: populateFromAnswersAndPhotos maps photos into slots deterministically",
+          "UI test: chapters page has no Review/Illustrations buttons"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "No regressions to wizard voice/typing save/resume"
+      ],
+      "deliverables": [
+        "tests/flow/deriveNextStep_photos.test.ts",
+        "tests/photos/max20.integration.test.ts",
+        "tests/populate/photosSlotMapper.integration.test.ts",
+        "docs/qa_sprint28_flow_upload_photos.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S28-T01",
+      "S28-T02",
+      "S28-T07",
+      "S28-T03",
+      "S28-T04",
+      "S28-T05",
+      "S28-T06",
+      "S28-T10",
+      "S28-T09",
+      "S28-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 7,
+      "P1_total_days": 2,
+      "buffer_days": 2
+    },
+    "notes": [
+      "This version removes provider auto-illustrate from the critical path and uses user-uploaded photos as the default image source (max 20).",
+      "If you need provider images later, add an optional 'Add stock photos' step after upload (future sprint).",
+      "If you must compress to 1 week, ship P0 only and defer AI-narrate (S28-T08) + richer recovery (S28-T09)."
+    ]
+  }
+}

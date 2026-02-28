@@ -7,14 +7,10 @@ import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import type { StorybookDTO } from "../../lib/dto/storybook";
 import {
-  createBlankStorybookAction,
   removeStorybookFromDashboardAction,
   renameStorybookFromDashboardAction
 } from "../../lib/actions/storybooks-dashboard";
-import {
-  trackStorybookCreateStart,
-  trackStorybookRename
-} from "../../lib/analytics/events_creation";
+import { trackStorybookRename } from "../../lib/analytics/events_creation";
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -26,11 +22,6 @@ function sortRecent(storybooks: StorybookDTO[]) {
   return [...storybooks].sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   );
-}
-
-async function createQuickBlankStorybook() {
-  trackStorybookCreateStart({ source: "dashboard", kind: "blank" });
-  await createBlankStorybookAction();
 }
 
 export function StorybooksDashboardPanel({
@@ -113,18 +104,6 @@ export function StorybooksDashboardPanel({
         <h2 className="text-xl font-semibold text-parchment">Your storybooks</h2>
         <div className="flex items-center gap-2">
           <p className="text-sm text-white/55">{total} total</p>
-          <Button
-            type="button"
-            size="sm"
-            loading={isPending}
-            onClick={() => {
-              startTransition(() => {
-                void createQuickBlankStorybook();
-              });
-            }}
-          >
-            Quick Blank
-          </Button>
           <Link
             href="/create/template"
             className="inline-flex h-9 items-center rounded-xl border border-white/15 bg-white/[0.03] px-3 text-sm font-semibold text-white hover:bg-white/[0.06]"

@@ -109,10 +109,10 @@ export const create = mutationGeneric({
       settings:
         args.templateId || args.templateVersion
           ? {
-              ...defaultExportSettings(),
-              templateId: args.templateId ?? null,
-              templateVersion: args.templateVersion ?? null
-            }
+            ...defaultExportSettings(),
+            templateId: args.templateId ?? null,
+            templateVersion: args.templateVersion ?? null
+          }
           : defaultExportSettings(),
       createdAt: now,
       updatedAt: now
@@ -135,7 +135,7 @@ export const createGuided = mutationGeneric({
 
     const existing = await ctx.db
       .query("storybooks")
-      .withIndex("by_ownerId_guidedClientRequestId", (q) =>
+      .withIndex("by_ownerId_guidedClientRequestId", (q: any) =>
         q.eq("ownerId", viewer.subject).eq("guidedClientRequestId", args.clientRequestId)
       )
       .unique();
@@ -194,9 +194,9 @@ export const createGuided = mutationGeneric({
 
     const chapters = resolvedTemplate
       ? await instantiateGuidedChaptersFromTemplate(ctx, {
-          storybookId,
-          template: resolvedTemplate
-        })
+        storybookId,
+        template: resolvedTemplate
+      })
       : [await createDefaultGuidedChapter(ctx, storybookId)];
 
     return {
@@ -263,6 +263,9 @@ export const getGuidedById = queryGeneric({
         access.storybook.narration && typeof access.storybook.narration === "object"
           ? access.storybook.narration
           : defaultNarrationSettings(),
+      flowStatus: access.storybook.flowStatus ?? null,
+      photoStatus: access.storybook.photoStatus ?? null,
+      extraAnswer: access.storybook.extraAnswer ?? null,
       createdAt: access.storybook.createdAt,
       updatedAt: access.storybook.updatedAt
     };
@@ -453,6 +456,109 @@ export const remove = mutationGeneric({
     await ctx.db.delete(access.storybook._id as never);
 
     return { ok: true };
+  }
+});
+
+// Sprint 28: Guided flow state mutations
+
+export const setLastPointer = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    questionId: v.string()
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const storybook = await ctx.db.get(args.storybookId);
+    if (!storybook || storybook.ownerId !== viewer.subject) throw new Error("Forbidden");
+    await ctx.db.patch(args.storybookId, {
+      lastPointer: {
+        chapterInstanceId: args.chapterInstanceId,
+        questionId: args.questionId,
+        updatedAt: Date.now()
+      },
+      updatedAt: Date.now()
+    });
+    return { ok: true };
+  }
+});
+
+export const setExtraAnswer = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    text: v.optional(v.union(v.string(), v.null())),
+    skipped: v.boolean()
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const storybook = await ctx.db.get(args.storybookId);
+    if (!storybook || storybook.ownerId !== viewer.subject) throw new Error("Forbidden");
+    await ctx.db.patch(args.storybookId, {
+      extraAnswer: {
+        text: args.text ?? null,
+        skipped: args.skipped,
+        updatedAt: Date.now()
+      },
+      updatedAt: Date.now()
+    });
+    return { ok: true };
+  }
+});
+
+export const setPhotoStatus = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    photoStatus: v.union(v.literal("not_started"), v.literal("done"), v.literal("skipped"))
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const storybook = await ctx.db.get(args.storybookId);
+    if (!storybook || storybook.ownerId !== viewer.subject) throw new Error("Forbidden");
+    await ctx.db.patch(args.storybookId, { photoStatus: args.photoStatus, updatedAt: Date.now() });
+    return { ok: true };
+  }
+});
+
+export const setFlowStatus = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    flowStatus: v.union(
+      v.literal("needs_questions"),
+      v.literal("needs_extra_question"),
+      v.literal("needs_upload_photos"),
+      v.literal("populating"),
+      v.literal("ready_in_studio"),
+      v.literal("error")
+    )
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const storybook = await ctx.db.get(args.storybookId);
+    if (!storybook || storybook.ownerId !== viewer.subject) throw new Error("Forbidden");
+    await ctx.db.patch(args.storybookId, { flowStatus: args.flowStatus, updatedAt: Date.now() });
+    return { ok: true };
+  }
+});
+
+export const getFlowState = queryGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks")
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const storybook = await ctx.db.get(args.storybookId);
+    if (!storybook || storybook.ownerId !== viewer.subject) throw new Error("Forbidden");
+    return {
+      flowStatus: storybook.flowStatus ?? null,
+      photoStatus: storybook.photoStatus ?? null,
+      extraAnswer: storybook.extraAnswer ?? null,
+      lastPointer: storybook.lastPointer ?? null
+    };
   }
 });
 

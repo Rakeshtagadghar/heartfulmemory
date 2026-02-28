@@ -1,15 +1,16 @@
-import { mutationGeneric, queryGeneric, type MutationCtx, type QueryCtx } from "convex/server";
+import { mutationGeneric, queryGeneric, type GenericMutationCtx, type GenericQueryCtx } from "convex/server";
 import { v } from "convex/values";
 import { requireUser } from "./authz";
 import { resolveBillingEntitlements } from "../packages/shared/billing/entitlementRules";
 import { resolveQuotaPeriod } from "../lib/billing/quota";
+import type { DataModel } from "./_generated/dataModel";
 
-type Ctx = MutationCtx | QueryCtx;
+type Ctx = GenericMutationCtx<DataModel> | GenericQueryCtx<DataModel>;
 
 async function getLatestSubscriptionByUserId(ctx: Ctx, userId: string) {
   const rows = await ctx.db
     .query("billingSubscriptions")
-    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .withIndex("by_userId", (q: any) => q.eq("userId", userId))
     .collect();
   return rows.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
 }
@@ -30,7 +31,7 @@ export async function resolveQuotaPeriodForUser(ctx: Ctx, userId: string, nowMs 
 export async function getPdfExportUsageForPeriod(ctx: Ctx, userId: string, periodStart: number) {
   const row = await ctx.db
     .query("exportUsage")
-    .withIndex("by_userId_periodStart", (q) => q.eq("userId", userId).eq("periodStart", periodStart))
+    .withIndex("by_userId_periodStart", (q: any) => q.eq("userId", userId).eq("periodStart", periodStart))
     .first();
   return row?.countPdfExports ?? 0;
 }
@@ -74,7 +75,7 @@ export const incrementUsageForViewer = mutationGeneric({
     const now = Date.now();
     const existing = await ctx.db
       .query("exportUsage")
-      .withIndex("by_userId_periodStart", (q) => q.eq("userId", viewer.subject).eq("periodStart", quota.periodStart))
+      .withIndex("by_userId_periodStart", (q: any) => q.eq("userId", viewer.subject).eq("periodStart", quota.periodStart))
       .first();
 
     if (existing) {

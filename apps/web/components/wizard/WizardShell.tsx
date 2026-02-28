@@ -55,7 +55,7 @@ export function WizardShell({
         </div>
 
         <div className="mt-4 h-2 rounded-full bg-white/[0.05]">
-            <div
+          <div
             className="h-full rounded-full bg-[linear-gradient(90deg,#d5b36a,#9fe1d8)] transition-all motion-reduce:transition-none"
             style={{ width: `${progressPercent}%` }}
           />
@@ -89,34 +89,12 @@ export function WizardShell({
             >
               Back
             </Button>
-            <Button
-              type="submit"
-              name="intent"
-              value="save"
-              form="chapter-wizard-form"
-              variant="secondary"
-              size="lg"
-            >
-              Save
-            </Button>
-            <WizardActionButton
-              type="submit"
-              name="intent"
-              value="skip"
-              form="chapter-wizard-form"
-              variant="secondary"
-              size="lg"
-              eventKind="skip"
-              questionId={currentQuestionId}
-            >
-              Skip
-            </WizardActionButton>
           </div>
 
           <div className="flex flex-col gap-2 sm:flex-row">
             <Link
               href="."
-              className="inline-flex h-12 items-center justify-center rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/55 hover:bg-white/[0.03]"
+              className="inline-flex h-12 cursor-pointer items-center justify-center rounded-xl border border-white/10 px-4 text-sm font-semibold text-white/55 hover:bg-white/[0.03]"
             >
               Refresh
             </Link>

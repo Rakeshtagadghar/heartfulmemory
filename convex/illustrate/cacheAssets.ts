@@ -23,11 +23,11 @@ function sourceFromProvider(provider: "unsplash" | "pexels") {
 export async function cacheSelectedProviderAssets(input: {
   ctx: ActionCtx;
   viewerSubject: string;
-  assets: CacheableProviderAsset[];
+  assets: any[];
   maxDownloadMb: number;
   timeoutMs: number;
-}) {
-  const cached = [];
+}): Promise<any> {
+  const cached: any[] = [];
   for (const asset of input.assets) {
     const cachedImage = await cacheProviderImage({
       providerAsset: asset,
@@ -70,7 +70,7 @@ export const cacheSelectedAssets = action({
     maxDownloadMb: v.optional(v.number()),
     timeoutMs: v.optional(v.number())
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     try {
       const viewer = await requireActionUser(ctx, args.viewerSubject);
       const result = await cacheSelectedProviderAssets({

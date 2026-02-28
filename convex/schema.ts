@@ -108,6 +108,34 @@ export default defineSchema({
     narration: v.optional(v.any()),
     guidedClientRequestId: v.optional(v.string()),
     settings: v.optional(v.any()),
+    // Sprint 28: guided flow state
+    flowStatus: v.optional(
+      v.union(
+        v.literal("needs_questions"),
+        v.literal("needs_extra_question"),
+        v.literal("needs_upload_photos"),
+        v.literal("populating"),
+        v.literal("ready_in_studio"),
+        v.literal("error")
+      )
+    ),
+    photoStatus: v.optional(
+      v.union(v.literal("not_started"), v.literal("done"), v.literal("skipped"))
+    ),
+    lastPointer: v.optional(
+      v.object({
+        chapterInstanceId: v.id("storybookChapters"),
+        questionId: v.string(),
+        updatedAt: v.number()
+      })
+    ),
+    extraAnswer: v.optional(
+      v.object({
+        text: v.optional(v.union(v.string(), v.null())),
+        skipped: v.boolean(),
+        updatedAt: v.number()
+      })
+    ),
     createdAt: v.number(),
     updatedAt: v.number()
   })
@@ -165,7 +193,7 @@ export default defineSchema({
     ),
     audioRef: v.optional(v.union(v.string(), v.null())),
     skipped: v.boolean(),
-    source: v.union(v.literal("text"), v.literal("voice")),
+    source: v.union(v.literal("text"), v.literal("voice"), v.literal("ai_narrated")),
     version: v.number(),
     createdAt: v.number(),
     updatedAt: v.number()
@@ -547,5 +575,45 @@ export default defineSchema({
   })
     .index("by_storybookId", ["storybookId"])
     .index("by_userId", ["userId"])
-    .index("by_invitedEmail", ["invitedEmail"])
+    .index("by_invitedEmail", ["invitedEmail"]),
+  storybookPhotos: defineTable({
+    storybookId: v.id("storybooks"),
+    ownerUserId: v.string(),
+    assetId: v.id("assets"),
+    orderIndex: v.number(),
+    createdAt: v.number()
+  })
+    .index("by_storybookId", ["storybookId"])
+    .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"]),
+  chapterNarratives: defineTable({
+    storybookId: v.id("storybooks"),
+    chapterInstanceId: v.id("storybookChapters"),
+    chapterKey: v.string(),
+    version: v.number(),
+    status: v.union(v.literal("generating"), v.literal("ready"), v.literal("error")),
+    approved: v.boolean(),
+    approvedAt: v.optional(v.union(v.number(), v.null())),
+    narration: v.object({
+      voice: v.union(v.literal("first_person"), v.literal("third_person")),
+      tense: v.union(v.literal("past"), v.literal("present")),
+      tone: v.union(v.literal("warm"), v.literal("formal"), v.literal("playful"), v.literal("poetic")),
+      length: v.union(v.literal("short"), v.literal("medium"), v.literal("long"))
+    }),
+    paragraphs: v.object({
+      opening: v.string(),
+      story: v.string(),
+      closing: v.string()
+    }),
+    citations: v.object({
+      opening: v.array(v.string()),
+      story: v.array(v.string()),
+      closing: v.array(v.string())
+    }),
+    answersHash: v.string(),
+    warnings: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_chapterInstanceId", ["chapterInstanceId"])
+    .index("by_storybookId", ["storybookId"])
 });

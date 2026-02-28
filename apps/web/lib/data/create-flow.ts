@@ -34,6 +34,9 @@ export type GuidedStorybookHeader = {
   templateTitle: string | null;
   templateSubtitle: string | null;
   narration: Record<string, unknown>;
+  flowStatus: string | null;
+  photoStatus: string | null;
+  extraAnswer: { text?: string | null; skipped: boolean; updatedAt: number } | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -371,7 +374,7 @@ export async function upsertGuidedChapterAnswerForUser(
     sttMeta?: GuidedChapterAnswer["sttMeta"];
     audioRef?: string | null;
     skipped?: boolean;
-    source?: "text" | "voice";
+    source?: "text" | "voice" | "ai_narrated";
   }
 ): Promise<DataResult<GuidedAnswerUpsertResult>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
@@ -955,5 +958,50 @@ export async function markChapterStudioFinalizedForUser(
       ...input
     }
   );
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+// Sprint 28: flow state helpers
+
+export async function setExtraAnswerForUser(
+  viewerSubject: string,
+  storybookId: string,
+  input: { text?: string | null; skipped: boolean }
+): Promise<DataResult<{ ok: true }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true }>(anyApi.storybooks.setExtraAnswer, {
+    viewerSubject,
+    storybookId,
+    text: input.text ?? null,
+    skipped: input.skipped
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function setFlowStatusForUser(
+  viewerSubject: string,
+  storybookId: string,
+  flowStatus: "needs_questions" | "needs_extra_question" | "needs_upload_photos" | "populating" | "ready_in_studio" | "error"
+): Promise<DataResult<{ ok: true }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true }>(anyApi.storybooks.setFlowStatus, {
+    viewerSubject,
+    storybookId,
+    flowStatus
+  });
+  return result.ok ? result : { ok: false, error: result.error };
+}
+
+export async function setPhotoStatusForUser(
+  viewerSubject: string,
+  storybookId: string,
+  photoStatus: "not_started" | "done" | "skipped"
+): Promise<DataResult<{ ok: true }>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<{ ok: true }>(anyApi.storybooks.setPhotoStatus, {
+    viewerSubject,
+    storybookId,
+    photoStatus
+  });
   return result.ok ? result : { ok: false, error: result.error };
 }

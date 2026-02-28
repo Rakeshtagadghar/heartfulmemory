@@ -50,7 +50,7 @@ export const createOrGetBySource = mutationGeneric({
     if (args.sourceId) {
       const existing = await ctx.db
         .query("mediaAssets")
-        .withIndex("by_source_sourceId", (q) => q.eq("source", args.source).eq("sourceId", args.sourceId))
+        .withIndex("by_source_sourceId", (q: any) => q.eq("source", args.source).eq("sourceId", args.sourceId))
         .unique();
       if (existing) {
         return {
@@ -107,7 +107,7 @@ export const getBySource = queryGeneric({
     await requireUser(ctx, args.viewerSubject);
     const row = await ctx.db
       .query("mediaAssets")
-      .withIndex("by_source_sourceId", (q) => q.eq("source", args.source).eq("sourceId", args.sourceId))
+      .withIndex("by_source_sourceId", (q: any) => q.eq("source", args.source).eq("sourceId", args.sourceId))
       .unique();
     return row ? toMediaAssetDto(row) : null;
   }
@@ -122,7 +122,7 @@ export const listMine = queryGeneric({
     const viewer = await requireUser(ctx, args.viewerSubject);
     const rows = await ctx.db
       .query("mediaAssets")
-      .withIndex("by_ownerUserId", (q) => q.eq("ownerUserId", viewer.subject))
+      .withIndex("by_ownerUserId", (q: any) => q.eq("ownerUserId", viewer.subject))
       .collect();
 
     const limit = args.limit && args.limit > 0 ? Math.min(200, args.limit) : rows.length;
@@ -151,7 +151,7 @@ export const createSystemCached = mutationGeneric({
     if (args.sourceId) {
       const existing = await ctx.db
         .query("mediaAssets")
-        .withIndex("by_source_sourceId", (q) => q.eq("source", args.source).eq("sourceId", args.sourceId))
+        .withIndex("by_source_sourceId", (q: any) => q.eq("source", args.source).eq("sourceId", args.sourceId))
         .unique();
       if (existing) {
         return {

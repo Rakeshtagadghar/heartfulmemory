@@ -1,0 +1,399 @@
+{
+    "meta": {
+        "project": "Bloodline Storybook / Storykeeper",
+        "planType": "SPRINT_TASKS_JSON",
+        "sprint": {
+            "number": 27,
+            "title": "Chapter Review v2: 3-Paragraph Narrative (Opening / Story / Closing) + Studio Population Source",
+            "duration": "1 week",
+            "goal": "Fix the Review page by removing confusing sections (Key Facts, Quotes, Entities, Places, Dates, Image Ideas, multi-section breakdown) and replacing it with a single, high-quality 3-paragraph narrative generated from Q&A: Opening, Story, Closing. Use these 3 paragraphs as the ONLY source for Studio population.",
+            "definitionOfDone": [
+                "Review page shows only three editable paragraphs: Opening, Story, Closing",
+                "LLM generation uses only chapter Q&A as input and returns exactly 3 paragraphs (no prompt leakage)",
+                "User can regenerate all three paragraphs and regenerate each paragraph individually",
+                "Approved narrative is stored and versioned per chapter",
+                "Studio population uses the approved Opening/Story/Closing paragraphs (not raw answers, not old sections)",
+                "Old review artifacts (entities/quotes/keyfacts/imageIdeas) are removed from UI and no longer required for flow",
+                "Migration path exists so existing drafts don’t break (fallback mapping if needed)",
+                "Quality guardrails prevent repetition and instruction text appearing in output"
+            ]
+        },
+        "stackAssumptions": {
+            "frontend": "Next.js (App Router) + TypeScript",
+            "backend": "Convex (actions for LLM; mutations for persistence)",
+            "llm": "Existing provider behind internal interface",
+            "editor": "Studio population pipeline exists and will be updated to use new narrative source"
+        }
+    },
+    "backlog": [
+        {
+            "id": "S27-T01",
+            "title": "Define ChapterNarrative v1 schema (Opening/Story/Closing) with versioning + approval state",
+            "skill": [
+                "Architecture",
+                "Convex",
+                "Data Modeling"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "convexTables": [
+                    {
+                        "name": "chapterNarratives",
+                        "fields": [
+                            "id (Convex _id)",
+                            "storybookId (Id<'storybooks'>)",
+                            "chapterInstanceId (Id<'storybookChapters'>)",
+                            "chapterKey (string)",
+                            "version (number)",
+                            "status ('generating'|'ready'|'error')",
+                            "approved (boolean)",
+                            "approvedAt (number|null)",
+                            "narration (object { voice, tense, tone, length })",
+                            "paragraphs (object { opening, story, closing })",
+                            "citations (object { opening[], story[], closing[] } questionIds)",
+                            "answersHash (string)",
+                            "warnings (array<string>)",
+                            "createdAt (number)",
+                            "updatedAt (number)"
+                        ],
+                        "indexes": [
+                            "by_chapterInstanceId",
+                            "by_storybookId"
+                        ]
+                    }
+                ],
+                "constraints": [
+                    "Only owner can read/write",
+                    "Paragraph fields must be plain text (no embedded prompts)",
+                    "answersHash used to detect when answers changed"
+                ]
+            },
+            "acceptanceTests": [
+                "Schema compiles and record can be created/read/updated",
+                "Version increments on regeneration"
+            ],
+            "deliverables": [
+                "convex/schema.ts updated",
+                "convex/chapterNarratives.ts (queries/mutations)",
+                "packages/shared/narrative/narrativeTypes.ts"
+            ]
+        },
+        {
+            "id": "S27-T02",
+            "title": "Create LLM prompt contract: generate exactly 3 paragraphs (Opening/Story/Closing) from Q&A only",
+            "skill": [
+                "Prompt Engineering",
+                "Backend"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "inputs": [
+                    "chapterKey",
+                    "chapterTitle",
+                    "narration settings (voice/tense/tone/length)",
+                    "answers[]: { questionId, questionPrompt, answerText }"
+                ],
+                "outputFormat": {
+                    "type": "json",
+                    "schema": {
+                        "opening": "string (1 paragraph)",
+                        "story": "string (1 paragraph)",
+                        "closing": "string (1 paragraph)",
+                        "citations": {
+                            "opening": [
+                                "questionId"
+                            ],
+                            "story": [
+                                "questionId"
+                            ],
+                            "closing": [
+                                "questionId"
+                            ]
+                        }
+                    }
+                },
+                "hardRules": [
+                    "Return ONLY JSON matching schema",
+                    "Each field must be ONE paragraph (no bullet lists, no headings, no extra line breaks)",
+                    "Do not include any instructions or meta commentary",
+                    "Do not invent names/places/dates not present in answers",
+                    "Avoid repetition across paragraphs",
+                    "Keep tone warm and human"
+                ],
+                "constraints": [
+                    "No web knowledge",
+                    "No image ideas in output"
+                ]
+            },
+            "acceptanceTests": [
+                "Output contains exactly 3 paragraphs and no instruction text",
+                "Citations reference only existing questionIds"
+            ],
+            "deliverables": [
+                "lib/ai/prompts/chapterNarrativePrompt_v1.ts",
+                "docs/chapter_narrative_output_schema_v1.json"
+            ]
+        },
+        {
+            "id": "S27-T03",
+            "title": "Add Narrative Output Validator (prompt-leak + repetition + length gates)",
+            "skill": [
+                "Backend",
+                "Quality Engineering"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "validatorRules": [
+                    "Block if any paragraph contains instruction-like phrases (denylist/regex)",
+                    "Block if paragraphs are identical or highly similar (repetition detector)",
+                    "Min/max length per paragraph (config-driven)",
+                    "Disallow headings like 'Opening:' 'The Story:' inside text",
+                    "Basic profanity check hook (optional)"
+                ],
+                "behavior": [
+                    "If invalid: status='error' and store warnings/errors",
+                    "Allow regenerate"
+                ],
+                "constraints": [
+                    "Deterministic; no LLM calls",
+                    "Never persist raw prompt"
+                ]
+            },
+            "acceptanceTests": [
+                "Known bad output (prompt leakage) is rejected",
+                "Repeated paragraph output is rejected"
+            ],
+            "deliverables": [
+                "lib/ai/validators/narrativeValidator.ts",
+                "lib/ai/validators/repetition.ts reused/extended",
+                "docs/narrative_validator_rules.md"
+            ]
+        },
+        {
+            "id": "S27-T04",
+            "title": "Convex actions: generate narrative + regen paragraph + approve narrative",
+            "skill": [
+                "Convex",
+                "Backend Orchestration"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "actions": [
+                    "chapterNarratives.generate",
+                    "chapterNarratives.regenParagraph (opening|story|closing)"
+                ],
+                "mutations": [
+                    "chapterNarratives.approve (set approved=true, approvedAt)",
+                    "chapterNarratives.updateText (user edits paragraph text)"
+                ],
+                "flow": [
+                    "Compute answersHash",
+                    "If existing ready narrative with same answersHash and not force -> reuse",
+                    "Otherwise call LLM, validate, store as version+1"
+                ],
+                "constraints": [
+                    "Idempotent when answers unchanged",
+                    "Regenerate paragraph only replaces one paragraph and bumps version (or keeps version but updates revision; choose version bump for simplicity)"
+                ]
+            },
+            "acceptanceTests": [
+                "Generate creates ready narrative with 3 paragraphs",
+                "RegenParagraph updates only one paragraph",
+                "Approve marks narrative as approved and stable for Studio population"
+            ],
+            "deliverables": [
+                "convex/ai/chapterNarratives.ts (actions)",
+                "convex/chapterNarratives.ts (mutations/queries)",
+                "lib/hash/answersHash.ts reused"
+            ]
+        },
+        {
+            "id": "S27-T05",
+            "title": "Replace Review page UI with 3-paragraph editor (Opening/Story/Closing) + regen controls",
+            "skill": [
+                "Frontend",
+                "UX"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "route": "/book/{storybookId}/chapters/{chapterInstanceId}/review",
+                "ui": [
+                    "Three cards: Opening, Story, Closing (large readable text areas)",
+                    "Buttons: Generate (if empty), Regenerate All, Regenerate per paragraph",
+                    "Inline edit enabled (user can refine wording)",
+                    "Approve button to lock in and proceed to Studio"
+                ],
+                "remove": [
+                    "Key facts panel",
+                    "Quotes panel",
+                    "Entities/Places/Dates panels",
+                    "Entity overrides UI",
+                    "Image ideas section",
+                    "Old multi-section list (Opening/The Story/Timeline/Reflection/Closing...)"
+                ],
+                "constraints": [
+                    "Elder-friendly: big font, high contrast, clear primary CTA",
+                    "Never show prompts/guidance text anywhere"
+                ]
+            },
+            "acceptanceTests": [
+                "Review page shows only the 3 paragraphs and controls",
+                "User can edit text and save",
+                "Approve flow works"
+            ],
+            "deliverables": [
+                "app/book/[storybookId]/chapters/[chapterInstanceId]/review/page.tsx",
+                "components/review/ThreeParaEditor.tsx",
+                "components/review/NarrativeActions.tsx"
+            ]
+        },
+        {
+            "id": "S27-T06",
+            "title": "Update flow routing: Wizard -> Review -> Studio (population uses narrative)",
+            "skill": [
+                "Frontend",
+                "Product"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "routingRules": [
+                    "After finishing questions: route to Review page",
+                    "Review must be approved before opening Studio for that chapter (or allow open with warning; choose require approval for v1)",
+                    "From Studio: 'Proceed to next chapter' routes to next chapter wizard (if not complete) else review"
+                ],
+                "constraints": [
+                    "No dead ends; always a next action"
+                ]
+            },
+            "acceptanceTests": [
+                "Completing a chapter sends user to review",
+                "Approving review enables Studio access"
+            ],
+            "deliverables": [
+                "lib/chapters/nextStepRouter.ts updated",
+                "components/chapters/ChapterCard.tsx updated CTA logic"
+            ]
+        },
+        {
+            "id": "S27-T07",
+            "title": "Update Studio population mapping: use narrative paragraphs as the source of text slots",
+            "skill": [
+                "Editor Engineering",
+                "Backend"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "mappingRulesV1": [
+                    "slot.title <- chapter title (unchanged)",
+                    "slot.body <- narrative.story (primary)",
+                    "slot.quote <- optional: first sentence of narrative.opening (or leave empty if you prefer)",
+                    "slot.caption1 <- optional: short derived from opening (or leave empty)",
+                    "If template has multiple text boxes: distribute opening/story/closing across them deterministically"
+                ],
+                "behavior": [
+                    "Population requires an approved narrative (approved=true). If missing, return error with fixLink to review page.",
+                    "Do not use raw question answers for body text anymore."
+                ],
+                "constraints": [
+                    "Idempotent: stable node ids per slot",
+                    "Do not overwrite user edits"
+                ]
+            },
+            "acceptanceTests": [
+                "Chapter populate uses opening/story/closing and no longer uses raw answers",
+                "If narrative not approved, Studio population blocks with actionable message"
+            ],
+            "deliverables": [
+                "packages/shared/populate/textSlotMapper.ts updated (narrative-based)",
+                "convex/studioPopulate.ts updated to fetch chapterNarratives",
+                "docs/studio_population_from_narrative.md"
+            ]
+        },
+        {
+            "id": "S27-T08",
+            "title": "Deprecate old draft review sections safely (compat + cleanup)",
+            "skill": [
+                "Architecture",
+                "Frontend",
+                "Backend"
+            ],
+            "priority": "P1",
+            "requirements": {
+                "compatStrategy": [
+                    "If older chapterDraft exists but no chapterNarrative: provide a one-time migration adapter that takes existing 'main text' and maps it into story paragraph, and generates simple opening/closing (optional) OR forces regenerate narrative",
+                    "Hide old UI panels permanently"
+                ],
+                "constraints": [
+                    "No data loss; old drafts remain stored but unused in UI"
+                ]
+            },
+            "acceptanceTests": [
+                "Existing users can still proceed without crashes",
+                "Review page always uses new 3-paragraph format"
+            ],
+            "deliverables": [
+                "lib/migrations/draftToNarrativeAdapter.ts",
+                "docs/review_page_deprecation.md"
+            ]
+        },
+        {
+            "id": "S27-T09",
+            "title": "QA + automated tests for 3-paragraph narrative and population",
+            "skill": [
+                "QA",
+                "Testing"
+            ],
+            "priority": "P0",
+            "requirements": {
+                "manualChecklist": [
+                    "Finish wizard answers -> review page opens",
+                    "Generate narrative -> check 3 paragraphs only",
+                    "Regenerate closing only -> opening/story unchanged",
+                    "Edit text -> save -> persists on refresh",
+                    "Approve -> Open Studio -> content populated from story paragraph",
+                    "Ensure no KeyFacts/Entities/ImageIdeas appear anywhere",
+                    "Ensure no prompt leakage text appears in any paragraph"
+                ],
+                "automation": [
+                    "Unit: narrativeValidator rejects prompt leakage and repetition",
+                    "Integration: generate action stores approved=false then approve sets true",
+                    "Integration: populateChapter fails if narrative not approved and succeeds when approved",
+                    "UI test: review page renders exactly 3 cards and nothing else"
+                ]
+            },
+            "acceptanceTests": [
+                "At least 4 automated tests added and passing",
+                "Regression prevents the exact issues shown in your screenshot"
+            ],
+            "deliverables": [
+                "tests/narrative/narrativeValidator.test.ts",
+                "tests/narrative/generateApprove.integration.test.ts",
+                "tests/populate/narrativeSource.integration.test.ts",
+                "docs/qa_sprint27_review_v2.md"
+            ]
+        }
+    ],
+    "sprintPlanning": {
+        "suggestedOrder": [
+            "S27-T01",
+            "S27-T02",
+            "S27-T03",
+            "S27-T04",
+            "S27-T05",
+            "S27-T06",
+            "S27-T07",
+            "S27-T09",
+            "S27-T08"
+        ],
+        "timeboxGuidance": {
+            "P0_total_days": 5,
+            "P1_total_days": 1,
+            "buffer_days": 1
+        },
+        "notes": [
+            "This sprint deliberately deletes confusing review artifacts and replaces them with the simplest narrative UX possible.",
+            "Validator-first approach ensures you never show prompt text or duplicated paragraphs to users again.",
+            "Studio population becomes simpler and more consistent by using only Opening/Story/Closing as the text source."
+        ]
+    }
+}

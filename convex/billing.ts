@@ -214,7 +214,7 @@ export const getCustomerByUserIdInternal = internalQuery({
   }
 });
 
-export const getCustomerByStripeCustomerIdInternal = internalQuery({
+export const getCustomerByStripeCustomerIdInternal = queryGeneric({
   args: {
     stripeCustomerId: v.string()
   },
@@ -227,7 +227,7 @@ export const getCustomerByStripeCustomerIdInternal = internalQuery({
   }
 });
 
-export const upsertCustomerFromStripeInternal = internalMutation({
+export const upsertCustomerFromStripeInternal = mutationGeneric({
   args: {
     userId: v.string(),
     stripeCustomerId: v.string(),
@@ -313,7 +313,7 @@ export const upsertSubscriptionFromRecoveryForViewer = mutationGeneric({
   }
 });
 
-export const upsertSubscriptionFromStripeInternal = internalMutation({
+export const upsertSubscriptionFromStripeInternal = mutationGeneric({
   args: {
     stripeEventId: v.optional(v.string()),
     stripeEventType: v.optional(v.string()),

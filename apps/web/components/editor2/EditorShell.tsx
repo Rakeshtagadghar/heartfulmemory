@@ -1216,9 +1216,18 @@ export function Editor2Shell({// NOSONAR
     return result.data;
   }
 
+  const openPanelId = studioShell.openPanelId;
+  // Load assets whenever the user opens the Uploads panel (sidebar click or programmatic)
+  useEffect(() => {
+    if (openPanelId === "uploads") {
+      void refreshAssets();
+    }
+    // refreshAssets only uses storybook.id (stable); openPanelId is the real trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openPanelId]);
+
   function openImagePanel() {
     studioShell.openPanel("uploads", "mouse", true);
-    void refreshAssets();
   }
 
   function openPhotosPanel() {

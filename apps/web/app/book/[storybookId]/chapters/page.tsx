@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { AppShell } from "../../../../components/app/app-shell";
 import { Card } from "../../../../components/ui/card";
 import { Badge } from "../../../../components/ui/badge";
 import { ChapterCard } from "../../../../components/chapters/ChapterCard";
+import { ContinueYourStoryButton } from "../../../../components/chapters/ContinueYourStoryButton";
 import { NarrationSettingsPanel } from "../../../../components/story/NarrationSettingsPanel";
 import { ViewportEvent } from "../../../../components/viewport-event";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
@@ -15,6 +15,8 @@ import {
   listGuidedChaptersByStorybookForUser,
   updateGuidedNarrationForUser
 } from "../../../../lib/data/create-flow";
+import { deriveNextStep } from "../../../../lib/flow/deriveNextStep";
+import type { ExtraAnswerStatus, PhotoStatus } from "../../../../../../packages/shared/flow/flowTypes";
 
 type Props = {
   params: Promise<{ storybookId: string }>;
@@ -126,6 +128,31 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
   const chaptersLoadError = chapters.ok ? null : chapters.error;
   const progressWarning = progress.ok ? null : progress.error;
 
+  const extraAnswerStatus: ExtraAnswerStatus = (() => {
+    if (!storybook.data.extraAnswer) return "pending";
+    return storybook.data.extraAnswer.skipped ? "skipped" : "answered";
+  })();
+  const photoStatus: PhotoStatus = (storybook.data.photoStatus as PhotoStatus | null) ?? "not_started";
+  const nextStep = deriveNextStep({
+    storybookId,
+    chapters: chaptersData,
+    extraAnswerStatus,
+    photoStatus,
+    flowStatus: storybook.data.flowStatus as any
+  });
+
+  const nextStepHint: string | null = (() => {
+    if (nextStep.state === "needs_questions" && "chapterInstanceId" in nextStep) {
+      const ch = chaptersData.find((c) => c.id === nextStep.chapterInstanceId);
+      return ch ? `Next: ${ch.title}` : null;
+    }
+    if (nextStep.state === "needs_extra_question") return "Next: Final question";
+    if (nextStep.state === "needs_upload_photos") return "Next: Upload your photos";
+    if (nextStep.state === "ready_in_studio") return "Next: Open Studio";
+    if (nextStep.state === "populating") return "Preparing your studio…";
+    return null;
+  })();
+
   let chaptersContent: ReactNode;
   if (chaptersLoadError) {
     chaptersContent = (
@@ -145,7 +172,6 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
         {chaptersData.map((chapter) => (
           <ChapterCard
             key={chapter.id}
-            storybookId={storybookId}
             chapter={chapter}
             progress={progressByChapterId.get(chapter.id)}
           />
@@ -175,12 +201,11 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge className="border-white/15 bg-white/[0.03] text-white/80">{storybook.data.status}</Badge>
-              <Link
-                href={`/app/storybooks/${storybookId}/layout`}
-                className="inline-flex h-10 items-center rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/15"
-              >
-                Open Studio
-              </Link>
+              <ContinueYourStoryButton
+                href={nextStep.href ?? null}
+                hint={nextStepHint}
+                disabled={nextStep.state === "populating"}
+              />
             </div>
           </div>
 
@@ -218,15 +243,10 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
           </div>
 
           {completedChapter ? (
-            <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-emerald-100">
-                  Chapter completed: {completedChapter.title}
-                </p>
-                <p className="text-xs text-white/60">
-                  Continue into Studio now or keep filling out other chapters.
-                </p>
-              </div>
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <p className="text-sm font-semibold text-emerald-100">
+                Chapter completed: {completedChapter.title}
+              </p>
             </div>
           ) : null}
 

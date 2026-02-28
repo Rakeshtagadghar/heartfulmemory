@@ -11,21 +11,21 @@ import { withSentrySpan } from "../../../../lib/observability/spans";
 
 export type OpenInStudioResolution =
   | {
-      ok: true;
-      href: string;
-      chapterKey: string;
-      populated: boolean;
-      reused: boolean;
-      pageIds: string[];
-    }
+    ok: true;
+    href: string;
+    chapterKey: string;
+    populated: boolean;
+    reused: boolean;
+    pageIds: string[];
+  }
   | {
-      ok: false;
-      errorCode: string;
-      message: string;
-      retryable?: boolean;
-      href?: string;
-      correlationId?: string;
-    };
+    ok: false;
+    errorCode: string;
+    message: string;
+    retryable?: boolean;
+    href?: string;
+    correlationId?: string;
+  };
 
 function studioHref(storybookId: string, chapterInstanceId: string, firstPageId?: string | null) {
   const qs = new URLSearchParams();
@@ -67,7 +67,7 @@ export async function resolveOpenInStudioForUser(
       ok: true,
       data: {
         ok: true,
-        href: `/book/${input.storybookId}/chapters/${input.chapterInstanceId}/draft`,
+        href: `/book/${input.storybookId}/chapters/${input.chapterInstanceId}/review`,
         chapterKey: chapter.chapterKey,
         populated: false,
         reused: true,

@@ -48,12 +48,28 @@ describe("Sprint 21 studio populate source contracts", () => {
     expect(openInStudio).toContain("resolveOpenInStudioForUser");
     expect(openInStudio).toContain("populateStudioChapterForUser");
     expect(openInStudio).toContain("/wizard");
-    expect(openInStudio).toContain("/draft");
+    expect(openInStudio).toContain("/review");
     expect(openInStudio).toContain("/illustrations");
+    // Sprint 28: nextStepRouter simplified — draft/illustrations branches removed; completed chapters return to storybook flow
     expect(nextStepRouter).toContain("resolveNextChapterRoute");
     expect(nextStepRouter).toContain("kind: \"wizard\"");
-    expect(nextStepRouter).toContain("kind: \"draft\"");
-    expect(nextStepRouter).toContain("kind: \"illustrations\"");
-    expect(nextStepRouter).toContain("kind: \"studio\"");
+    expect(nextStepRouter).toContain("kind: \"chapters\"");
+  });
+
+  it("Sprint 28: populates Studio from answers + uploaded photos without requiring draft/illustrations", () => {
+    const populateFromPhotos = readRepoFile("convex/studioPopulateFromPhotos.ts");
+    const storybookPhotos = readRepoFile("convex/storybookPhotos.ts");
+    const photoSlotMapper = readRepoFile("packages/shared/populate/photoSlotMapper.ts");
+
+    expect(populateFromPhotos).toContain("export const populateFromPhotos = action");
+    expect(populateFromPhotos).toContain("stableNodeKey(");
+    expect(populateFromPhotos).toContain("s28:");
+    expect(populateFromPhotos).toContain("studio_populate_v2");
+    expect(populateFromPhotos).toContain("api.chapterStudioState.upsertPopulationState");
+    expect(populateFromPhotos).toContain("flowStatus: \"ready_in_studio\"");
+    expect(storybookPhotos).toContain("export const addPhoto");
+    expect(storybookPhotos).toContain("export const listPhotos");
+    expect(storybookPhotos).toContain("MAX_PHOTOS");
+    expect(photoSlotMapper).toContain("mapPhotosToImageSlots");
   });
 });

@@ -1,16 +1,8 @@
-import type {
-  ChapterIllustrationRecord,
-  ChapterStudioStateRecord,
-  GuidedChapterInstance,
-  ChapterDraftRecord
-} from "../data/create-flow";
+import type { GuidedChapterInstance } from "../data/create-flow";
 
 export type NextChapterRouteInput = {
   storybookId: string;
   chapter: GuidedChapterInstance | null;
-  latestDraft: ChapterDraftRecord | null;
-  latestIllustration: ChapterIllustrationRecord | null;
-  studioState: ChapterStudioStateRecord | null;
 };
 
 export function resolveNextChapterRoute(input: NextChapterRouteInput) {
@@ -29,23 +21,9 @@ export function resolveNextChapterRoute(input: NextChapterRouteInput) {
     };
   }
 
-  if (input.latestDraft?.status !== "ready") {
-    return {
-      kind: "draft" as const,
-      href: `/book/${input.storybookId}/chapters/${chapter.id}/draft`
-    };
-  }
-
-  if (input.latestIllustration?.status !== "ready") {
-    return {
-      kind: "illustrations" as const,
-      href: `/book/${input.storybookId}/chapters/${chapter.id}/illustrations`
-    };
-  }
-
-  const pageParam = input.studioState?.pageIds[0] ? `&page=${encodeURIComponent(input.studioState.pageIds[0])}` : "";
+  // Chapter complete — return to the storybook flow page where the single CTA routes next
   return {
-    kind: "studio" as const,
-    href: `/studio/${input.storybookId}?chapter=${encodeURIComponent(chapter.id)}${pageParam}`
+    kind: "chapters" as const,
+    href: `/book/${input.storybookId}/chapters`
   };
 }

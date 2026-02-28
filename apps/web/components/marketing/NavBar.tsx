@@ -13,7 +13,7 @@ export function NavBar({
   links,
   cta = {
     label: "Start",
-    href: "/app/start",
+    href: "/app",
     eventName: "cta_start_click",
     eventProps: { section: "header" as const }
   }

@@ -179,12 +179,12 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
       chapterInstanceId,
       extra: extra
         ? {
-            correlationId: errRef,
-            ...extra
-          }
+          correlationId: errRef,
+          ...extra
+        }
         : {
-            correlationId: errRef
-          }
+          correlationId: errRef
+        }
     });
     return routeUrl(storybookId, chapterInstanceId, { error: errorCode, errRef });
   }
@@ -450,7 +450,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge className="border-white/15 bg-white/[0.03] text-white/80">{chapter.status}</Badge>
-            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/draft`} variant="secondary">
+            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/review`} variant="secondary">
               Back to Draft
             </ButtonLink>
           </div>
@@ -463,7 +463,7 @@ export default async function ChapterIllustrationsPage({ params, searchParams }:
             Chapter draft is not ready yet. Generate a chapter draft first in the Draft Review screen.
           </p>
           <div className="mt-3">
-            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/draft`} variant="secondary">
+            <ButtonLink href={`/book/${storybookId}/chapters/${chapterInstanceId}/review`} variant="secondary">
               Open Draft Review
             </ButtonLink>
           </div>

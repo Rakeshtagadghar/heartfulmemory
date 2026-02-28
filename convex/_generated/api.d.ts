@@ -8,8 +8,8 @@
  * @module
  */
 
-import type * as ai_chapterDrafts from "../ai/chapterDrafts.js";
-import type * as ai_chapterDrafts_v2 from "../ai/chapterDrafts_v2.js";
+import type * as ai_answersNarrate from "../ai/answersNarrate.js";
+import type * as ai_chapterNarratives from "../ai/chapterNarratives.js";
 import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
 import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as assets from "../assets.js";
@@ -20,6 +20,7 @@ import type * as chapterAnswers from "../chapterAnswers.js";
 import type * as chapterDrafts from "../chapterDrafts.js";
 import type * as chapterEntityOverrides from "../chapterEntityOverrides.js";
 import type * as chapterIllustrations from "../chapterIllustrations.js";
+import type * as chapterNarratives from "../chapterNarratives.js";
 import type * as chapterStudioState from "../chapterStudioState.js";
 import type * as chapters from "../chapters.js";
 import type * as env from "../env.js";
@@ -36,10 +37,12 @@ import type * as mediaAssets from "../mediaAssets.js";
 import type * as observability_sentry from "../observability/sentry.js";
 import type * as pages from "../pages.js";
 import type * as storybookChapters from "../storybookChapters.js";
+import type * as storybookPhotos from "../storybookPhotos.js";
 import type * as storybooks from "../storybooks.js";
 import type * as stt from "../stt.js";
 import type * as studioDocs from "../studioDocs.js";
 import type * as studioPopulate from "../studioPopulate.js";
+import type * as studioPopulateFromPhotos from "../studioPopulateFromPhotos.js";
 import type * as templateSeeds from "../templateSeeds.js";
 import type * as templates from "../templates.js";
 import type * as users from "../users.js";
@@ -52,8 +55,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  "ai/chapterDrafts": typeof ai_chapterDrafts;
-  "ai/chapterDrafts_v2": typeof ai_chapterDrafts_v2;
+  "ai/answersNarrate": typeof ai_answersNarrate;
+  "ai/chapterNarratives": typeof ai_chapterNarratives;
   "ai/entitiesExtractor": typeof ai_entitiesExtractor;
   "ai/rateLimit": typeof ai_rateLimit;
   assets: typeof assets;
@@ -64,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   chapterDrafts: typeof chapterDrafts;
   chapterEntityOverrides: typeof chapterEntityOverrides;
   chapterIllustrations: typeof chapterIllustrations;
+  chapterNarratives: typeof chapterNarratives;
   chapterStudioState: typeof chapterStudioState;
   chapters: typeof chapters;
   env: typeof env;
@@ -80,10 +84,12 @@ declare const fullApi: ApiFromModules<{
   "observability/sentry": typeof observability_sentry;
   pages: typeof pages;
   storybookChapters: typeof storybookChapters;
+  storybookPhotos: typeof storybookPhotos;
   storybooks: typeof storybooks;
   stt: typeof stt;
   studioDocs: typeof studioDocs;
   studioPopulate: typeof studioPopulate;
+  studioPopulateFromPhotos: typeof studioPopulateFromPhotos;
   templateSeeds: typeof templateSeeds;
   templates: typeof templates;
   users: typeof users;

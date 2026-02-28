@@ -294,7 +294,9 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     const answerText = typeof answerTextValue === "string" ? answerTextValue : "";
     const answerSourceRaw = formData.get("answerSource");
     const answerSource =
-      answerSourceRaw === "voice" || answerSourceRaw === "text" ? answerSourceRaw : "text";
+      answerSourceRaw === "voice" || answerSourceRaw === "text" || answerSourceRaw === "ai_narrated"
+        ? answerSourceRaw
+        : "text";
     const answerSttMeta = parseSttMetaJson(formData.get("answerSttMetaJson"));
     const answerAudioRefRaw = formData.get("answerAudioRef");
     const answerAudioRef = typeof answerAudioRefRaw === "string" && answerAudioRefRaw.trim() ? answerAudioRefRaw : null;
@@ -371,7 +373,17 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
         );
       }
 
-      redirect(`/book/${storybookId}/chapters?chapterCompleted=${encodeURIComponent(chapterInstanceId)}`);
+      // Check if all chapters are now complete → route to extra question
+      const currentChapters = await listGuidedChaptersByStorybookForUser(currentUser.id, storybookId);
+      const allChapters = currentChapters.ok ? currentChapters.data : [];
+      const nextIncomplete = allChapters
+        .toSorted((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+        .find((ch) => ch.id !== chapterInstanceId && ch.status !== "completed");
+      if (nextIncomplete) {
+        redirect(`/book/${storybookId}/chapters/${nextIncomplete.id}/wizard`);
+      }
+      // All chapters done — go to extra question
+      redirect(`/book/${storybookId}/extra`);
     }
 
     const nextStep = Math.min(submittedStep + 1, questions.length - 1);
@@ -408,6 +420,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
             totalSteps={questions.length}
             currentAnswer={currentAnswerForStep}
             chapterKey={chapter.chapterKey}
+            chapterTitle={chapter.title}
           />
         </form>
       </WizardShell>

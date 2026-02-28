@@ -1,0 +1,56 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "description": "Output schema for 3-paragraph chapter narrative generation v1",
+    "properties": {
+        "opening": {
+            "type": "string",
+            "description": "Exactly one paragraph serving as the introduction. No headers or markdown."
+        },
+        "story": {
+            "type": "string",
+            "description": "Exactly one paragraph serving as the main body narrative. No headers or markdown."
+        },
+        "closing": {
+            "type": "string",
+            "description": "Exactly one paragraph serving as the conclusion. No headers or markdown."
+        },
+        "citations": {
+            "type": "object",
+            "properties": {
+                "opening": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Array of questionIds cited in opening paragraph."
+                },
+                "story": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Array of questionIds cited in story paragraph."
+                },
+                "closing": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Array of questionIds cited in closing paragraph."
+                }
+            },
+            "required": [
+                "opening",
+                "story",
+                "closing"
+            ]
+        }
+    },
+    "required": [
+        "opening",
+        "story",
+        "closing",
+        "citations"
+    ]
+}

@@ -78,7 +78,7 @@ export function mapDraftToTextSlots(input: {
   draft: Pick<ChapterDraftRecord, "summary" | "sections" | "quotes" | "imageIdeas" | "entities">;
   slotIds: string[];
   maxBodyChars?: number;
-}) : TextSlotMapResult {
+}): TextSlotMapResult {
   const warnings: TextSlotMappingWarning[] = [];
   const slotText: Record<string, string> = {};
   const captions = buildCaptions(input.draft);
@@ -125,6 +125,61 @@ export function mapDraftToTextSlots(input: {
     if (isCaptionSlot(slotId)) {
       slotText[slotId] = captions[Math.min(captionIndex, captions.length - 1)] ?? "Chapter illustration";
       captionIndex += 1;
+      continue;
+    }
+  }
+
+  return { slotText, warnings };
+}
+
+export function mapNarrativeToTextSlots(input: {
+  chapterTitle: string;
+  chapterSubtitle?: string | null;
+  narrative: { paragraphs: { opening: string, story: string, closing: string } };
+  slotIds: string[];
+  maxBodyChars?: number;
+}): TextSlotMapResult {
+  const warnings: TextSlotMappingWarning[] = [];
+  const slotText: Record<string, string> = {};
+
+  const fullBody = [
+    input.narrative.paragraphs.opening,
+    input.narrative.paragraphs.story,
+    input.narrative.paragraphs.closing
+  ]
+    .map(p => p.trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  const bodyResult = truncateWithEllipsis(fullBody, input.maxBodyChars ?? 1600);
+  if (bodyResult.truncated) {
+    warnings.push({
+      code: "BODY_TRUNCATED",
+      message: "Body text was truncated for v1 slot fitting."
+    });
+  }
+
+  const quoteText = sentenceFragments(input.narrative.paragraphs.opening)[0] || "A meaningful memory worth preserving.";
+
+  for (const slotId of input.slotIds) {
+    if (isTitleSlot(slotId)) {
+      slotText[slotId] = input.chapterTitle;
+      continue;
+    }
+    if (normalizeSlotId(slotId).includes("subtitle")) {
+      slotText[slotId] = input.chapterSubtitle?.trim() || "";
+      continue;
+    }
+    if (isBodySlot(slotId)) {
+      slotText[slotId] = bodyResult.text;
+      continue;
+    }
+    if (isQuoteSlot(slotId)) {
+      slotText[slotId] = quoteText;
+      continue;
+    }
+    if (isCaptionSlot(slotId)) {
+      slotText[slotId] = "Chapter illustration";
       continue;
     }
   }

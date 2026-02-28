@@ -4,7 +4,7 @@ import { action } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import { mapDraftToTextSlots, type TextSlotMapResult } from "../packages/shared/populate/textSlotMapper";
+import { mapDraftToTextSlots, mapNarrativeToTextSlots, type TextSlotMapResult } from "../packages/shared/populate/textSlotMapper";
 import { mapIllustrationsToImageSlots } from "../packages/shared/populate/imageSlotMapper";
 import { buildFillSlotWithImagePatch } from "../packages/editor/commands/fillSlotWithImage";
 import { getTemplateQuestionsForChapter } from "./templates";
@@ -269,9 +269,8 @@ function createImagePlaceholderContent(slotId: string, frameType: "IMAGE" | "FRA
   };
 }
 
-function fingerprintDraft(draft: { version: number; summary: string; sections: Array<{ sectionId: string; wordCount: number }> }) {
-  const sections = draft.sections.map((section) => `${section.sectionId}:${section.wordCount}`).join("|");
-  return `d:${draft.version}:${draft.summary.length}:${sections}`;
+function fingerprintDraft(narrative: any) {
+  return `n:${narrative.version}:${narrative.paragraphs?.opening?.length}:${narrative.paragraphs?.story?.length}:${narrative.paragraphs?.closing?.length}`;
 }
 
 function fingerprintIllustrations(
@@ -318,21 +317,21 @@ export const populateChapter = action({
     storybookId: v.id("storybooks"),
     chapterInstanceId: v.id("storybookChapters")
   },
-  handler: async (ctx, args) => { // NOSONAR
+  handler: async (ctx, args): Promise<any> => { // NOSONAR
     try {
       const viewer = await requireActionUser(ctx, args.viewerSubject);
-      const [storybook, chapter, draft, illustrationState, studioState, chapterAnswers] = await withConvexSpan(
+      const [storybook, chapter, draft, illustrationState, studioState, chapterAnswers] = await withConvexSpan<any>(
         "studio_populate_fetch_inputs",
         {
           flow: "studio_populate",
           storybookId: String(args.storybookId),
           chapterInstanceId: String(args.chapterInstanceId)
         },
-        () =>
+        (): Promise<any> =>
           Promise.all([
             ctx.runQuery(api.storybooks.getGuidedById, { viewerSubject: viewer.subject, storybookId: args.storybookId }),
             ctx.runQuery(api.storybookChapters.get, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
-            ctx.runQuery(api.chapterDrafts.getLatestByChapter, { viewerSubject: viewer.subject, chapterInstanceId: args.chapterInstanceId }),
+            ctx.runQuery(api.chapterNarratives.getByChapterInstanceId, { chapterInstanceId: args.chapterInstanceId }),
             ctx.runQuery(api.chapterIllustrations.getLatestByChapterInstance, {
               viewerSubject: viewer.subject,
               chapterInstanceId: args.chapterInstanceId
@@ -348,12 +347,12 @@ export const populateChapter = action({
           ])
       );
 
-      const template = storybook.templateId
+      const template: any = storybook.templateId
         ? await ctx.runQuery(api.templates.getById, { templateId: storybook.templateId })
         : null;
 
       if (!draft || draft.status !== "ready") {
-        return { ok: false as const, errorCode: "DRAFT_NOT_READY", message: "Chapter draft is not ready.", retryable: false };
+        return { ok: false as const, errorCode: "NARRATIVE_NOT_READY", message: "Chapter narrative is not ready.", retryable: false };
       }
       if (!illustrationState || illustrationState.status !== "ready") {
         return {
@@ -392,16 +391,16 @@ export const populateChapter = action({
       const answersByQuestionId = new Map(
         answersRaw.map((row) => [row.questionId, row] as const)
       );
-      const questionOrder =
+      const questionOrder: any[] =
         template && typeof template === "object" && "questionFlow" in template
           ? getTemplateQuestionsForChapter(template as any, chapter.chapterKey).map((question) => question.questionId)
           : [];
-      const orderedAnswers = [
+      const orderedAnswers: any[] = [
         ...questionOrder
-          .map((questionId) => answersByQuestionId.get(questionId))
+          .map((questionId: any) => answersByQuestionId.get(questionId))
           .filter(
             (row): row is ChapterAnswerDto =>
-              Boolean(row && !row.skipped && readAnswerText(row).length > 0)
+              Boolean(row && !row.skipped && readAnswerText(row as ChapterAnswerDto).length > 0)
           ),
         ...answersRaw
           .filter(
@@ -413,8 +412,8 @@ export const populateChapter = action({
           .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
       ];
 
-      const answerPageSpecs = orderedAnswers.length > 0 ? buildAnswerPerPageSpecs(orderedAnswers) : [];
-      const pageSpecs =
+      const answerPageSpecs: any[] = orderedAnswers.length > 0 ? buildAnswerPerPageSpecs(orderedAnswers) : [];
+      const pageSpecs: any[] =
         answerPageSpecs.length > 0
           ? answerPageSpecs
           : extractChapterPageSpecs(template?.templateJson ?? template, chapter.chapterKey);
@@ -448,33 +447,33 @@ export const populateChapter = action({
         viewerSubject: viewer.subject,
         chapterInstanceId: args.chapterInstanceId
       });
-      const imageSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is ImageSlotSpec => slot.kind === "image"));
-      const textSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is TextSlotSpec => slot.kind === "text"));
+      const imageSlots = pageSpecs.flatMap((page: any) => page.slots.filter((slot: any): slot is ImageSlotSpec => slot.kind === "image"));
+      const textSlots = pageSpecs.flatMap((page: any) => page.slots.filter((slot: any): slot is TextSlotSpec => slot.kind === "text"));
       const useAnswerPages = answerPageSpecs.length > 0;
 
       const textMapping: TextSlotMapResult = useAnswerPages
         ? {
-            slotText: Object.fromEntries(
-              answerPageSpecs.flatMap((pageSpec, index) => {
-                const answer = orderedAnswers[index];
-                if (!answer) return [];
-                const titleSlot = pageSpec?.slots.find((slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title");
-                const bodySlot = pageSpec?.slots.find((slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "body");
-                const text = readAnswerText(answer);
-                const pairs: Array<readonly [string, string]> = [];
-                if (titleSlot?.slotId) pairs.push([titleSlot.slotId, chapter.title]);
-                if (bodySlot?.slotId) pairs.push([bodySlot.slotId, text]);
-                return pairs;
-              })
-            ),
-            warnings: []
-          }
-        : mapDraftToTextSlots({
-            chapterTitle: chapter.title,
-            chapterSubtitle: null,
-            draft,
-            slotIds: textSlots.map((slot) => slot.slotId)
-          });
+          slotText: Object.fromEntries(
+            answerPageSpecs.flatMap((pageSpec: any, index: any) => {
+              const answer = orderedAnswers[index];
+              if (!answer) return [];
+              const titleSlot = pageSpec?.slots.find((slot: any): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title");
+              const bodySlot = pageSpec?.slots.find((slot: any): slot is TextSlotSpec => slot.kind === "text" && slot.role === "body");
+              const text = readAnswerText(answer);
+              const pairs: Array<readonly [string, string]> = [];
+              if (titleSlot?.slotId) pairs.push([titleSlot.slotId, chapter.title]);
+              if (bodySlot?.slotId) pairs.push([bodySlot.slotId, text]);
+              return pairs;
+            })
+          ),
+          warnings: []
+        }
+        : mapNarrativeToTextSlots({
+          chapterTitle: chapter.title,
+          chapterSubtitle: null,
+          narrative: draft as any,
+          slotIds: textSlots.map((slot: any) => slot.slotId)
+        });
 
       let imageMapping;
       if (useAnswerPages) {
@@ -491,17 +490,17 @@ export const populateChapter = action({
           }
         }
         const sequentialSlotAssets: Record<string, any> = {};
-        imageSlots.forEach((slot, index) => {
+        imageSlots.forEach((slot: any, index: any) => {
           const asset = orderedIllustrationAssets[index];
           if (asset) sequentialSlotAssets[slot.slotId] = asset;
         });
         imageMapping = mapIllustrationsToImageSlots({
-          slotIds: imageSlots.map((slot) => slot.slotId),
+          slotIds: imageSlots.map((slot: any) => slot.slotId),
           slotAssets: sequentialSlotAssets
         });
       } else {
         imageMapping = mapIllustrationsToImageSlots({
-          slotIds: imageSlots.map((slot) => slot.slotId),
+          slotIds: imageSlots.map((slot: any) => slot.slotId),
           slotAssets: (illustrationSlotMap?.slots ?? {}) as Record<string, any>
         });
       }
@@ -516,7 +515,7 @@ export const populateChapter = action({
         if (!page) continue;
         const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
         const expectedStableKeys = new Set(
-          pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId))
+          pageSpec.slots.map((slot: any) => stableNodeKey((chapter as any).chapterKey, pageSpec.pageTemplateId, slot.slotId))
         );
         const stalePopulateFrames = initialPageFrames.filter((frame) => {
           const content = recordOrNull(frame.content);
@@ -672,7 +671,7 @@ export const populateChapter = action({
 
       const draftFp = fingerprintDraft(draft);
       const illFp = fingerprintIllustrations(illustrationState);
-      const state = await ctx.runMutation(api.chapterStudioState.upsertPopulationState, {
+      const state: any = await ctx.runMutation(api.chapterStudioState.upsertPopulationState, {
         viewerSubject: viewer.subject,
         storybookId: args.storybookId,
         chapterInstanceId: args.chapterInstanceId,
@@ -713,8 +712,8 @@ export const populateChapter = action({
           draftFingerprint: draftFp,
           illustrationFingerprint: illFp,
           pageIds,
-          stableNodes: pageSpecs.flatMap((pageSpec) =>
-            pageSpec.slots.map((slot) => ({
+          stableNodes: pageSpecs.flatMap((pageSpec: any) =>
+            pageSpec.slots.map((slot: any) => ({
               pageTemplateId: pageSpec.pageTemplateId,
               slotId: slot.slotId,
               nodeId: stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId),

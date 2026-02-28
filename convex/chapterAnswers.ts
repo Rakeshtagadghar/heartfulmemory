@@ -37,7 +37,7 @@ type UpsertAnswerArgs = {
   } | null;
   audioRef?: string | null;
   skipped?: boolean;
-  source?: "text" | "voice";
+  source?: "text" | "voice" | "ai_narrated";
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -249,7 +249,7 @@ export const upsert = mutationGeneric({
     sttMeta: v.optional(v.union(sttMetaValidator, v.null())),
     audioRef: v.optional(v.union(v.string(), v.null())),
     skipped: v.optional(v.boolean()),
-    source: v.optional(v.union(v.literal("text"), v.literal("voice")))
+    source: v.optional(v.union(v.literal("text"), v.literal("voice"), v.literal("ai_narrated")))
   },
   handler: async (ctx, args) => await upsertAnswerInternal(ctx, args)
 });

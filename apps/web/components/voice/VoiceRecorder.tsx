@@ -34,20 +34,20 @@ type SttMeta = {
 
 type VoiceTranscribeApiResult =
   | {
-      ok: true;
-      provider: "groq" | "elevenlabs";
-      transcriptText: string;
-      confidence: number | null;
-      durationMs: number | null;
-      providerRequestId: string | null;
-      raw: Record<string, unknown> | null;
-    }
+    ok: true;
+    provider: "groq" | "elevenlabs";
+    transcriptText: string;
+    confidence: number | null;
+    durationMs: number | null;
+    providerRequestId: string | null;
+    raw: Record<string, unknown> | null;
+  }
   | {
-      ok: false;
-      errorCode: string;
-      message: string;
-      retryable: boolean;
-    };
+    ok: false;
+    errorCode: string;
+    message: string;
+    retryable: boolean;
+  };
 
 function formatTimer(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -374,7 +374,7 @@ export function VoiceRecorder({
           <button
             type="button"
             onClick={beginRecording}
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 px-5 text-base font-semibold text-rose-100"
+            className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 px-5 text-base font-semibold text-rose-100"
           >
             Start Recording
           </button>
@@ -382,7 +382,7 @@ export function VoiceRecorder({
           <button
             type="button"
             onClick={() => void stopRecording(false)}
-            className="inline-flex h-14 items-center justify-center rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-5 text-base font-semibold text-emerald-100"
+            className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-5 text-base font-semibold text-emerald-100"
           >
             Stop Recording
           </button>
@@ -391,7 +391,7 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={recordAgain}
-          className="inline-flex h-14 items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75"
+          className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75"
         >
           Record Again
         </button>
@@ -400,18 +400,11 @@ export function VoiceRecorder({
           type="button"
           onClick={retryTranscription}
           disabled={!lastRecording || machine.state === "recording" || machine.state === "transcribing"}
-          className="inline-flex h-14 items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Retry Transcription
         </button>
 
-        <button
-          type="button"
-          onClick={onSwitchToTyping}
-          className="inline-flex h-14 items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75"
-        >
-          Switch to Typing
-        </button>
       </div>
 
       {lastTranscription ? (
