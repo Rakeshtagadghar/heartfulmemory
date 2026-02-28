@@ -15,6 +15,7 @@ export function SiteFooter() {
             ["/pricing", "Pricing"],
             ["/gift", "Gift"],
             ["/templates", "Templates"],
+            ["/tech-stack", "Tech Stack"],
             ["/privacy", "Privacy"],
             ["/terms", "Terms"],
             ["/contact", "Contact"]

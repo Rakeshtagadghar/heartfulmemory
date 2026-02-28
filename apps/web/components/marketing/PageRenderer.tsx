@@ -1,5 +1,6 @@
 import type { MarketingBlock } from "../../content/landing.schema";
 import { HeroSplit } from "./blocks/hero-split";
+import { BuiltWithStrip } from "../landing/BuiltWithStrip";
 import {
   CarouselCardsBlockView,
   EmailCaptureBlockView,
@@ -37,6 +38,8 @@ export function MarketingPageRenderer({ blocks }: { blocks: readonly MarketingBl
             return <EmailCaptureBlockView key={block.id} block={block} />;
           case "footer":
             return <FooterBlockView key={block.id} block={block} />;
+          case "built_with":
+            return <BuiltWithStrip key={block.id} />;
           default:
             return null;
         }

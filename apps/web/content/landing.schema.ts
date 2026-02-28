@@ -136,6 +136,11 @@ export type FooterBlock = {
   id: string;
 };
 
+export type BuiltWithBlock = {
+  type: "built_with";
+  id: string;
+};
+
 export type MarketingBlock =
   | HeroSplitBlock
   | StepperBlock
@@ -146,7 +151,8 @@ export type MarketingBlock =
   | PricingCardsBlock
   | FaqBlock
   | EmailCaptureBlock
-  | FooterBlock;
+  | FooterBlock
+  | BuiltWithBlock;
 
 export type MarketingPageConfig = {
   meta: {

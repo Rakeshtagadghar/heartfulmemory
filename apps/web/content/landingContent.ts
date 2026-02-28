@@ -303,6 +303,10 @@ export const landingPageConfig: MarketingPageConfig = {
       }
     },
     {
+      type: "built_with",
+      id: "built_with"
+    },
+    {
       type: "footer",
       id: "footer"
     }
