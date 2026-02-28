@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 export type PhotoItem = {
   id: string;
   orderIndex: number;
@@ -32,14 +34,17 @@ export function PhotoGrid({
             return (
               <div key={photo.id} className="relative aspect-square overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]">
                 {url ? (
-                  <img
+                  <Image
                     src={url}
                     alt={`Photo ${photo.orderIndex + 1}`}
-                    className="h-full w-full object-cover"
+                    fill
+                    unoptimized
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+                    className="object-cover"
                   />
                 ) : (
                   <div className="flex h-full items-center justify-center">
-                    <span className="text-xs text-white/30">Loading…</span>
+                    <span className="text-xs text-white/30">Loading...</span>
                   </div>
                 )}
                 <button

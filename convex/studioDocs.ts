@@ -27,6 +27,9 @@ export const getByStorybook = queryGeneric({
         .map((page) => ({
           id: String(page._id),
           orderIndex: page.orderIndex,
+          title: page.title ?? "",
+          isHidden: page.isHidden ?? false,
+          isLocked: page.isLocked ?? false,
           widthPx: page.widthPx,
           heightPx: page.heightPx,
           updatedAt: page.updatedAt

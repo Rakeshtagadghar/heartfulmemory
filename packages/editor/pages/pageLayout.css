@@ -1,0 +1,7 @@
+.page-shell {
+  position: relative;
+}
+
+.page-shell[data-active="true"] {
+  outline-offset: 6px;
+}

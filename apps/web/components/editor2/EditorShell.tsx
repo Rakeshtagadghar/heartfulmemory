@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition
+} from "react";
 import type { ExportValidationIssue } from "../../../../packages/rules-engine/src";
 import {
   type StorybookExportSettingsV1,
@@ -43,7 +52,7 @@ import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
 import { showStudioToast } from "../studio/ui/toasts";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
-import type { StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
+import { MINI_SIDEBAR_WIDTH_PX, type StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
 import {
   captureStudioError,
   recordStudioMilestone,
@@ -110,6 +119,17 @@ import {
 } from "../../../../packages/editor/models/cropModel";
 import { updateCropZoomConstrained } from "../../../../packages/editor/interaction/cropPanZoom";
 import { canEnterCropMode, canEnterTextEdit } from "../../../../packages/editor/interaction/lockGuards";
+import { PageHeaderChrome } from "../../../../packages/editor/pages/PageHeaderChrome";
+import { readStoredPageViewMode, type PageViewMode, writeStoredPageViewMode } from "../../../../packages/editor/pages/viewMode";
+import {
+  insertPageIdAfter,
+  reorderPagesByMove,
+} from "../../../../packages/editor/model/pageOps";
+import { ContinuousPagesView } from "../../../../packages/editor/pages/ContinuousPagesView";
+import { SinglePageView } from "../../../../packages/editor/pages/SinglePageView";
+import { resolveActivePageId } from "../../../../packages/editor/pages/activePageStore";
+import { shouldClearSelectionOnModeSwitch } from "../../../../packages/editor/pages/selectionModeRules";
+import "../../../../packages/editor/pages/pageLayout.css";
 
 function sortPages(pages: PageDTO[]) {
   return [...pages].sort((a, b) => a.order_index - b.order_index);
@@ -134,6 +154,31 @@ function mergeFrameIntoMap(
   next[updated.page_id] = sortFrames(frames);
   return next;
 }
+
+function getStudioDocMetaFromSettings(settings: StorybookDTO["settings"]) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return {} as Record<string, unknown>;
+  const value = (settings as Record<string, unknown>).studioDocMeta;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {} as Record<string, unknown>;
+  return value as Record<string, unknown>;
+}
+
+function getInitialPageViewMode(storybookId: string, settings: StorybookDTO["settings"]): PageViewMode {
+  const studioDocMeta = getStudioDocMetaFromSettings(settings);
+  const stored = readStoredPageViewMode(storybookId);
+  if (studioDocMeta.pageViewMode === "single_page" || studioDocMeta.pageViewMode === "continuous") {
+    return studioDocMeta.pageViewMode;
+  }
+  return stored ?? "single_page";
+}
+
+type RulerBand = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  sourceLeft: number;
+  sourceTop: number;
+};
 
 type EditorFramePatch = Partial<Pick<FrameDTO, "x" | "y" | "w" | "h" | "z_index" | "locked">> & {
   style?: Record<string, unknown>;
@@ -203,7 +248,7 @@ function FooterCanvasToggleButton({
 }: {
   label: string;
   active: boolean;
-  onClick: () => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   children: ReactNode;
 }) {
   return (
@@ -291,13 +336,30 @@ export function Editor2Shell({// NOSONAR
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [canvasOnlyFullscreen, setCanvasOnlyFullscreen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [studioDocMeta, setStudioDocMeta] = useState<Record<string, unknown>>(
+    () => getStudioDocMetaFromSettings(storybook.settings)
+  );
+  const [pageViewMode, setPageViewMode] = useState<PageViewMode>(() => getInitialPageViewMode(storybook.id, storybook.settings));
   const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<EditorFramePatch>({});
   const [isPending, startTransition] = useTransition();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const shellContainerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRulerLaneRef = useRef<HTMLDivElement | null>(null);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
+  const [rulerBounds, setRulerBounds] = useState({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    sourceLeft: 0,
+    sourceTop: 0
+  });
+  const [verticalRulerBands, setVerticalRulerBands] = useState<RulerBand[]>([]);
   const studioShell = useHoverPanelController();
-  const effectiveSelectedPageId = selectedPageId ?? pages[0]?.id ?? null;
+  const effectiveSelectedPageId = resolveActivePageId({
+    currentActivePageId: selectedPageId,
+    availablePageIds: pages.map((page) => page.id)
+  });
   const { insertFromUploadAsset, insertFromProviderResult } = useInsertImage();
   let imagePanelAssetSummary = "";
   if (studioShell.openPanelId === "uploads" || studioShell.openPanelId === "photos") {
@@ -308,6 +370,11 @@ export function Editor2Shell({// NOSONAR
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === effectiveSelectedPageId) ?? null,
     [effectiveSelectedPageId, pages]
+  );
+  const selectedPageIsLocked = Boolean(selectedPage?.is_locked);
+  const selectedPageIndex = useMemo(
+    () => (selectedPage ? pages.findIndex((page) => page.id === selectedPage.id) : -1),
+    [pages, selectedPage]
   );
   const currentFrames = useMemo(
     () => (effectiveSelectedPageId ? sortFrames(framesByPageId[effectiveSelectedPageId] ?? []) : []),
@@ -340,10 +407,6 @@ export function Editor2Shell({// NOSONAR
   const issueHighlightMap = useMemo(() => buildIssueHighlightMap(preflightIssues), [preflightIssues]);
   const avatarLabel = userDisplayName || userEmail || "Member";
   const avatarInitials = initialsFromLabel(avatarLabel);
-  const currentPageIssueHighlights = useMemo(
-    () => (effectiveSelectedPageId ? issueHighlightMap[effectiveSelectedPageId] ?? {} : {}),
-    [effectiveSelectedPageId, issueHighlightMap]
-  );
   const issueDisplayMeta = useMemo(() => {
     const pageNumberById: Record<string, number> = {};
     const frameNumberById: Record<string, number> = {};
@@ -374,6 +437,11 @@ export function Editor2Shell({// NOSONAR
   }, [cropDraft]);
 
   useEffect(() => {
+    if (selectedPageId === effectiveSelectedPageId) return;
+    setSelectedPageId(effectiveSelectedPageId);
+  }, [effectiveSelectedPageId, selectedPageId]);
+
+  useEffect(() => {
     recordStudioMilestone("ui_action", "studio_open", {
       flow: "studio_open",
       storybookId: storybook.id,
@@ -402,6 +470,15 @@ export function Editor2Shell({// NOSONAR
       null
     );
   }
+
+  const findPageById = useCallback((pageId: string) => {
+    return pages.find((page) => page.id === pageId) ?? null;
+  }, [pages]);
+
+  const isPageLockedById = useCallback((pageId: string | null | undefined) => {
+    if (!pageId) return false;
+    return Boolean(findPageById(pageId)?.is_locked);
+  }, [findPageById]);
 
   function setPrimarySelection(
     nextPrimaryId: string | null,
@@ -451,6 +528,21 @@ export function Editor2Shell({// NOSONAR
     }
   });
 
+  useEffect(() => {
+    writeStoredPageViewMode(storybook.id, pageViewMode);
+  }, [pageViewMode, storybook.id]);
+
+  const persistStudioDocMeta = useCallback(async (nextStudioDocMeta: Record<string, unknown>) => {
+    const result = await updateLayoutStorybookSettingsAction(storybook.id, {
+      studioDocMeta: nextStudioDocMeta
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      return false;
+    }
+    return true;
+  }, [storybook.id]);
+
   async function handleAddPage() {
     const result = await createPageAction(storybook.id, selectedPage?.size_preset ?? "BOOK_8_5X11");
     if (!result.ok) {
@@ -464,15 +556,34 @@ export function Editor2Shell({// NOSONAR
     setMessage(null);
   }
 
+  async function handleAddPageAfter(pageId: string) {
+    const result = await createPageAction(storybook.id, selectedPage?.size_preset ?? "BOOK_8_5X11");
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    const nextOrderedIds = insertPageIdAfter(pages.map((page) => page.id), result.data.id, pageId);
+    const reorderResult = await reorderPagesAction(storybook.id, nextOrderedIds);
+    if (!reorderResult.ok) {
+      setMessage(reorderResult.error);
+      return;
+    }
+    const freshPages = await listPagesAction(storybook.id);
+    if (!freshPages.ok) {
+      setMessage(freshPages.error);
+      return;
+    }
+    setPages(sortPages(freshPages.data));
+    setSelectedPageId(result.data.id);
+    setSelectedFrameIds([]);
+    setFramesByPageId((current) => ({ ...current, [result.data.id]: [] }));
+    setMessage("Page added.");
+  }
+
   async function handleMovePage(pageId: string, direction: -1 | 1) {
-    const index = pages.findIndex((page) => page.id === pageId);
-    const targetIndex = index + direction;
-    if (index < 0 || targetIndex < 0 || targetIndex >= pages.length) return;
-    const next = [...pages];
-    const [moved] = next.splice(index, 1);
-    next.splice(targetIndex, 0, moved);
-    const optimistic = next.map((page, idx) => ({ ...page, order_index: idx }));
+    const optimistic = reorderPagesByMove(pages, pageId, direction);
     const previous = pages;
+    if (optimistic.map((page) => page.id).join("|") === previous.map((page) => page.id).join("|")) return;
     setPages(optimistic);
     const result = await reorderPagesAction(storybook.id, optimistic.map((page) => page.id));
     if (!result.ok) {
@@ -539,7 +650,6 @@ export function Editor2Shell({// NOSONAR
       delete next[pageId];
       return next;
     });
-
     if (selectedPageId === pageId) {
       const nextSelected = nextPages[Math.min(page.order_index, Math.max(0, nextPages.length - 1))] ?? nextPages[0] ?? null;
       setSelectedPageId(nextSelected?.id ?? null);
@@ -554,6 +664,10 @@ export function Editor2Shell({// NOSONAR
 
   async function handleInsertElement(itemId: ElementsCatalogItemId) {
     if (!selectedPage) return;
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     recordStudioMilestone("editor_action", "insert_element", {
       flow: "studio_insert_element",
       storybookId: storybook.id,
@@ -622,6 +736,10 @@ export function Editor2Shell({// NOSONAR
 
   async function handleAddTextPreset(presetId: TextPresetId) {
     if (!selectedPage) return;
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     const preset = getTextInsertPreset(presetId);
     const migrated = migrateTextFrameToTextNodeV1({
       content: { text: preset.text },
@@ -651,6 +769,10 @@ export function Editor2Shell({// NOSONAR
 
   async function handleApplyTemplate(templateId: string) {
     if (!selectedPage) return;
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     const template = eldersFirstPageTemplates.find((item) => item.id === templateId);
     if (!template) return;
     setMessage(null);
@@ -675,6 +797,7 @@ export function Editor2Shell({// NOSONAR
 
   const applySelectedFrameDraftPatch = useCallback((patch: EditorFramePatch) => {
     if (!selectedFrame) return;
+    if (isPageLockedById(selectedFrame.page_id)) return;
     setFramesByPageId((current) => {
       const next = { ...current };
       const pageFrames = [...(next[selectedFrame.page_id] ?? [])];
@@ -686,11 +809,12 @@ export function Editor2Shell({// NOSONAR
       return next;
     });
     setSelectedFrameDraftPatch((current) => ({ ...current, ...patch }));
-  }, [selectedFrame]);
+  }, [isPageLockedById, selectedFrame]);
 
   async function handleCommitFramePatch(frameId: string, patch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">>) {
-    const frame = currentFrames.find((item) => item.id === frameId);
+    const frame = findFrameById(frameId);
     if (!frame) return;
+    if (isPageLockedById(frame.page_id)) return;
     await persistFramePatch(frameId, {
       ...patch,
       expectedVersion: frame.version
@@ -699,6 +823,10 @@ export function Editor2Shell({// NOSONAR
 
   const handleDeleteSelectedFrame = useCallback(async () => {
     if (!selectedFrameId || !selectedPageId) return;
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     const frame = currentFrames.find((item) => item.id === selectedFrameId);
     if (frame?.locked) {
       setMessage("Unlock the frame before deleting.");
@@ -719,7 +847,7 @@ export function Editor2Shell({// NOSONAR
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
-  }, [currentFrames, selectedFrameId, selectedPageId, storybook.id]);
+  }, [currentFrames, selectedFrameId, selectedPageId, selectedPageIsLocked, storybook.id]);
 
   async function handlePageSizeChange(preset: PageDTO["size_preset"]) {
     if (!selectedPage) return;
@@ -757,6 +885,7 @@ export function Editor2Shell({// NOSONAR
 
   function handleBringToFront() {
     if (!selectedFrame || !selectedPageId) return;
+    if (selectedPageIsLocked) return;
     if (selectedFrame.locked) return;
     const maxZ = Math.max(0, ...currentFrames.map((frame) => frame.z_index));
     applySelectedFrameDraftPatch({ z_index: maxZ + 1 });
@@ -764,6 +893,7 @@ export function Editor2Shell({// NOSONAR
 
   function handleSendBackward() {
     if (!selectedFrame) return;
+    if (selectedPageIsLocked) return;
     if (selectedFrame.locked) return;
     applySelectedFrameDraftPatch({ z_index: Math.max(1, selectedFrame.z_index - 1) });
   }
@@ -774,6 +904,81 @@ export function Editor2Shell({// NOSONAR
     setEditingTextFrameId(null);
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
+  }
+
+  async function handleTogglePagesMode() {
+    const nextMode: PageViewMode = pageViewMode === "single_page" ? "continuous" : "single_page";
+    if (shouldClearSelectionOnModeSwitch({ previousMode: pageViewMode, nextMode })) {
+      setPrimarySelection(null, []);
+      setEditingTextFrameId(null);
+      setCropModeFrameId(null);
+      setSelectedFrameDraftPatch({});
+    }
+    setPageViewMode(nextMode);
+    if (nextMode === "continuous" && studioShell.openPanelId === "pages") {
+      studioShell.closePanel("mouse");
+    }
+    const nextMeta = {
+      ...studioDocMeta,
+      pageViewMode: nextMode,
+      touchedAt: Date.now()
+    };
+    const previousMeta = studioDocMeta;
+    setStudioDocMeta(nextMeta);
+    const ok = await persistStudioDocMeta(nextMeta);
+    if (!ok) {
+      setStudioDocMeta(previousMeta);
+      setPageViewMode(pageViewMode);
+    }
+  }
+
+  async function handleCommitPageTitle(pageId: string, title: string) {
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const nextTitle = title.trim();
+    if ((page.title ?? "") === nextTitle) return;
+    const result = await updatePageSettingsAction(storybook.id, pageId, {
+      title: nextTitle
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setPages((current) => current.map((item) => (item.id === pageId ? result.data : item)));
+    setMessage(null);
+  }
+
+  async function handleTogglePageHidden(pageId: string) {
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const result = await updatePageSettingsAction(storybook.id, pageId, {
+      is_hidden: !page.is_hidden
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setPages((current) => current.map((item) => (item.id === pageId ? result.data : item)));
+    setMessage(page.is_hidden ? "Page is visible." : "Page hidden. It will be excluded from export.");
+  }
+
+  async function handleTogglePageLock(pageId: string) {
+    const page = pages.find((item) => item.id === pageId);
+    if (!page) return;
+    const result = await updatePageSettingsAction(storybook.id, pageId, {
+      is_locked: !page.is_locked
+    });
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+    setPages((current) => current.map((item) => (item.id === pageId ? result.data : item)));
+    setMessage(page.is_locked ? "Page unlocked." : "Page locked.");
+    if (!page.is_locked) {
+      setEditingTextFrameId(null);
+      setCropModeFrameId(null);
+      setSelectedFrameDraftPatch({});
+    }
   }
 
   function handleNavigateToExportIssue(issue: ExportValidationIssue) {
@@ -789,8 +994,20 @@ export function Editor2Shell({// NOSONAR
     }
   }
 
-  function handleSelectFrame(frameId: string, options?: { additive?: boolean; preserveIfSelected?: boolean }) {
-    const frame = currentFrames.find((item) => item.id === frameId);
+  function handleSelectFrame(
+    frameId: string,
+    options?: { additive?: boolean; preserveIfSelected?: boolean },
+    pageId?: string
+  ) {
+    const targetPageId = pageId ?? selectedPageId ?? undefined;
+    const pageFrames = targetPageId ? framesByPageId[targetPageId] ?? [] : currentFrames;
+    const frame = pageFrames.find((item) => item.id === frameId) ?? findFrameById(frameId);
+    if (targetPageId && targetPageId !== selectedPageId) {
+      setSelectedPageId(targetPageId);
+      setEditingTextFrameId(null);
+      setCropModeFrameId(null);
+      setSelectedFrameDraftPatch({});
+    }
     if (options?.additive) {
       const alreadySelected = selectedFrameIds.includes(frameId);
       const nextIds = alreadySelected
@@ -812,7 +1029,7 @@ export function Editor2Shell({// NOSONAR
     recordStudioMilestone("editor_action", "selection_change", {
       flow: "studio_selection",
       storybookId: storybook.id,
-      pageId: frame?.page_id ?? selectedPage?.id ?? undefined,
+      pageId: frame?.page_id ?? targetPageId ?? selectedPage?.id ?? undefined,
       nodeType: frame?.type ?? undefined,
       selectionCount: options?.additive ? selectedFrameIds.length + 1 : 1
     });
@@ -820,6 +1037,7 @@ export function Editor2Shell({// NOSONAR
 
   function handleStartTextEdit(frameId: string) {
     const frame = findFrameById(frameId);
+    if (isPageLockedById(frame?.page_id)) return;
     if (!canEnterTextEdit(frame)) return;
     setPrimarySelection(frameId, [frameId], { preserveModes: true });
     setEditingTextFrameId(frameId);
@@ -832,6 +1050,7 @@ export function Editor2Shell({// NOSONAR
 
   function handleStartCropEdit(frameId: string) {
     const frame = findFrameById(frameId);
+    if (isPageLockedById(frame?.page_id)) return;
     if (!isCropEditableFrame(frame) || !canEnterCropMode(frame)) return;
     setPrimarySelection(frameId, [frameId], { preserveModes: true });
     setCropModeFrameId(frameId);
@@ -943,8 +1162,9 @@ export function Editor2Shell({// NOSONAR
   }
 
   function handleTextContentChange(frameId: string, text: string) {
-    const frame = currentFrames.find((item) => item.id === frameId);
+    const frame = findFrameById(frameId);
     if (frame?.type !== "TEXT") return;
+    if (isPageLockedById(frame.page_id)) return;
     const nextContent = { ...frame.content, kind: "text_frame_v1", text };
     setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, content: nextContent }));
     if (selectedFrameId === frameId) {
@@ -984,6 +1204,7 @@ export function Editor2Shell({// NOSONAR
 
   const createFramesAndSelect = useCallback(async (inputs: Parameters<typeof createFrameAction>[2][]) => {
     if (!selectedPage || inputs.length === 0) return { ok: false as const, error: "No page selected." };
+    if (selectedPageIsLocked) return { ok: false as const, error: "Unlock the page before editing." };
     const created: FrameDTO[] = [];
     for (const input of inputs) {
       const result = await createFrameAction(storybook.id, selectedPage.id, input);
@@ -1000,7 +1221,7 @@ export function Editor2Shell({// NOSONAR
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
     return { ok: true as const, data: created };
-  }, [selectedPage, storybook.id]);
+  }, [selectedPage, selectedPageIsLocked, storybook.id]);
 
   const handleDuplicateSelection = useCallback(async () => {
     if (!selectedPage || selectedFrames.length === 0) return;
@@ -1052,6 +1273,10 @@ export function Editor2Shell({// NOSONAR
   }, [createFramesAndSelect, selectedPage]);
 
   const handleToggleSelectedFrameLock = useCallback(async () => {
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     if (selectedFrames.length === 0) return;
     if (selectedFrames.length === 1 && selectedFrame) {
       applySelectedFrameDraftPatch(toggleNodeLocked(selectedFrame.locked));
@@ -1070,7 +1295,8 @@ export function Editor2Shell({// NOSONAR
     persistFramePatches,
     selectedFrame,
     selectedFrameIds,
-    selectedFrames
+    selectedFrames,
+    selectedPageIsLocked
   ]);
 
   async function applyGeometryPatches(
@@ -1092,6 +1318,7 @@ export function Editor2Shell({// NOSONAR
   const handleLayerAction = useCallback(async (
     action: "bringForward" | "sendBackward" | "bringToFront" | "sendToBack"
   ) => {
+    if (selectedPageIsLocked) return;
     if (selectedFrames.length === 0) return;
     const drawOrder = buildDrawOrderFromNodes(currentFrames);
     const nextDrawOrder = (() => {
@@ -1122,7 +1349,7 @@ export function Editor2Shell({// NOSONAR
       pageId: selectedPageId ?? undefined,
       selectionCount: selectedFrameIds.length
     }, "success");
-  }, [currentFrames, persistFramePatches, selectedFrameIds, selectedFrames, selectedPageId, storybook.id]);
+  }, [currentFrames, persistFramePatches, selectedFrameIds, selectedFrames, selectedPageId, selectedPageIsLocked, storybook.id]);
 
   async function handleAlignToPage(
     action: Parameters<typeof buildAlignToPagePatches>[2]
@@ -1180,6 +1407,10 @@ export function Editor2Shell({// NOSONAR
 
   const handleDeleteSelection = useCallback(async () => {
     if (!selectedPageId || selectedFrames.length === 0) return;
+    if (selectedPageIsLocked) {
+      setMessage("Unlock the page before editing.");
+      return;
+    }
     const unlockedIds = selectedFrames.filter((frame) => !frame.locked).map((frame) => frame.id);
     if (unlockedIds.length === 0) {
       setMessage("Unlock the selected items before deleting.");
@@ -1202,7 +1433,7 @@ export function Editor2Shell({// NOSONAR
     setCropModeFrameId(null);
     setSelectedFrameDraftPatch({});
     setMessage(unlockedIds.length === 1 ? "Item deleted." : `${unlockedIds.length} items deleted.`);
-  }, [selectedFrames, selectedPageId, storybook.id]);
+  }, [selectedFrames, selectedPageId, selectedPageIsLocked, storybook.id]);
 
   async function refreshAssets() {
     setAssetsLoading(true);
@@ -1675,6 +1906,7 @@ export function Editor2Shell({// NOSONAR
 
       if (event.key === "Enter" && selectedFrame?.type === "TEXT") {
         event.preventDefault();
+        if (selectedPageIsLocked) return;
         setEditingTextFrameId(selectedFrame.id);
         return;
       }
@@ -1717,8 +1949,39 @@ export function Editor2Shell({// NOSONAR
     selectedFrame,
     selectedFrameId,
     selectedFrameIds,
+    selectedPageIsLocked,
     startTransition
   ]);
+
+  const handleNavigatePageByDelta = useCallback((direction: -1 | 1) => {
+    const targetIndex = selectedPageIndex + direction;
+    if (targetIndex < 0 || targetIndex >= pages.length) return;
+    const nextPage = pages[targetIndex];
+    if (!nextPage) return;
+    setSelectedPageId(nextPage.id);
+    setPrimarySelection(null, []);
+    setEditingTextFrameId(null);
+    setCropModeFrameId(null);
+    setSelectedFrameDraftPatch({});
+  }, [pages, selectedPageIndex]);
+
+  useEffect(() => {
+    if (pageViewMode !== "single_page") return;
+    function onPageNavKeyDown(event: KeyboardEvent) {
+      if (isEditableTextTarget(event.target)) return;
+      if (event.key === "PageDown") {
+        event.preventDefault();
+        handleNavigatePageByDelta(1);
+        return;
+      }
+      if (event.key === "PageUp") {
+        event.preventDefault();
+        handleNavigatePageByDelta(-1);
+      }
+    }
+    globalThis.addEventListener("keydown", onPageNavKeyDown);
+    return () => globalThis.removeEventListener("keydown", onPageNavKeyDown);
+  }, [handleNavigatePageByDelta, pageViewMode]);
 
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -1790,60 +2053,380 @@ export function Editor2Shell({// NOSONAR
     };
   }, []);
 
-  const canvasStage = (
-    <CanvasStage
-      page={selectedPage}
-      frames={currentFrames}
-      selectedFrameId={selectedFrameId}
-      selectedFrameIds={selectedFrameIds}
-      selectionBounds={selectionBounds}
-      zoom={zoom}
-      showGrid={showGridOverlay}
-      showMarginsOverlay={showMarginsOverlay}
-      showSafeAreaOverlay={showSafeAreaOverlay}
-      safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
-      issueHighlightMessagesByFrameId={currentPageIssueHighlights}
-      snapEnabled={snapEnabled}
-      editingTextFrameId={editingTextFrameId}
-      cropModeFrameId={cropModeFrameId}
-      cropDraftByFrameId={cropDraftByFrameId}
-      onSelectFrame={handleSelectFrame}
-      onStartTextEdit={handleStartTextEdit}
-      onEndTextEdit={handleEndTextEdit}
-      onTextContentChange={handleTextContentChange}
-      onPatchSelectedTextStyle={patchSelectedTextStyle}
-      onOpenTextFontPanel={selectedTextFrame ? openTextFontPanel : undefined}
-      onOpenTextColorPanel={selectedTextFrame ? openTextColorPanel : undefined}
-      onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
-      onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
-      onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
-      onNodeMenuAction={(action) => {
-        void handleNodeMenuAction(action);
-      }}
-      nodeMenuCanPaste={Boolean(getNodeClipboard())}
-      nodeMenuCanAlignSelection={selectedFrames.length >= 2 && Boolean(selectionBounds)}
-      nodeMenuCanDistribute={isDistributionEligible(selectedFrames)}
-      onStartCropEdit={handleStartCropEdit}
-      onEndCropEdit={handleApplyCropEdit}
-      onCropChange={handleCropChange}
-      onFramePatchPreview={(frameId, patch) => {
-        const active = currentFrames.find((frame) => frame.id === frameId);
-        if (!active) return;
-        setFramesByPageId((current) => {
-          const next = { ...current };
-          next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
-            frame.id === frameId ? { ...frame, ...patch } : frame
+  const updateRulerBounds = useCallback(() => {
+    const lane = canvasRulerLaneRef.current;
+    if (!lane) return;
+    const laneRect = lane.getBoundingClientRect();
+    const laneWidth = laneRect.width;
+    const laneHeight = laneRect.height;
+
+    function buildBand(surface: HTMLElement): RulerBand {
+      const rect = surface.getBoundingClientRect();
+      const sourceLeft = rect.left - laneRect.left;
+      const sourceTop = rect.top - laneRect.top;
+      const sourceRight = sourceLeft + rect.width;
+      const sourceBottom = sourceTop + rect.height;
+      const left = Math.max(0, Math.min(laneWidth, sourceLeft));
+      const top = Math.max(0, Math.min(laneHeight, sourceTop));
+      const right = Math.max(0, Math.min(laneWidth, sourceRight));
+      const bottom = Math.max(0, Math.min(laneHeight, sourceBottom));
+      return {
+        left,
+        top,
+        width: Math.max(0, right - left),
+        height: Math.max(0, bottom - top),
+        sourceLeft,
+        sourceTop
+      };
+    }
+
+    const surfaces = Array.from(lane.querySelectorAll<HTMLElement>("[data-page-surface=true]"));
+    if (surfaces.length === 0) {
+      setRulerBounds((previous) =>
+        previous.width === 0 && previous.height === 0
+          ? previous
+          : { left: 0, top: 0, width: 0, height: 0, sourceLeft: 0, sourceTop: 0 }
+      );
+      setVerticalRulerBands((previous) => (previous.length === 0 ? previous : []));
+      return;
+    }
+
+    const allBands = surfaces
+      .map((surface) => buildBand(surface))
+      .filter((band) => band.width > 0 || band.height > 0)
+      .sort((a, b) => a.sourceTop - b.sourceTop);
+
+    const visibleBands = allBands.filter((band) => band.height > 0);
+    setVerticalRulerBands((previous) => {
+      if (previous.length === visibleBands.length) {
+        const stable = previous.every((band, index) => {
+          const nextBand = visibleBands[index];
+          if (!nextBand) return false;
+          return (
+            Math.abs(band.left - nextBand.left) < 0.5 &&
+            Math.abs(band.top - nextBand.top) < 0.5 &&
+            Math.abs(band.width - nextBand.width) < 0.5 &&
+            Math.abs(band.height - nextBand.height) < 0.5
           );
-          return next;
         });
-      }}
-      onFramePatchCommit={handleCommitFramePatch}
-      onDropMediaOnFrame={(frameId, payload) => {
-        void handleDropMediaOnFrame(frameId, payload);
-      }}
-      onClearSelection={handleClearSelection}
-    />
-  );
+        if (stable) return previous;
+      }
+      return visibleBands;
+    });
+
+    const activeSurface = lane.querySelector<HTMLElement>('.page-shell[data-active="true"] [data-page-surface="true"]');
+    const activeBand = activeSurface ? buildBand(activeSurface) : null;
+    const primaryBand =
+      (activeBand && activeBand.width > 0 ? activeBand : null) ??
+      allBands.find((band) => band.width > 0 && band.height > 0) ??
+      allBands.find((band) => band.width > 0) ??
+      null;
+    const next = {
+      left: primaryBand?.left ?? 0,
+      top: primaryBand?.top ?? 0,
+      width: primaryBand?.width ?? 0,
+      height: primaryBand?.height ?? 0,
+      sourceLeft: primaryBand?.sourceLeft ?? 0,
+      sourceTop: primaryBand?.sourceTop ?? 0
+    };
+    setRulerBounds((previous) => {
+      if (
+        Math.abs(previous.left - next.left) < 0.5 &&
+        Math.abs(previous.top - next.top) < 0.5 &&
+        Math.abs(previous.width - next.width) < 0.5 &&
+        Math.abs(previous.height - next.height) < 0.5 &&
+        Math.abs(previous.sourceLeft - next.sourceLeft) < 0.5 &&
+        Math.abs(previous.sourceTop - next.sourceTop) < 0.5
+      ) {
+        return previous;
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const lane = canvasRulerLaneRef.current;
+    if (!lane) return;
+
+    let rafId = 0;
+    const scheduleUpdate = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        updateRulerBounds();
+      });
+    };
+
+    scheduleUpdate();
+    lane.addEventListener("scroll", scheduleUpdate, true);
+    globalThis.addEventListener("resize", scheduleUpdate);
+
+    const resizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scheduleUpdate());
+    resizeObserver?.observe(lane);
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      lane.removeEventListener("scroll", scheduleUpdate, true);
+      globalThis.removeEventListener("resize", scheduleUpdate);
+      resizeObserver?.disconnect();
+    };
+  }, [effectiveSelectedPageId, pageViewMode, pages.length, updateRulerBounds, zoom]);
+
+  function renderPageChrome(page: PageDTO) {
+    const pageIndex = pages.findIndex((item) => item.id === page.id);
+    if (pageIndex < 0) return null;
+    const chromeWidth = page.width_px * zoom;
+    return (
+      <div className="mx-auto" style={{ width: chromeWidth }}>
+        <PageHeaderChrome
+          pageNumber={pageIndex + 1}
+          pageCount={pages.length}
+          title={page.title ?? ""}
+          isHidden={Boolean(page.is_hidden)}
+          isLocked={Boolean(page.is_locked)}
+          onTitleCommit={(title) => {
+            void handleCommitPageTitle(page.id, title);
+          }}
+          onMoveUp={() => {
+            void handleMovePage(page.id, -1);
+          }}
+          onMoveDown={() => {
+            void handleMovePage(page.id, 1);
+          }}
+          onToggleHidden={() => {
+            void handleTogglePageHidden(page.id);
+          }}
+          onToggleLocked={() => {
+            void handleTogglePageLock(page.id);
+          }}
+          onDelete={() => {
+            const ok = globalThis.confirm("Delete this page?");
+            if (!ok) return;
+            void handleDeletePage(page.id);
+          }}
+          onAddPageAfter={() => {
+            void handleAddPageAfter(page.id);
+          }}
+        />
+      </div>
+    );
+  }
+
+  function renderCanvasForPage(page: PageDTO, options: { embedded: boolean; isActive: boolean }) {
+    const pageFrames = sortFrames(framesByPageId[page.id] ?? []);
+    const pageIssueHighlights = issueHighlightMap[page.id] ?? {};
+    return (
+      <CanvasStage
+        key={`stage-${page.id}`}
+        embedded={options.embedded}
+        page={page}
+        frames={pageFrames}
+        pageLocked={Boolean(page.is_locked)}
+        pageHidden={Boolean(page.is_hidden)}
+        selectedFrameId={options.isActive ? selectedFrameId : null}
+        selectedFrameIds={options.isActive ? selectedFrameIds : []}
+        selectionBounds={options.isActive ? selectionBounds : null}
+        zoom={zoom}
+        showGrid={showGridOverlay}
+        showMarginsOverlay={showMarginsOverlay}
+        showSafeAreaOverlay={showSafeAreaOverlay}
+        safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
+        issueHighlightMessagesByFrameId={pageIssueHighlights}
+        snapEnabled={snapEnabled}
+        editingTextFrameId={options.isActive ? editingTextFrameId : null}
+        cropModeFrameId={options.isActive ? cropModeFrameId : null}
+        cropDraftByFrameId={options.isActive ? cropDraftByFrameId : {}}
+        onSelectFrame={(frameId, selectOptions) => handleSelectFrame(frameId, selectOptions, page.id)}
+        onStartTextEdit={handleStartTextEdit}
+        onEndTextEdit={handleEndTextEdit}
+        onTextContentChange={handleTextContentChange}
+        onPatchSelectedTextStyle={patchSelectedTextStyle}
+        onOpenTextFontPanel={selectedTextFrame && options.isActive ? openTextFontPanel : undefined}
+        onOpenTextColorPanel={selectedTextFrame && options.isActive ? openTextColorPanel : undefined}
+        onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
+        onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
+        onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
+        onNodeMenuAction={(action) => {
+          void handleNodeMenuAction(action);
+        }}
+        nodeMenuCanPaste={options.isActive && !Boolean(page.is_locked) && Boolean(getNodeClipboard())}
+        nodeMenuCanAlignSelection={options.isActive && !Boolean(page.is_locked) && selectedFrames.length >= 2 && Boolean(selectionBounds)}
+        nodeMenuCanDistribute={options.isActive && !Boolean(page.is_locked) && isDistributionEligible(selectedFrames)}
+        onStartCropEdit={handleStartCropEdit}
+        onEndCropEdit={handleApplyCropEdit}
+        onCropChange={handleCropChange}
+        onFramePatchPreview={(frameId, patch) => {
+          const active = pageFrames.find((frame) => frame.id === frameId);
+          if (!active) return;
+          setFramesByPageId((current) => {
+            const next = { ...current };
+            next[active.page_id] = (next[active.page_id] ?? []).map((frame) =>
+              frame.id === frameId ? { ...frame, ...patch } : frame
+            );
+            return next;
+          });
+        }}
+        onFramePatchCommit={handleCommitFramePatch}
+        onDropMediaOnFrame={(frameId, payload) => {
+          setSelectedPageId(page.id);
+          void handleDropMediaOnFrame(frameId, payload);
+        }}
+        onClearSelection={options.isActive ? handleClearSelection : undefined}
+      />
+    );
+  }
+
+  function renderCanvasTopRuler() {
+    const tickSizePx = 16;
+    const clippedOffsetPx = Math.max(0, -rulerBounds.sourceLeft);
+    const firstTickIndex = Math.ceil(clippedOffsetPx / tickSizePx);
+    const firstTickOffsetPx = firstTickIndex * tickSizePx - clippedOffsetPx;
+    const tickCount =
+      rulerBounds.width <= 0 ? 0 : Math.floor(Math.max(0, rulerBounds.width - firstTickOffsetPx) / tickSizePx) + 1;
+    return (
+      <div className="flex h-8 shrink-0 border-b border-black/10 bg-[#eef0f3]">
+        <button
+          type="button"
+          className="relative min-w-0 flex-1 overflow-hidden"
+          onPointerDown={() => handleClearSelection()}
+          aria-label="Canvas horizontal ruler"
+        >
+          {rulerBounds.width > 0 ? (
+            <div
+              className="absolute inset-y-0 overflow-hidden"
+              style={{ left: rulerBounds.left, width: rulerBounds.width }}
+            >
+              <div className="absolute inset-y-0 left-0 w-px bg-black/20" />
+              <div className="absolute inset-y-0 right-0 w-px bg-black/20" />
+              <div className="relative h-full w-full">
+                {Array.from({ length: tickCount }, (_, index) => {
+                  const tick = firstTickIndex + index;
+                  const x = firstTickOffsetPx + index * tickSizePx;
+                  const isMajor = tick % 4 === 0;
+                  const isMedium = tick % 2 === 0;
+                  return (
+                    <div key={`ruler-top-${tick}`} className="absolute inset-y-0" style={{ left: x }}>
+                      {isMajor ? (
+                        <span className="absolute left-0 top-0 text-[10px] font-medium text-black/45">
+                          {tick / 2}
+                        </span>
+                      ) : null}
+                      <span
+                        className={[
+                          "absolute bottom-0 left-0 w-px bg-black/35",
+                          isMajor ? "h-3" : isMedium ? "h-2" : "h-1.5"
+                        ].join(" ")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </button>
+      </div>
+    );
+  }
+
+  function renderCanvasLeftRuler(leftOffsetPx: number) {
+    const tickSizePx = 16;
+    if (verticalRulerBands.length === 0) return null;
+    return (
+      <>
+        {verticalRulerBands.map((band, index) => {
+          const clippedOffsetPx = Math.max(0, -band.sourceTop);
+          const firstTickIndex = Math.ceil(clippedOffsetPx / tickSizePx);
+          const firstTickOffsetPx = firstTickIndex * tickSizePx - clippedOffsetPx;
+          const tickCount =
+            band.height <= 0 ? 0 : Math.floor(Math.max(0, band.height - firstTickOffsetPx) / tickSizePx) + 1;
+          return (
+            <button
+              key={`ruler-band-${index}`}
+              type="button"
+              className="pointer-events-auto absolute w-8 overflow-hidden border-r border-black/10 bg-[#eef0f3]"
+              style={{ left: leftOffsetPx, top: band.top, height: band.height }}
+              onPointerDown={() => handleClearSelection()}
+              aria-label="Canvas vertical ruler"
+            >
+              <div className="absolute inset-x-0 top-0 h-px bg-black/20" />
+              <div className="absolute bottom-0 inset-x-0 h-px bg-black/20" />
+              <div className="relative h-full w-full overflow-hidden">
+                {Array.from({ length: tickCount }, (_, indexTick) => {
+                  const tick = firstTickIndex + indexTick;
+                  const y = firstTickOffsetPx + indexTick * tickSizePx;
+                  const isMajor = tick % 4 === 0;
+                  const isMedium = tick % 2 === 0;
+                  return (
+                    <div key={`ruler-left-${index}-${tick}`} className="absolute inset-x-0" style={{ top: y }}>
+                      {isMajor ? (
+                        <span className="absolute right-1 top-0 text-[10px] font-medium text-black/45">
+                          {tick / 2}
+                        </span>
+                      ) : null}
+                      <span
+                        className={[
+                          "absolute right-0 top-0 h-px bg-black/35",
+                          isMajor ? "w-3" : isMedium ? "w-2" : "w-1.5"
+                        ].join(" ")}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </button>
+          );
+        })}
+      </>
+    );
+  }
+
+  const canvasStage = (() => {
+    if (!selectedPage) {
+      return (
+        <div className="flex h-full items-center justify-center text-sm text-white/70">
+          Add a page to start editing.
+        </div>
+      );
+    }
+
+    if (pageViewMode === "continuous") {
+      return (
+        <ContinuousPagesView>
+          {pages.map((page) => {
+            const isActive = page.id === effectiveSelectedPageId;
+            return (
+              <section
+                key={page.id}
+                className="page-shell mx-auto w-fit"
+                data-active={isActive ? "true" : "false"}
+                onPointerDown={() => {
+                  if (!isActive) handleSelectPage(page.id);
+                }}
+              >
+                {renderPageChrome(page)}
+                {renderCanvasForPage(page, { embedded: true, isActive })}
+              </section>
+            );
+          })}
+        </ContinuousPagesView>
+      );
+    }
+
+    return (
+      <SinglePageView
+        pageCount={pages.length}
+        onPreviousPage={() => handleNavigatePageByDelta(-1)}
+        onNextPage={() => handleNavigatePageByDelta(1)}
+      >
+        <section className="page-shell flex h-full min-h-0 flex-1 flex-col" data-active="true">
+          {renderPageChrome(selectedPage)}
+          {renderCanvasForPage(selectedPage, { embedded: false, isActive: true })}
+        </section>
+      </SinglePageView>
+    );
+  })();
   const shellClassName = (() => {
     if (canvasOnlyFullscreen) {
       return "fixed inset-0 z-[80] flex h-screen min-h-screen flex-col overflow-hidden bg-[#0a111d]";
@@ -1988,7 +2571,15 @@ export function Editor2Shell({// NOSONAR
       <div className="flex min-h-0 flex-1">
         {canvasOnlyFullscreen ? (
           <div className="relative min-h-0 flex-1">
-            {canvasStage}
+            <div className="relative flex h-full min-h-0 flex-col">
+              {renderCanvasTopRuler()}
+              <div ref={canvasRulerLaneRef} className="relative min-h-0 flex-1">
+                <div className="h-full min-h-0">{canvasStage}</div>
+                <div className="pointer-events-none absolute inset-0 z-20">
+                  {renderCanvasLeftRuler(0)}
+                </div>
+              </div>
+            </div>
             <div className="pointer-events-none absolute right-4 top-4 z-20">
               <button
                 type="button"
@@ -2034,7 +2625,15 @@ export function Editor2Shell({// NOSONAR
             onCanvasPointerDownCapture={studioShell.onCanvasPointerDown}
           >
             <div className="flex h-full min-w-0">
-              <div className="relative min-w-0 flex-1">{canvasStage}</div>
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                {renderCanvasTopRuler()}
+                <div ref={canvasRulerLaneRef} className="relative min-h-0 flex-1">
+                  <div className="h-full min-h-0">{canvasStage}</div>
+                  <div className="pointer-events-none absolute inset-0 z-20">
+                    {renderCanvasLeftRuler(MINI_SIDEBAR_WIDTH_PX)}
+                  </div>
+                </div>
+              </div>
 
               <PropertiesPanel
                 page={selectedPage}
@@ -2108,6 +2707,28 @@ export function Editor2Shell({// NOSONAR
             </span>
           </div>
           <div className="flex items-center gap-1">
+            <FooterCanvasToggleButton
+              label={pageViewMode === "single_page" ? "Single" : "Multi"}
+              active={pageViewMode === "continuous"}
+              onClick={(event) => {
+                event.stopPropagation();
+                void handleTogglePagesMode();
+              }}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="4" y="5" width="9" height="14" rx="1.6" />
+                <rect x="11" y="5" width="9" height="14" rx="1.6" />
+              </svg>
+            </FooterCanvasToggleButton>
             <FooterCanvasToggleButton
               label="Overlay Grid"
               active={showGridOverlay}

@@ -1,274 +1,366 @@
 {
   "meta": {
-    "project": "Bloodline Storybook / Storykeeper",
+    "project": "Bloodline Storybook / Storykeeper Studio",
     "planType": "SPRINT_TASKS_JSON",
     "sprint": {
-      "number": 29,
-      "title": "Tech Stack Page v1 (Built With + Icons + Why We Chose It) — incl. Cloudflare R2",
+      "number": 30,
+      "title": "Studio Pages UX v1: Scrollable Document View + Single-Page Mode + Per-Page Controls",
       "duration": "1 week",
-      "goal": "Add a public /tech-stack page that showcases the full stack (including Cloudflare R2) with official icons, grouped categories, and short rationale. Keep it config-driven and easy to update.",
+      "goal": "Make the Studio page area scrollable like Canva: support two viewing modes (single-page focus vs continuous document), and add per-page controls (move up/down, hide/show, lock/unlock, delete, add page) on every page.",
       "definitionOfDone": [
-        "New route /tech-stack is live and linked from footer/nav",
-        "Page shows categorized stack with icons/logos (Frontend, Backend, AI, Storage/Media, Observability, Payments, Email, Integrations)",
-        "Cloudflare R2 is included under Storage/Media with correct icon + links",
-        "Each item has: name, icon, short role, 'why used' line, and link(s) to official docs/site",
-        "Landing page includes a small 'Built with' strip linking to /tech-stack",
-        "SEO metadata is added for /tech-stack",
-        "No performance regressions (icons optimized; lazy load where needed)"
+        "Canvas area supports two modes: Single Page Mode and Continuous Pages Mode and buttons to toggle is in footer",
+        "If 'Pages' is active: single page is shown (focused) and scrolling moves to next/prev page (page snapping)",
+        "If 'Pages' is not active: all pages render in one continuous scroll (page 1 then page 2 then page 3...)",
+        "Each page shows a page header/tool strip with controls: Move Up, Move Down, Hide/Show, Lock/Unlock, Delete, Add Page",
+        "Page controls work reliably and persist to backend doc model",
+        "Hidden pages are excluded from export by default (configurable) and clearly indicated in UI",
+        "Locked pages cannot be edited (selection/move/resize disabled) until unlocked",
+        "Performance remains smooth for multi-page documents (virtualize if needed)",
+        "No regressions to selection, text edit toolbar, image crop sidebar, or export renderer"
       ]
     },
     "stackAssumptions": {
-      "frontend": "Next.js (App Router) + TypeScript",
-      "ui": "Match existing design system",
-      "assets": "Prefer local SVG assets; avoid hotlinking external images",
-      "hosting": "Vercel"
+      "frontend": "Next.js + TypeScript",
+      "state": "Your existing editor state management (store) + persisted Studio doc JSON",
+      "backend": "Convex (studioDocs save/load)",
+      "editor": "Canvas-like editor already exists; this sprint changes page rendering/scroll/navigation"
     }
   },
   "backlog": [
     {
-      "id": "S29-T01",
-      "title": "Define Tech Stack registry schema (config-driven) and categories",
-      "skill": ["Frontend", "Architecture"],
+      "id": "S30-T01",
+      "title": "Define page view modes + persistence (single vs continuous) + UI toggle behavior",
+      "skill": ["Product", "Frontend", "State Management"],
       "priority": "P0",
       "requirements": {
-        "outputs": ["Single config powering the page (techStack.ts/json)"],
-        "schema": {
-          "categories": [
-            "Frontend",
-            "Backend",
-            "AI",
-            "Storage & Media",
-            "Observability",
-            "Payments",
-            "Email",
-            "Integrations"
-          ],
-          "itemFields": [
-            "id",
-            "name",
-            "iconKey",
-            "websiteUrl",
-            "docsUrl",
-            "role",
-            "why",
-            "usedIn[]",
-            "status (core|optional|planned)"
-          ]
-        },
-        "constraints": [
-          "UI renders from config only",
-          "Must be easy to update without touching UI code"
-        ]
-      },
-      "acceptanceTests": [
-        "Page renders entirely from config",
-        "Adding a tool requires only config + icon asset"
-      ],
-      "deliverables": ["content/techStack.ts", "types/techStack.ts"]
-    },
-    {
-      "id": "S29-T02",
-      "title": "Add stack items to config (incl. Cloudflare R2) with correct categorization",
-      "skill": ["Product", "Frontend"],
-      "priority": "P0",
-      "requirements": {
-        "minimumItems": [
-          "Next.js",
-          "React",
-          "TypeScript",
-          "Convex",
-          "Cloudflare R2",
-          "Stripe",
-          "Sentry",
-          "Resend",
-          "Unsplash",
-          "Pexels"
+        "modes": [
+          {
+            "id": "single_page",
+            "description": "Only one page visible at once; scroll up/down navigates between pages"
+          },
+          {
+            "id": "continuous",
+            "description": "All pages visible stacked vertically; normal scroll through full document"
+          }
         ],
-        "categorizationRules": {
-          "CloudflareR2": "Storage & Media",
-          "UnsplashPexels": "Integrations",
-          "Stripe": "Payments",
-          "Resend": "Email",
-          "Sentry": "Observability",
-          "Convex": "Backend"
-        },
+        "ui": [
+          "Top bar 'Pages' button toggles single_page mode (active state shown)",
+          "If 'Pages' not active => continuous mode"
+        ],
+        "persistence": [
+          "Store mode in localStorage (per user) or in studioDoc.preferences (optional)"
+        ],
         "constraints": [
-          "Only list what is actually used in the product today",
-          "Mark future tools as status=planned"
+          "Mode switch must not lose selection; selection should map to the right page after toggle"
         ]
       },
       "acceptanceTests": [
-        "Cloudflare R2 appears on /tech-stack under Storage & Media",
-        "All items have website/docs links"
+        "Toggling Pages changes mode instantly",
+        "Mode persists on refresh (if enabled)",
+        "Selection remains valid after mode switch"
       ],
       "deliverables": [
-        "content/techStack.ts updated",
-        "docs/techstack_inventory.md"
+        "packages/editor/pages/viewMode.ts",
+        "components/studio/PagesToggle.tsx",
+        "docs/page_view_modes.md"
       ]
     },
     {
-      "id": "S29-T03",
-      "title": "Collect official icons/logos as local assets (incl. Cloudflare) + license/source notes",
-      "skill": ["Design Ops", "Frontend"],
+      "id": "S30-T02",
+      "title": "Implement Continuous Pages Mode rendering (stacked pages in one scroll)",
+      "skill": ["Frontend", "Editor Engineering"],
       "priority": "P0",
       "requirements": {
-        "assetRules": [
-          "Prefer SVG",
-          "Store under /public/tech/*",
-          "Normalize sizing/padding for consistent grid alignment",
-          "Support dark background (provide mono/white variants if needed)"
+        "rendering": [
+          "Render page frames stacked vertically with consistent gap",
+          "Show page label/header area at top of each page container",
+          "Maintain correct coordinate systems per page"
         ],
-        "mustInclude": ["Cloudflare (for R2 tile)"],
-        "compliance": [
-          "Document icon sources and brand usage notes (no hotlinking)",
-          "Alt text for all icons"
+        "behavior": [
+          "Normal browser scroll moves through pages",
+          "Clicking inside a page sets it as active page (for toolbars/selection context)"
+        ],
+        "performance": [
+          "Virtualize pages if page count is large (P1)",
+          "Avoid rerendering all pages on small selection changes"
+        ],
+        "constraints": [
+          "Must work with zoom level and pan (if supported). If pan exists, restrict pan to horizontal only in continuous mode (optional), or disable pan and rely on scroll."
         ]
       },
       "acceptanceTests": [
-        "All icons render crisp and aligned",
-        "Fallback icon shown if any icon missing"
+        "All pages visible and scrollable",
+        "Editing a text box on page 2 does not affect page 1 layout",
+        "Active page context updates when clicking different pages"
       ],
       "deliverables": [
-        "public/tech/* (svg/png assets)",
-        "docs/licenses/tech-icons.md"
+        "packages/editor/pages/ContinuousPagesView.tsx",
+        "packages/editor/pages/pageLayout.css (or equivalent)"
       ]
     },
     {
-      "id": "S29-T04",
-      "title": "Build /tech-stack page UI (categorized grid + why + links)",
+      "id": "S30-T03",
+      "title": "Implement Single Page Mode (scroll-to-navigate with snapping)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Only one page rendered (or one page fully visible) at a time",
+          "Mouse wheel / trackpad scroll triggers next/prev page navigation",
+          "Page snapping: after scroll, ensure the next page is fully in view",
+          "Keyboard shortcuts (optional): PgUp/PgDn, ArrowUp/ArrowDown for page nav"
+        ],
+        "ui": [
+          "Show current page index (e.g., 1/12) near Pages control",
+          "Optional thumbnails button later; not required this sprint"
+        ],
+        "constraints": [
+          "Avoid accidental rapid page flips (debounce/threshold)",
+          "Do not break text editing scroll (when editing long text, scroll should still move caret inside text area). Use a rule: if focused in editable text area, do not intercept scroll."
+        ]
+      },
+      "acceptanceTests": [
+        "Scroll navigates pages predictably",
+        "When typing in a text box, scroll doesn't unexpectedly flip pages",
+        "Current page indicator updates"
+      ],
+      "deliverables": [
+        "packages/editor/pages/SinglePageView.tsx",
+        "packages/editor/pages/useScrollPageNavigation.ts",
+        "docs/single_page_scroll_rules.md"
+      ]
+    },
+    {
+      "id": "S30-T04",
+      "title": "Add per-page control strip UI (up/down, hide, lock, delete, add page)",
       "skill": ["Frontend", "UX"],
       "priority": "P0",
       "requirements": {
-        "layout": [
-          "Hero section: what the page is",
-          "Category sections with grid of tool cards",
-          "Tool card: icon, name, role, why, links (Docs/Site)"
+        "controlsPerPage": [
+          "Move Up",
+          "Move Down",
+          "Hide/Show",
+          "Lock/Unlock",
+          "Delete",
+          "Add Page"
         ],
-        "uxAddOns": [
-          "Filter chips: Core/Optional/Planned",
-          "Search (optional P1)"
+        "placement": [
+          "Top-right of each page container (like Canva page chrome)",
+          "Visible on hover, always visible on active page"
         ],
         "constraints": [
-          "Mobile-first",
-          "Consistent icon sizing; no layout shift"
+          "Controls must be keyboard accessible",
+          "Show confirm dialog for Delete"
         ]
       },
       "acceptanceTests": [
-        "All categories render correctly on mobile and desktop",
-        "Links are accessible and keyboard navigable"
+        "Controls appear for every page and match expected icon behavior",
+        "Delete prompts confirmation",
+        "Add Page creates a new page in correct location"
       ],
       "deliverables": [
-        "app/tech-stack/page.tsx",
-        "components/techstack/TechStackGrid.tsx",
-        "components/techstack/TechStackItemCard.tsx"
+        "packages/editor/pages/PageControls.tsx",
+        "packages/editor/pages/PageHeaderChrome.tsx"
       ]
     },
     {
-      "id": "S29-T05",
-      "title": "Add 'Built with' strip to landing + footer/nav link to /tech-stack",
-      "skill": ["Frontend", "Product"],
+      "id": "S30-T05",
+      "title": "Implement page operations in doc model (reorder, hide, lock, delete, insert)",
+      "skill": ["Editor Engineering", "Backend", "State Management"],
       "priority": "P0",
       "requirements": {
-        "landingStrip": [
-          "Show 5–6 icons (Next.js, TS, Convex, Cloudflare R2, Stripe, Sentry/Resend)",
-          "Link to /tech-stack"
+        "docModelChanges": {
+          "pageFields": [
+            "id",
+            "orderIndex",
+            "isHidden (boolean)",
+            "isLocked (boolean)",
+            "title (optional)"
+          ]
+        },
+        "operations": [
+          "movePageUp(pageId)",
+          "movePageDown(pageId)",
+          "toggleHidden(pageId)",
+          "toggleLocked(pageId)",
+          "deletePage(pageId)",
+          "insertPageAfter(pageId) or addPageAtEnd()"
         ],
-        "nav": ["Footer link: Tech Stack"],
-        "constraints": ["Keep it subtle; don’t clutter hero"]
+        "constraints": [
+          "Reordering must keep page IDs stable",
+          "Deleting a page must update selection to nearest available page",
+          "Hidden/locked state must persist to backend"
+        ]
       },
       "acceptanceTests": [
-        "Landing links to /tech-stack",
-        "No CLS from icon loading"
+        "All operations persist after refresh",
+        "Moving page updates ordering in both modes",
+        "Deleting a page does not crash and updates active page"
       ],
       "deliverables": [
-        "components/landing/BuiltWithStrip.tsx",
-        "components/layout/Footer.tsx updated"
+        "packages/editor/model/pageOps.ts",
+        "convex/studioDocs.ts updated (save/load new fields)",
+        "docs/page_ops_contract.md"
       ]
     },
     {
-      "id": "S29-T06",
-      "title": "SEO metadata for /tech-stack (title/description/OG)",
-      "skill": ["Frontend", "SEO"],
+      "id": "S30-T06",
+      "title": "Lock behavior: prevent edits on locked pages (selection + transforms disabled)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "lockedPageRules": [
+          "Cannot select nodes on locked page (or selection allowed but transforms/text edit disabled—choose one; recommended: selection allowed, edits disabled with tooltip)",
+          "No move/resize/rotate of nodes",
+          "No text editing",
+          "Allow unlock via page control strip"
+        ],
+        "constraints": [
+          "Must not break global shortcuts",
+          "Locked state should be visually obvious (subtle lock badge)"
+        ]
+      },
+      "acceptanceTests": [
+        "Editing is blocked on locked pages",
+        "Unlock restores normal editing"
+      ],
+      "deliverables": [
+        "packages/editor/guards/lockedPageGuard.ts",
+        "packages/editor/ui/LockedBadge.tsx"
+      ]
+    },
+    {
+      "id": "S30-T07",
+      "title": "Hide behavior: hidden pages UI + export policy",
+      "skill": ["Frontend", "Rendering"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Hidden pages show a faint overlay + 'Hidden' label",
+          "Optional: hide completely from continuous view if 'Hide' means remove from view (choose):",
+          "A) hidden pages collapsed (not shown) but available in pages list (future)",
+          "B) hidden pages still shown but visually muted (simpler v1)"
+        ],
+        "exportPolicy": [
+          "Default: hidden pages are excluded from PDF export",
+          "Provide a config flag: EXPORT_INCLUDE_HIDDEN_PAGES=false"
+        ],
+        "constraints": [
+          "No breaking changes to renderer; filter pages before render"
+        ]
+      },
+      "acceptanceTests": [
+        "Hidden pages are visually indicated",
+        "Hidden pages are not exported by default"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/filterPages.ts updated",
+        "docs/hidden_pages_export_policy.md"
+      ]
+    },
+    {
+      "id": "S30-T08",
+      "title": "Scroll + selection correctness across modes (active page, focus, toolbar context)",
+      "skill": ["Frontend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "Active page updates when user clicks inside any page",
+          "Toolbars reflect active page selection context",
+          "In single-page mode, switching pages clears selection (or maps selection if same node exists—prefer clear selection)",
+          "In continuous mode, selection remains as long as the page remains mounted"
+        ],
+        "constraints": [
+          "Avoid selection bugs when pages are virtualized (if you implement virtualization)"
+        ]
+      },
+      "acceptanceTests": [
+        "No selection jumping between pages",
+        "Toolbars operate on the correct page"
+      ],
+      "deliverables": [
+        "packages/editor/pages/activePageStore.ts",
+        "packages/editor/pages/selectionModeRules.ts"
+      ]
+    },
+    {
+      "id": "S30-T09",
+      "title": "Performance pass (optional virtualization) for continuous mode",
+      "skill": ["Performance", "Frontend"],
       "priority": "P1",
       "requirements": {
-        "metadata": [
-          "Title + description",
-          "OG/Twitter cards (reuse existing OG if available)"
+        "whenToVirtualize": [
+          "If pages > N (e.g., 10), virtualize rendering",
+          "Keep near-viewport pages mounted for smooth scroll"
         ],
-        "constraints": ["No misleading claims"]
-      },
-      "acceptanceTests": ["Correct metadata in page source and share preview"]
-    },
-    {
-      "id": "S29-T07",
-      "title": "Performance + accessibility pass for icon-heavy page",
-      "skill": ["Frontend", "Performance", "Accessibility"],
-      "priority": "P0",
-      "requirements": {
-        "perf": [
-          "Prefer SVGs",
-          "Lazy-load below-the-fold categories if needed",
-          "Avoid rendering huge lists without virtualization (optional)"
-        ],
-        "a11y": [
-          "Alt text for every icon",
-          "Focus states for links/buttons",
-          "Readable contrast on dark theme"
+        "constraints": [
+          "Virtualization must preserve editing (only virtualize pages not being edited)",
+          "Do not virtualize the active page"
         ]
       },
       "acceptanceTests": [
-        "No console errors",
-        "Lighthouse a11y is strong; page remains fast"
+        "Scrolling remains smooth with 20+ pages",
+        "Editing does not break when virtualization is active"
       ],
-      "deliverables": ["docs/lighthouse_tech_stack.md", "a11y/perf fixes"]
+      "deliverables": [
+        "packages/editor/pages/virtualization.ts",
+        "docs/pages_virtualization.md"
+      ]
     },
     {
-      "id": "S29-T08",
-      "title": "QA + tests (config validation + render sanity)",
+      "id": "S30-T10",
+      "title": "QA + automated tests for page modes and page operations",
       "skill": ["QA", "Testing"],
       "priority": "P0",
       "requirements": {
         "manualChecklist": [
-          "Cloudflare R2 tile displays correctly",
-          "All links open and are correct",
-          "Page renders well on mobile",
-          "Landing strip shows icons and links"
+          "Toggle Pages on -> single-page mode works; scroll flips pages",
+          "Toggle Pages off -> continuous mode shows all pages stacked",
+          "Move up/down reorders pages and persists after refresh",
+          "Lock page blocks edits; unlock restores",
+          "Hide page changes UI and excludes from export",
+          "Delete page removes it safely and updates active page",
+          "Add page creates new page in correct order"
         ],
         "automation": [
-          "Unit: validate config shape with Zod (optional)",
-          "UI: page renders expected categories and at least N items"
+          "Unit: pageOps reorder/move/delete/insert",
+          "Unit: derive visible pages respects isHidden and export policy",
+          "UI test: mode toggle switches between SinglePageView and ContinuousPagesView"
         ]
       },
       "acceptanceTests": [
-        "At least 2 tests added and passing",
-        "No broken icons or missing alt text"
+        "At least 4 automated tests added and passing",
+        "No regressions in Studio core editing"
       ],
       "deliverables": [
-        "tests/techstack/configValidation.test.ts",
-        "tests/ui/techStackPageRender.test.tsx",
-        "docs/qa_sprint29_tech_stack.md"
+        "tests/pages/pageOps.test.ts",
+        "tests/pages/hiddenExportPolicy.test.ts",
+        "tests/ui/pagesModeToggle.test.tsx",
+        "docs/qa_sprint30_pages_scroll_modes.md"
       ]
     }
   ],
   "sprintPlanning": {
     "suggestedOrder": [
-      "S29-T01",
-      "S29-T02",
-      "S29-T03",
-      "S29-T04",
-      "S29-T05",
-      "S29-T07",
-      "S29-T06",
-      "S29-T08"
+      "S30-T01",
+      "S30-T02",
+      "S30-T03",
+      "S30-T04",
+      "S30-T05",
+      "S30-T06",
+      "S30-T07",
+      "S30-T08",
+      "S30-T10",
+      "S30-T09"
     ],
     "timeboxGuidance": {
-      "P0_total_days": 4.5,
+      "P0_total_days": 5,
       "P1_total_days": 1,
-      "buffer_days": 1.5
+      "buffer_days": 1
     },
     "notes": [
-      "Cloudflare R2 is included under Storage & Media; use Cloudflare brand icon for the R2 tile.",
-      "Avoid hotlinking logos; keep assets local for reliability and performance."
+      "This sprint implements the Canva-like page browsing behavior shown in your screenshots: continuous scroll when Pages is not active, and scroll-to-navigate when Pages is active.",
+      "The biggest UX risk is intercepting scroll while editing text; implement clear rules so text editing scroll doesn't flip pages."
     ]
   }
 }

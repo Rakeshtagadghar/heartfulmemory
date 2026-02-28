@@ -441,6 +441,9 @@ export default defineSchema({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),
     orderIndex: v.number(),
+    title: v.optional(v.string()),
+    isHidden: v.optional(v.boolean()),
+    isLocked: v.optional(v.boolean()),
     sizePreset: v.union(
       v.literal("A4"),
       v.literal("US_LETTER"),

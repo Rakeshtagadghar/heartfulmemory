@@ -16,7 +16,7 @@ import {
   updateGuidedNarrationForUser
 } from "../../../../lib/data/create-flow";
 import { deriveNextStep } from "../../../../lib/flow/deriveNextStep";
-import type { ExtraAnswerStatus, PhotoStatus } from "../../../../../../packages/shared/flow/flowTypes";
+import type { ExtraAnswerStatus, FlowStateKind, PhotoStatus } from "../../../../../../packages/shared/flow/flowTypes";
 
 type Props = {
   params: Promise<{ storybookId: string }>;
@@ -133,12 +133,26 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
     return storybook.data.extraAnswer.skipped ? "skipped" : "answered";
   })();
   const photoStatus: PhotoStatus = (storybook.data.photoStatus as PhotoStatus | null) ?? "not_started";
+  const flowStatus: FlowStateKind | null = (() => {
+    const value = storybook.data.flowStatus;
+    if (
+      value === "needs_questions" ||
+      value === "needs_extra_question" ||
+      value === "needs_upload_photos" ||
+      value === "populating" ||
+      value === "ready_in_studio" ||
+      value === "error"
+    ) {
+      return value;
+    }
+    return null;
+  })();
   const nextStep = deriveNextStep({
     storybookId,
     chapters: chaptersData,
     extraAnswerStatus,
     photoStatus,
-    flowStatus: storybook.data.flowStatus as any
+    flowStatus
   });
 
   const nextStepHint: string | null = (() => {

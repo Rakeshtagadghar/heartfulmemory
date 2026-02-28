@@ -27,6 +27,9 @@ export const pageDtoSchema = z.object({
   storybook_id: z.string().min(1),
   owner_id: z.string().min(1),
   order_index: z.number().int(),
+  title: z.string().optional(),
+  is_hidden: z.boolean().optional(),
+  is_locked: z.boolean().optional(),
   size_preset: pageSizePresetSchema,
   width_px: z.number(),
   height_px: z.number(),
@@ -38,4 +41,3 @@ export const pageDtoSchema = z.object({
 });
 
 export type PageDTO = z.infer<typeof pageDtoSchema>;
-

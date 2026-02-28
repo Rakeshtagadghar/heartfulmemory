@@ -88,10 +88,20 @@ export function PagesPanel({
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div>
-                    <p className="text-xs font-semibold text-white/90">Page {index + 1}</p>
+                    <p className="text-xs font-semibold text-white/90">
+                      Page {index + 1}
+                      {page.title ? ` - ${page.title}` : ""}
+                    </p>
                     <p className="text-[11px] text-white/50">{page.size_preset}</p>
                   </div>
-                  <p className="text-[11px] text-white/45">{frames.length} frames</p>
+                  <div className="text-right">
+                    <p className="text-[11px] text-white/45">{frames.length} frames</p>
+                    <p className="text-[10px] text-white/50">
+                      {page.is_hidden ? "Hidden" : ""}
+                      {page.is_hidden && page.is_locked ? " · " : ""}
+                      {page.is_locked ? "Locked" : ""}
+                    </p>
+                  </div>
                 </div>
               </button>
 

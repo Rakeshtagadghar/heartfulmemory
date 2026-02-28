@@ -325,7 +325,8 @@ export const updateSettings = mutationGeneric({
         })
       ),
       printPreset: v.optional(v.any()),
-      digitalPreset: v.optional(v.any())
+      digitalPreset: v.optional(v.any()),
+      studioDocMeta: v.optional(v.any())
     })
   },
   handler: async (ctx, args) => {
@@ -361,6 +362,24 @@ export const updateSettings = mutationGeneric({
     }
     if ("digitalPreset" in args.settingsPatch && args.settingsPatch.digitalPreset) {
       nextSettings.digitalPreset = args.settingsPatch.digitalPreset;
+    }
+    if ("studioDocMeta" in args.settingsPatch && args.settingsPatch.studioDocMeta) {
+      const currentStudioDocMeta =
+        currentSettings.studioDocMeta &&
+        typeof currentSettings.studioDocMeta === "object" &&
+        !Array.isArray(currentSettings.studioDocMeta)
+          ? (currentSettings.studioDocMeta as Record<string, unknown>)
+          : {};
+      const patchStudioDocMeta =
+        typeof args.settingsPatch.studioDocMeta === "object" &&
+        args.settingsPatch.studioDocMeta &&
+        !Array.isArray(args.settingsPatch.studioDocMeta)
+          ? (args.settingsPatch.studioDocMeta as Record<string, unknown>)
+          : {};
+      nextSettings.studioDocMeta = {
+        ...currentStudioDocMeta,
+        ...patchStudioDocMeta
+      };
     }
     if (!("exportTargets" in nextSettings) || !nextSettings.exportTargets) {
       nextSettings.exportTargets = defaultExportSettings().exportTargets;

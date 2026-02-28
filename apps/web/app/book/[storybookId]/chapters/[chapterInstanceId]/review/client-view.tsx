@@ -4,14 +4,14 @@ import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../../../../../../../../convex/_generated/api";
 import { Id } from "../../../../../../../../convex/_generated/dataModel";
 import { NarrativeActions } from "../../../../../../components/review/NarrativeActions";
-import { ThreeParaEditor } from "../../../../../../components/review/ThreeParaEditor";
+import { ThreeParaEditor, type ThreeParaNarrative } from "../../../../../../components/review/ThreeParaEditor";
 import { Card } from "../../../../../../components/ui/card";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { TrackedLink } from "../../../../../../components/tracked-link";
 import { OpenInStudioButton } from "../../../../../../components/chapters/OpenInStudioButton";
-import type { NarrationVoice, NarrationTense, NarrationTone, NarrationLength, NarrationSettings } from "../../../../../../../../packages/shared/narrative/narrativeTypes";
+import type { NarrationSettings } from "../../../../../../../../packages/shared/narrative/narrativeTypes";
 
 interface Props {
     storybookId: string;
@@ -23,7 +23,6 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
     const { data: session } = useSession();
     const viewerSubject = session?.user?.id ?? undefined;
     const [isGenerating, setIsGenerating] = useState(false);
-    const [isApproving, setIsApproving] = useState(false);
 
     // Initial default settings
     const [settings, setSettings] = useState<NarrationSettings>({
@@ -47,6 +46,7 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
 
     // Actions
     const generate = useAction(api.ai.chapterNarratives.generate);
+    const regenParagraph = useAction(api.ai.chapterNarratives.regenParagraph);
     const updateText = useMutation(api.chapterNarratives.updateText);
     const approve = useMutation(api.chapterNarratives.approve);
 
@@ -64,8 +64,8 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
                 settings,
                 viewerSubject
             });
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error(error);
             alert("Generation failed. Please try again.");
         } finally {
             setIsGenerating(false);
@@ -80,27 +80,36 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
                 paragraphType: type,
                 text
             });
-        } catch (err) {
+        } catch {
             alert("Failed to save changes.");
         }
     };
 
     const handleRegenParagraph = async (type: "opening" | "story" | "closing") => {
-        // Basic regen logic can be added here or trigger generic generate for task simplicity
-        handleGenerate();
+        if (!narrative?._id) {
+            await handleGenerate();
+            return;
+        }
+        try {
+            await regenParagraph({
+                chapterNarrativeId: narrative._id,
+                paragraphType: type,
+                viewerSubject
+            });
+            await handleGenerate();
+        } catch {
+            alert("Regeneration failed. Please try again.");
+        }
     };
 
     const handleApprove = async () => {
         if (!narrative?._id) return;
-        setIsApproving(true);
         try {
             await approve({ chapterNarrativeId: narrative._id });
             // Go to Studio as per T06 requirement (Studio opens after approval)
             router.push(`/studio/${storybookId}?chapter=${chapterInstanceId}`);
-        } catch (err) {
+        } catch {
             alert("Approval failed.");
-        } finally {
-            setIsApproving(false);
         }
     };
 
@@ -113,6 +122,15 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
     }
 
     const isApproved = narrative?.approved ?? false;
+    const editorNarrative: ThreeParaNarrative | null = narrative
+        ? {
+              paragraphs: {
+                  opening: narrative.paragraphs?.opening ?? "",
+                  story: narrative.paragraphs?.story ?? "",
+                  closing: narrative.paragraphs?.closing ?? ""
+              }
+          }
+        : null;
 
     return (
         <div className="flex flex-col gap-6 w-full pb-20">
@@ -142,7 +160,7 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
 
             <NarrativeActions
                 isGenerating={isGenerating}
-                hasNarrative={!!narrative}
+                hasNarrative={Boolean(editorNarrative)}
                 isApproved={isApproved}
                 settings={settings}
                 onSettingsChange={handleSettingsChange}
@@ -150,9 +168,9 @@ export function ReviewClientView({ storybookId, chapterInstanceId }: Props) {
                 onApprove={handleApprove}
             />
 
-            {(narrative || isGenerating) && (
+            {(editorNarrative || isGenerating) && (
                 <ThreeParaEditor
-                    narrative={narrative as any}
+                    narrative={editorNarrative}
                     isApproved={isApproved}
                     onUpdateText={handleUpdateText}
                     onRegenParagraph={handleRegenParagraph}

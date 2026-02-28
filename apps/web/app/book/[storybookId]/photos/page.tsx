@@ -89,7 +89,7 @@ export default async function PhotosPage({ params }: Props) {
       { viewerSubject: currentUser.id, storybookId, assetId: assetResult.data.id }
     );
     if (!photoResult.ok) {
-      return { ok: false as const, error: (photoResult as any).error ?? "Could not save photo." };
+      return { ok: false as const, error: photoResult.error ?? "Could not save photo." };
     }
     return photoResult.data;
   }

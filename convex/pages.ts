@@ -49,6 +49,9 @@ function toPageDto(doc: {
   storybookId: unknown;
   ownerId: string;
   orderIndex: number;
+  title?: string;
+  isHidden?: boolean;
+  isLocked?: boolean;
   sizePreset: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
   widthPx: number;
   heightPx: number;
@@ -63,6 +66,9 @@ function toPageDto(doc: {
     storybook_id: String(doc.storybookId),
     owner_id: doc.ownerId,
     order_index: doc.orderIndex,
+    title: doc.title ?? "",
+    is_hidden: Boolean(doc.isHidden),
+    is_locked: Boolean(doc.isLocked),
     size_preset: doc.sizePreset,
     width_px: doc.widthPx,
     height_px: doc.heightPx,
@@ -117,6 +123,9 @@ export const create = mutationGeneric({
       storybookId: args.storybookId,
       ownerId: access.storybook.ownerId,
       orderIndex: nextOrder,
+      title: "",
+      isHidden: false,
+      isLocked: false,
       sizePreset: preset,
       widthPx: dimensions.widthPx,
       heightPx: dimensions.heightPx,
@@ -146,6 +155,9 @@ export const update = mutationGeneric({
     viewerSubject: v.optional(v.string()),
     pageId: v.id("pages"),
     patch: v.object({
+      title: v.optional(v.string()),
+      isHidden: v.optional(v.boolean()),
+      isLocked: v.optional(v.boolean()),
       sizePreset: v.optional(pageSizePresetValidator),
       margins: v.optional(marginsValidator),
       grid: v.optional(gridValidator),
@@ -162,6 +174,9 @@ export const update = mutationGeneric({
       patch.widthPx = presetDimensions[args.patch.sizePreset].widthPx;
       patch.heightPx = presetDimensions[args.patch.sizePreset].heightPx;
     }
+    if ("title" in args.patch && typeof args.patch.title === "string") patch.title = args.patch.title;
+    if ("isHidden" in args.patch && typeof args.patch.isHidden === "boolean") patch.isHidden = args.patch.isHidden;
+    if ("isLocked" in args.patch && typeof args.patch.isLocked === "boolean") patch.isLocked = args.patch.isLocked;
     if (args.patch.margins) patch.margins = args.patch.margins;
     if (args.patch.grid) patch.grid = args.patch.grid;
     if (args.patch.background) patch.background = args.patch.background;
@@ -260,6 +275,9 @@ export const duplicate = mutationGeneric({
       storybookId: sourcePage.storybookId,
       ownerId: sourcePage.ownerId,
       orderIndex: sourcePage.orderIndex + 1,
+      title: sourcePage.title ?? "",
+      isHidden: sourcePage.isHidden ?? false,
+      isLocked: sourcePage.isLocked ?? false,
       sizePreset: sourcePage.sizePreset,
       widthPx: sourcePage.widthPx,
       heightPx: sourcePage.heightPx,
@@ -323,6 +341,9 @@ export const createDefaultCanvas = mutationGeneric({
       storybookId: args.storybookId,
       ownerId: access.storybook.ownerId,
       orderIndex: 0,
+      title: access.storybook.title || "Cover",
+      isHidden: false,
+      isLocked: false,
       sizePreset: "BOOK_8_5X11",
       widthPx: 816,
       heightPx: 1056,

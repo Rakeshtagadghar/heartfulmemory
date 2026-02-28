@@ -81,6 +81,7 @@ export async function updateStorybookSettingsForUser(
     exportTargets?: { digitalPdf: boolean; hardcopyPdf?: boolean; printPdf?: boolean };
     printPreset?: Record<string, unknown>;
     digitalPreset?: Record<string, unknown>;
+    studioDocMeta?: Record<string, unknown>;
   }
 ): Promise<DataResult<StorybookDTO>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };

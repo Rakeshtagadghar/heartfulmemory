@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "../ui/button";
 import type { NarrationVoice, NarrationTense, NarrationTone, NarrationLength } from "../../../../packages/shared/narrative/narrativeTypes";
 
@@ -76,8 +75,8 @@ export function NarrativeActions({
                             onChange={(e) => onSettingsChange("voice", e.target.value)}
                             disabled={isGenerating}
                         >
-                            <option value="first_person">First Person ("I")</option>
-                            <option value="third_person">Third Person ("They")</option>
+                            <option value="first_person">First Person (&quot;I&quot;)</option>
+                            <option value="third_person">Third Person (&quot;They&quot;)</option>
                         </select>
                     </label>
 

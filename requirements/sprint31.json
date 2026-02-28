@@ -1,0 +1,403 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 31,
+      "title": "Rich Text v1: Tiptap (OSS Free Tier) in Wizard Answers + Studio Text Boxes",
+      "duration": "1.5 weeks",
+      "goal": "Introduce Tiptap across the product using only free/open-source extensions: enable inline formatting (bold/italic/etc.) in the Wizard answer editor and in Studio text boxes, with a floating toolbar, safe persistence (Tiptap JSON + plain text), and export compatibility.",
+      "definitionOfDone": [
+        "Wizard answer input uses Tiptap and supports mixed formatting inside one answer",
+        "Studio text boxes use Tiptap for editing (read-only render by default; edit mode on double-click)",
+        "Floating/Bubble toolbar works in Studio and is not part of the navbar",
+        "Content is stored as Tiptap JSON (canonical) plus derived plain text (for search/AI/quotas)",
+        "Existing plain-text answers and studio text nodes are migrated safely to Tiptap JSON",
+        "PDF/export renderer can render rich text (MVP: basic marks + lists) without breaking layout",
+        "Performance is stable: no dozens of live contenteditable editors mounted at once",
+        "No Pro/paid Tiptap Platform features used (no Comments/Snapshots/Content AI)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript + React",
+      "backend": "Convex",
+      "editor": "Existing Studio canvas editor with text nodes and selection logic",
+      "export": "Existing Layout→PDF rendering pipeline",
+      "tiptap": "Tiptap React integration + OSS extensions only"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S31-T01",
+      "title": "Decide canonical storage format + extension scope (OSS-only) and document it",
+      "skill": ["Architecture", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "storageDecision": {
+          "canonical": "Tiptap JSON",
+          "derived": [
+            "plainText (for search/AI)",
+            "html (optional for preview/export adapter)"
+          ]
+        },
+        "ossExtensionsScope": {
+          "core": [
+            "StarterKit (history, paragraph, hardBreak, bold, italic, strike, blockquote, code, headings etc.)",
+            "Link",
+            "Underline",
+            "TextStyle + Color (optional but OSS)",
+            "TextAlign (optional but OSS)",
+            "ListKit (Bullet/Ordered/Task lists + keymap)",
+            "Placeholder",
+            "CharacterCount (optional for limits)",
+            "Typography (optional)"
+          ],
+          "explicitlyExcluded": [
+            "Tiptap Platform/Cloud",
+            "Pro extensions (e.g., Comments/Snapshots/Content AI)",
+            "Real-time collaboration (Yjs) for now"
+          ]
+        },
+        "constraints": [
+          "Only free/OSS features",
+          "Minimize formatting surface in Wizard (elder-friendly)"
+        ]
+      },
+      "acceptanceTests": [
+        "A single doc exists listing chosen OSS extensions and what’s excluded",
+        "Canonical format decision is implemented in types and storage helpers"
+      ],
+      "deliverables": [
+        "docs/tiptap_scope_oss_only.md",
+        "packages/shared/richtext/richtextContracts.md"
+      ]
+    },
+    {
+      "id": "S31-T02",
+      "title": "Add Tiptap packages and create shared RichText utilities (schema, normalize, extract plain text)",
+      "skill": ["Frontend", "Platform"],
+      "priority": "P0",
+      "requirements": {
+        "packages": [
+          "@tiptap/react",
+          "@tiptap/core",
+          "@tiptap/starter-kit",
+          "@tiptap/extension-link",
+          "@tiptap/extension-underline",
+          "@tiptap/extension-placeholder",
+          "@tiptap/extension-character-count (optional)",
+          "@tiptap/extension-text-style (optional)",
+          "@tiptap/extension-color (optional)",
+          "@tiptap/extension-text-align (optional)",
+          "@tiptap/extension-typography (optional)",
+          "@tiptap/extension-list or list kit equivalents"
+        ],
+        "sharedLib": [
+          "isValidTiptapDoc(json) validator",
+          "normalizeTiptapDoc(json) (ensures doc root exists)",
+          "extractPlainText(json)",
+          "docToHtml(json) (MVP for export/preview adapter)",
+          "htmlToDoc(html) (optional for migration from legacy)"
+        ],
+        "constraints": [
+          "No RichText code in client bundle that isn’t needed",
+          "Utilities must be deterministic and unit-tested"
+        ]
+      },
+      "acceptanceTests": [
+        "Build passes and editor can mount a basic Tiptap instance",
+        "Plain text extraction works for marks/lists"
+      ],
+      "deliverables": ["packages/shared/richtext/*", "docs/richtext_format.md"]
+    },
+    {
+      "id": "S31-T03",
+      "title": "Wizard Answers: replace textarea with Tiptap AnswerEditor (light toolbar + autosave)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Answer editor supports: bold, italic, underline, strikethrough, bullet list, numbered list, link",
+          "Small toolbar above/within the answer box (not the global navbar)",
+          "Placeholder text and character count (optional)",
+          "Elder-friendly: hide advanced options behind 'More'"
+        ],
+        "autosave": [
+          "Debounced save to Convex (e.g., 600–900ms)",
+          "Save on blur",
+          "Show saving indicator"
+        ],
+        "data": [
+          "Persist answerRich (tiptapJson) + answerPlain",
+          "Keep existing answerText field for backwards compatibility during migration (deprecated later)"
+        ],
+        "constraints": [
+          "No layout jump when switching questions",
+          "Undo/redo works within the editor"
+        ]
+      },
+      "acceptanceTests": [
+        "User can format part of the answer (bold/italic) and it persists",
+        "Autosave does not duplicate saves or lose content on navigation",
+        "Plain-text derived field updates correctly"
+      ],
+      "deliverables": [
+        "components/wizard/AnswerEditorTiptap.tsx",
+        "components/wizard/AnswerToolbar.tsx",
+        "lib/wizard/answerSave.ts updated"
+      ]
+    },
+    {
+      "id": "S31-T04",
+      "title": "Voice/STT + AI Narrate integration with Tiptap AnswerEditor (insert/replace modes)",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "sttInsertModes": [
+          "Replace current content",
+          "Append at end",
+          "Insert at cursor (if focused)"
+        ],
+        "aiNarrate": [
+          "Generate rewritten text as plain paragraph(s)",
+          "Preview and Accept replaces selection or whole doc (choose v1: replace whole doc)",
+          "Keep original in history metadata"
+        ],
+        "constraints": [
+          "No prompt leakage into editor",
+          "Preserve formatting when appending plain text (insert as paragraph nodes)"
+        ]
+      },
+      "acceptanceTests": [
+        "STT result can append or replace without breaking doc structure",
+        "AI narrate accept replaces content and persists as rich JSON"
+      ],
+      "deliverables": [
+        "components/wizard/VoiceInsertControls.tsx",
+        "components/wizard/AINarratePanel.tsx updated for Tiptap",
+        "packages/shared/richtext/insertText.ts"
+      ]
+    },
+    {
+      "id": "S31-T05",
+      "title": "Convex schema update for answers: store rich JSON + plain text + migration support",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "schemaChanges": {
+          "chapterAnswers": [
+            "answerRich (any/json, tiptap)",
+            "answerPlain (string)",
+            "source ('typed'|'voice'|'ai_narrated')",
+            "originalPlain (string|null) optional",
+            "updatedAt"
+          ]
+        },
+        "migrationRules": [
+          "If existing answerText exists and answerRich missing: migrate to tiptap doc (single paragraph)",
+          "answerPlain derived from answerRich"
+        ],
+        "constraints": ["Backwards compatible reads for existing records"]
+      },
+      "acceptanceTests": [
+        "Old answers still render in the new editor (auto-migrated)",
+        "New answers persist both rich and plain fields"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/chapterAnswers.ts updated (upsert handles answerRich)",
+        "docs/answers_richtext_migration.md"
+      ]
+    },
+    {
+      "id": "S31-T06",
+      "title": "Studio Text Nodes: introduce RichTextTextNode content (Tiptap JSON) + read-only renderer",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "nodeModel": [
+          "TextNode.contentRich (tiptapJson)",
+          "TextNode.plainText (derived)",
+          "TextNode.style (font family/size/color/etc.) stays separate from inline marks"
+        ],
+        "rendering": [
+          "Default: render as read-only HTML (from tiptap JSON) for performance",
+          "Editing: mount Tiptap editor only for active text node (double-click)",
+          "On blur/escape: commit JSON back to node"
+        ],
+        "constraints": [
+          "Do not mount many contenteditables at once",
+          "Selection + dragging in canvas must continue to work"
+        ]
+      },
+      "acceptanceTests": [
+        "Text boxes display formatted text (bold/italic) in read-only mode",
+        "Double-click enters edit mode; commit persists",
+        "Canvas selection does not break"
+      ],
+      "deliverables": [
+        "packages/editor/nodes/RichTextNode.ts",
+        "packages/editor/render/ReadOnlyRichText.tsx",
+        "packages/editor/edit/RichTextEditorOverlay.tsx"
+      ]
+    },
+    {
+      "id": "S31-T07",
+      "title": "Studio floating toolbar: BubbleMenu/FloatingMenu for formatting (OSS)",
+      "skill": ["Frontend", "UX", "Editor Integration"],
+      "priority": "P0",
+      "requirements": {
+        "toolbar": [
+          "Bubble menu for selection: Bold/Italic/Underline/Strike, Link, Lists",
+          "Floating menu on empty line: quick list toggles (optional)",
+          "Position near selection; avoid covering text"
+        ],
+        "constraints": [
+          "Toolbar must not be in navbar",
+          "Respect locked pages/nodes (disable actions)"
+        ]
+      },
+      "acceptanceTests": [
+        "Selecting text shows bubble menu",
+        "Formatting updates content and persists",
+        "Toolbar does not appear on locked pages"
+      ],
+      "deliverables": [
+        "packages/editor/ui/RichTextBubbleMenu.tsx",
+        "packages/editor/ui/RichTextFloatingMenu.tsx",
+        "docs/studio_richtext_toolbar.md"
+      ]
+    },
+    {
+      "id": "S31-T08",
+      "title": "Export pipeline compatibility: render Tiptap JSON in PDF output (MVP marks + lists)",
+      "skill": ["Rendering", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "approachV1": [
+          "Convert tiptap JSON -> HTML using a safe serializer",
+          "Render HTML into PDF text layout (or map to your renderer's rich-text painter if exists)",
+          "Support MVP: bold, italic, underline, strike, links (styled), bullet/ordered lists"
+        ],
+        "constraints": [
+          "No script injection; sanitize HTML",
+          "Match Studio preview as closely as possible"
+        ]
+      },
+      "acceptanceTests": [
+        "PDF export shows bold/italic formatting correctly",
+        "Lists render correctly and do not overflow page bounds unexpectedly"
+      ],
+      "deliverables": [
+        "packages/pdf/richtext/tiptapToHtml.ts",
+        "packages/pdf/richtext/htmlSanitize.ts",
+        "docs/pdf_richtext_support_v1.md"
+      ]
+    },
+    {
+      "id": "S31-T09",
+      "title": "Text overflow/measurement hooks for Studio rich text (store overflow meta)",
+      "skill": ["Editor Engineering", "QA"],
+      "priority": "P1",
+      "requirements": {
+        "measurement": [
+          "When committing text edit: measure content height vs text box height",
+          "Store node.meta.overflow=true if exceeded",
+          "Surface warning badge on the text node or page warnings panel"
+        ],
+        "constraints": [
+          "Keep measurement in client (DOM-based) for accuracy",
+          "Avoid heavy reflow loops"
+        ]
+      },
+      "acceptanceTests": [
+        "Overflowing formatted text triggers overflow flag",
+        "User can see warning and fix by resizing or shortening"
+      ],
+      "deliverables": [
+        "packages/editor/measure/richTextOverflow.ts",
+        "packages/editor/ui/OverflowBadge.tsx"
+      ]
+    },
+    {
+      "id": "S31-T10",
+      "title": "Migration: convert existing Studio text content to Tiptap JSON (non-breaking)",
+      "skill": ["Backend", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "migrationRules": [
+          "If TextNode has legacy plain string: convert to tiptap doc with single paragraph",
+          "Preserve existing styling at node level (font, size, color) and apply to container, not inline marks",
+          "Run migration on load (lazy) and save upgraded doc"
+        ],
+        "constraints": ["No data loss", "Migration must be idempotent"]
+      },
+      "acceptanceTests": [
+        "Old documents load and display the same text",
+        "After save, document persists with contentRich JSON"
+      ],
+      "deliverables": [
+        "packages/editor/migrations/textToTiptap.ts",
+        "docs/studio_richtext_migration.md"
+      ]
+    },
+    {
+      "id": "S31-T11",
+      "title": "QA + automated tests (wizard editor, studio editor, export)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Wizard: type answer with mixed bold/italic, navigate away/back, confirm persistence",
+          "Wizard: STT append/replace into rich editor works",
+          "Studio: open text box, edit with bubble menu, commit persists",
+          "Studio: no performance collapse with many pages (read-only render default)",
+          "Export: PDF contains formatted text and lists"
+        ],
+        "automation": [
+          "Unit: extractPlainText from tiptap JSON",
+          "Unit: migration converts plain string -> tiptap doc",
+          "UI: AnswerEditor renders and saves JSON",
+          "Integration: export renderer handles bold/italic/list HTML"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 6 automated tests added and passing",
+        "No regressions to save/resume flow"
+      ],
+      "deliverables": [
+        "tests/richtext/plainTextExtractor.test.ts",
+        "tests/richtext/migration.test.ts",
+        "tests/ui/AnswerEditorTiptap.test.tsx",
+        "tests/ui/StudioRichTextEdit.test.tsx",
+        "tests/pdf/richtextExport.integration.test.ts",
+        "docs/qa_sprint31_tiptap.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S31-T01",
+      "S31-T02",
+      "S31-T05",
+      "S31-T03",
+      "S31-T04",
+      "S31-T06",
+      "S31-T07",
+      "S31-T10",
+      "S31-T08",
+      "S31-T11",
+      "S31-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 8,
+      "P1_total_days": 2,
+      "buffer_days": 2
+    },
+    "notes": [
+      "Use read-only rendering for all Studio text nodes and mount Tiptap only for the active node to keep performance stable.",
+      "Keep Wizard formatting minimal even if Studio supports more: too many options can confuse elder users.",
+      "Avoid Pro extensions (Comments/Snapshots/Content AI). Stick to OSS extensions and your own menus."
+    ]
+  }
+}

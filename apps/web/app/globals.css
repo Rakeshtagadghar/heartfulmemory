@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../packages/**/*.{ts,tsx}";
 
 :root {
   color-scheme: dark;

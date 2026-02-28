@@ -87,7 +87,7 @@ export async function removePageAction(
 export async function updatePageSettingsAction(
   storybookId: string,
   pageId: string,
-  patch: Partial<Pick<PageDTO, "size_preset" | "margins" | "grid" | "background">>
+  patch: Partial<Pick<PageDTO, "title" | "is_hidden" | "is_locked" | "size_preset" | "margins" | "grid" | "background">>
 ): Promise<DataResult<PageDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
   const result = await updatePageForUser(user.id, pageId, patch);
@@ -142,6 +142,7 @@ export async function updateLayoutStorybookSettingsAction(
     exportTargets?: { digitalPdf: boolean; hardcopyPdf?: boolean; printPdf?: boolean };
     printPreset?: Record<string, unknown>;
     digitalPreset?: Record<string, unknown>;
+    studioDocMeta?: Record<string, unknown>;
   }
 ): Promise<DataResult<StorybookDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));

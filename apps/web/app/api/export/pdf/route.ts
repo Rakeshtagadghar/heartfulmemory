@@ -11,6 +11,7 @@ import type { ExportTarget, PdfRenderContract, PdfRenderOutputMeta } from "../..
 import { createPdfDocument } from "../../../../../../packages/pdf/engine";
 import { buildExportErrorPayload, createExportTraceId } from "../../../../../../packages/pdf/errors/exportErrors";
 import { toRenderableContractV1FromLegacy } from "../../../../../../packages/pdf/contract/renderContractV1";
+import { filterHiddenPagesFromExport } from "../../../../../../packages/pdf/renderers/filterPages";
 import {
   type RenderableValidationIssue,
   validateRenderable
@@ -49,6 +50,9 @@ type ExportPayload = {
     id: string;
     storybook_id: string;
     order_index: number;
+    title: string;
+    is_hidden: boolean;
+    is_locked: boolean;
     size_preset: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
     width_px: number;
     height_px: number;
@@ -170,6 +174,11 @@ function jsonExportError(input: Parameters<typeof buildExportErrorPayload>[0]) {
 
 function shouldStoreExportPdfsInR2() {
   const value = (process.env.EXPORT_PDF_STORE_R2 ?? "").trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function shouldIncludeHiddenPagesInExport() {
+  const value = (process.env.EXPORT_INCLUDE_HIDDEN_PAGES ?? "").trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
 
@@ -582,7 +591,18 @@ export async function POST(request: Request) { // NOSONAR
     });
   }
 
-  const payload = payloadResult.data;
+  const exportPayload = payloadResult.data;
+  const filtered = filterHiddenPagesFromExport({
+    pages: exportPayload.pages,
+    frames: exportPayload.frames,
+    settings: exportPayload.storybook.settings ?? {},
+    includeHiddenPages: shouldIncludeHiddenPagesInExport()
+  });
+  const payload: ExportPayload = {
+    ...exportPayload,
+    pages: filtered.pages,
+    frames: filtered.frames
+  };
   const exportHash = computeExportHash({
     storybookId: payload.storybook.id,
     storybookUpdatedAt: payload.storybook.updated_at,

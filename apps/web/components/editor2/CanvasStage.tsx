@@ -35,6 +35,9 @@ type InteractionState =
 export function CanvasStage({ // NOSONAR
   page,
   frames,
+  pageLocked = false,
+  pageHidden = false,
+  embedded = false,
   selectedFrameId,
   selectedFrameIds = [],
   selectionBounds = null,
@@ -72,6 +75,9 @@ export function CanvasStage({ // NOSONAR
 }: {
   page: PageDTO | null;
   frames: FrameDTO[];
+  pageLocked?: boolean;
+  pageHidden?: boolean;
+  embedded?: boolean;
   selectedFrameId: string | null;
   selectedFrameIds?: string[];
   selectionBounds?: BoundsRect | null;
@@ -279,34 +285,20 @@ export function CanvasStage({ // NOSONAR
     Boolean(onNodeMenuAction);
 
   return (
-    <div ref={stageRef} className="relative flex h-full min-h-0 flex-col bg-[#d7d8dc]">
-      <button
-        type="button"
-        className="flex h-7 items-center border-b border-black/10 bg-[#eef0f3] px-3 text-[11px] text-black/55"
-        onPointerDown={() => onClearSelection?.()}
-        aria-label="Canvas ruler"
-      >
-        <div className="grid h-full w-full grid-cols-12">
-          {Array.from({ length: 24 }, (_, tick) => tick).map((tick) => (
-            <div key={`ruler-${tick}`} className="relative border-r border-black/5 pl-1">
-              <span>{tick}</span>
-            </div>
-          ))}
-        </div>
-      </button>
-
+    <div ref={stageRef} className={embedded ? "relative bg-[#d7d8dc]" : "relative flex h-full min-h-0 flex-col bg-[#d7d8dc]"}>
       <div
         ref={viewportRef}
-        className="relative min-h-0 flex-1 overflow-auto"
+        className={embedded ? "relative" : "relative min-h-0 flex-1 overflow-auto"}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) {
             onClearSelection?.();
           }
         }}
       >
-        <div className="flex min-h-full min-w-full items-start justify-center p-12">
+        <div className={embedded ? "flex items-start justify-center" : "flex min-h-full min-w-full items-start justify-center p-6"}>
           <div
             ref={pageSurfaceRef}
+            data-page-surface="true"
             className="relative origin-top shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
             style={{
               width: page.width_px * zoom,
@@ -331,6 +323,7 @@ export function CanvasStage({ // NOSONAR
                 }
               }}
               onDragOver={(event) => {
+                if (pageLocked) return;
                 const payload = getDraggedMediaPayload(event.dataTransfer);
                 if (!payload) return;
                 const rect = event.currentTarget.getBoundingClientRect();
@@ -344,6 +337,7 @@ export function CanvasStage({ // NOSONAR
                 event.dataTransfer.dropEffect = "copy";
               }}
               onDrop={(event) => {
+                if (pageLocked) return;
                 const payload = getDraggedMediaPayload(event.dataTransfer);
                 if (!payload || !onDropMediaOnFrame) return;
                 const rect = event.currentTarget.getBoundingClientRect();
@@ -378,6 +372,7 @@ export function CanvasStage({ // NOSONAR
                     key={frame.id}
                     frame={frame}
                     selected={selectedFrameIds.includes(frame.id)}
+                    pageLocked={pageLocked}
                     textEditing={frame.id === editingTextFrameId}
                     cropEditing={frame.id === cropModeFrameId}
                     cropOverride={cropDraftByFrameId?.[frame.id] ?? null}
@@ -408,7 +403,7 @@ export function CanvasStage({ // NOSONAR
                     onCropChange={(crop) => onCropChange(frame.id, crop)}
                     issueMessages={issueHighlightMessagesByFrameId?.[frame.id]}
                     onDragStart={(event) => {
-                      if (frame.locked) return;
+                      if (pageLocked || frame.locked) return;
                       event.preventDefault();
                       setInteraction({
                         mode: "drag",
@@ -420,7 +415,7 @@ export function CanvasStage({ // NOSONAR
                       });
                     }}
                     onResizeStart={(handle, event) => {
-                      if (frame.locked) return;
+                      if (pageLocked || frame.locked) return;
                       event.preventDefault();
                       event.stopPropagation();
                       onSelectFrame(frame.id, { preserveIfSelected: true });
@@ -448,6 +443,13 @@ export function CanvasStage({ // NOSONAR
                 >
                   <div className="absolute -top-6 left-0 rounded bg-cyan-400/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#052a33]">
                     {selectedFrameIds.length} selected
+                  </div>
+                </div>
+              ) : null}
+              {pageHidden ? (
+                <div className="pointer-events-none absolute inset-0 z-40 bg-black/25">
+                  <div className="absolute left-3 top-3 rounded-md border border-amber-200/40 bg-amber-200/30 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#2c2420]">
+                    Hidden page
                   </div>
                 </div>
               ) : null}
@@ -480,7 +482,12 @@ export function CanvasStage({ // NOSONAR
           y={nodeContextMenu.top}
           onClose={() => setNodeContextMenu((current) => ({ ...current, open: false }))}
           onAction={(action) => onNodeMenuAction?.(action)}
-          locked={selectedFrameIds.length > 1 ? selectedFrameIds.every((id) => frameMap.get(id)?.locked) : Boolean(selectedFrame.locked)}
+          locked={
+            pageLocked ||
+            (selectedFrameIds.length > 1
+              ? selectedFrameIds.every((id) => frameMap.get(id)?.locked)
+              : Boolean(selectedFrame.locked))
+          }
           canPaste={nodeMenuCanPaste}
           canReplaceImage={selectedFrameIds.length === 1 && selectedFrame.type === "FRAME"}
           isMulti={selectedFrameIds.length > 1}

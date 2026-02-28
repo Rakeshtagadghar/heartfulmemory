@@ -1,17 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "../ui/card";
 import { Button } from "../ui/button";
 
+export type ThreeParaNarrative = {
+    paragraphs: {
+        opening: string;
+        story: string;
+        closing: string;
+    };
+};
+
 interface Props {
-    narrative: {
-        paragraphs: {
-            opening: string;
-            story: string;
-            closing: string;
-        };
-    } | null;
+    narrative: ThreeParaNarrative | null;
     isApproved: boolean;
     onUpdateText: (type: "opening" | "story" | "closing", text: string) => void;
     onRegenParagraph: (type: "opening" | "story" | "closing") => void;

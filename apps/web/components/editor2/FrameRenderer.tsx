@@ -15,6 +15,7 @@ import { ElementFrameRenderer } from "../../../../packages/editor/renderers/Fram
 import { GroupRenderer } from "../../../../packages/editor/renderers/GroupRenderer";
 import { ImageRenderer } from "../../../../packages/editor/renderers/ImageRenderer";
 import { normalizeFrameNodeContentV1 } from "../../../../packages/editor/nodes/frameNode";
+import { LockedBadge } from "../../../../packages/editor/ui/LockedBadge";
 
 function getTextValue(frame: FrameDTO) {
   const text = frame.content?.text;
@@ -81,6 +82,7 @@ function getFrameShellClasses(input: {
 export function FrameRenderer({ // NOSONAR
   frame,
   selected,
+  pageLocked = false,
   textEditing,
   cropEditing,
   onSelect,
@@ -99,6 +101,7 @@ export function FrameRenderer({ // NOSONAR
 }: {
   frame: FrameDTO;
   selected: boolean;
+  pageLocked?: boolean;
   textEditing?: boolean;
   cropEditing?: boolean;
   onSelect: (options?: { additive?: boolean; preserveIfSelected?: boolean }) => void;
@@ -124,6 +127,7 @@ export function FrameRenderer({ // NOSONAR
   const cropEditableImageSrc = getFrameImageSource(frame);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isTextFrame = frame.type === "TEXT";
+  const interactionLocked = frame.locked || pageLocked;
 
   useEffect(() => {
     if (!textEditing || !textareaRef.current) return;
@@ -200,7 +204,7 @@ export function FrameRenderer({ // NOSONAR
   }
 
   function renderNonTextOverlay() {
-    if (!frame.locked && !isTextFrame && !cropEditing) {
+    if (!interactionLocked && !isTextFrame && !cropEditing) {
       return (
         <button
           type="button"
@@ -229,7 +233,7 @@ export function FrameRenderer({ // NOSONAR
       );
     }
 
-    if (!frame.locked) {
+    if (!interactionLocked) {
       return null;
     }
 
@@ -371,7 +375,7 @@ export function FrameRenderer({ // NOSONAR
       <div className={shellClasses}>
         {renderNonTextOverlay()}
 
-        {!frame.locked && isTextFrame && !textEditing ? (
+        {!interactionLocked && isTextFrame && !textEditing ? (
           <button
             type="button"
             aria-label={selected ? "Move or edit text frame" : "Select, move, or edit text frame"}
@@ -400,11 +404,7 @@ export function FrameRenderer({ // NOSONAR
 
         {renderFrameBody()}
 
-        {frame.locked ? (
-          <span className="absolute right-2 top-2 rounded bg-black/45 px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white/75">
-            Locked
-          </span>
-        ) : null}
+        {interactionLocked ? <LockedBadge label={pageLocked ? "Page locked" : "Locked"} /> : null}
         {frame.type === "TEXT" && selected && !textEditing ? (
           <button
             type="button"
@@ -424,7 +424,7 @@ export function FrameRenderer({ // NOSONAR
             ...
           </button>
         ) : null}
-        {frame.type !== "TEXT" && selected && !frame.locked ? (
+        {frame.type !== "TEXT" && selected && !interactionLocked ? (
           <button
             type="button"
             className="absolute right-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"
@@ -449,7 +449,7 @@ export function FrameRenderer({ // NOSONAR
             {issueMessages && issueMessages.length > 1 ? ` (+${issueMessages.length - 1} more)` : ""}
           </div>
         ) : null}
-        {isImagePlaceholderFrame(frame) && selected && !frame.locked && !cropEditing && cropEditableImageSrc ? (
+        {isImagePlaceholderFrame(frame) && selected && !interactionLocked && !cropEditing && cropEditableImageSrc ? (
           <button
             type="button"
             className="absolute left-2 top-2 z-20 cursor-pointer rounded-lg border border-white/15 bg-black/55 px-2 py-1 text-xs text-white hover:bg-black/70"
@@ -467,7 +467,7 @@ export function FrameRenderer({ // NOSONAR
         ) : null}
       </div>
 
-      <FrameHandles visible={selected && !frame.locked && !cropEditing} onResizeStart={onResizeStart} />
+      <FrameHandles visible={selected && !interactionLocked && !cropEditing} onResizeStart={onResizeStart} />
     </div>
   );
 }
