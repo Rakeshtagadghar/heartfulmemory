@@ -68,7 +68,7 @@ export function AINarratePanel({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={!canNarrate || status === "loading"}
+            disabled={!canNarrate}
             onClick={() => { void handleNarrate(); }}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-gold/30 bg-gold/[0.07] px-3 py-1.5 text-xs font-semibold text-gold/90 transition hover:border-gold/50 hover:bg-gold/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
           >
