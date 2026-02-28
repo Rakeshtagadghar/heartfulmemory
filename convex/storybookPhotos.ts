@@ -59,7 +59,7 @@ export const removePhoto = mutationGeneric({
       .query("storybookPhotos")
       .withIndex("by_storybookId_orderIndex", (q: any) => q.eq("storybookId", args.storybookId))
       .collect();
-    const sorted = remaining.toSorted((a, b) => a.orderIndex - b.orderIndex);
+    const sorted = [...remaining].sort((a, b) => a.orderIndex - b.orderIndex);
     for (let i = 0; i < sorted.length; i++) {
       if (sorted[i].orderIndex !== i) {
         await ctx.db.patch(sorted[i]._id, { orderIndex: i });
@@ -90,7 +90,7 @@ export const listPhotos = queryGeneric({
       .withIndex("by_storybookId_orderIndex", (q: any) => q.eq("storybookId", args.storybookId))
       .collect();
 
-    const sorted = rows.toSorted((a, b) => a.orderIndex - b.orderIndex);
+    const sorted = [...rows].sort((a, b) => a.orderIndex - b.orderIndex);
 
     const result = await Promise.all(
       sorted.map(async (row) => {

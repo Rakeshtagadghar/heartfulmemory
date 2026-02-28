@@ -137,12 +137,12 @@ export const populateFromPhotos = action({
         ? await ctx.runQuery(api.templates.getById, { templateId: storybook.templateId })
         : null;
 
-      const sortedChapters = (Array.isArray(chapters) ? chapters : [])
-        .toSorted((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+      const sortedChapters = [...(Array.isArray(chapters) ? chapters : [])]
+        .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
 
       const sortedPhotos = (Array.isArray(photos) ? photos : [])
         .filter((p: any) => p.sourceUrl)
-        .toSorted((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+        .sort((a: any, b: any) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
 
       // Extra answer: append to last chapter's answers
       const extraAnswerText: string | null =
@@ -172,9 +172,9 @@ export const populateFromPhotos = action({
           ...questionOrder.map((qId: string) => answersByQuestionId.get(qId)).filter(
             (r): r is ChapterAnswerDto => Boolean(r && !r.skipped && readAnswerText(r as ChapterAnswerDto).length > 0)
           ),
-          ...answersRaw.filter(
+          ...[...answersRaw.filter(
             (r) => !questionOrder.includes(r.questionId) && !r.skipped && readAnswerText(r).length > 0
-          ).toSorted((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
+          )].sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
         ];
 
         // Append extra answer to last chapter
@@ -251,7 +251,7 @@ export const populateFromPhotos = action({
           const page = (pages as PageDto[]).find((p) => p.id === pageId);
           if (!page) continue;
 
-          const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].toSorted((a, b) => a.z_index - b.z_index);
+          const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
           const expectedStableKeys = new Set(pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId)));
 
           // Remove stale populate frames
