@@ -33,6 +33,14 @@ const backgroundValidator = v.object({
   fill: v.string()
 });
 
+const pageTypeValidator = v.union(
+  v.literal("COVER"),
+  v.literal("TABLE_OF_CONTENTS"),
+  v.literal("TABLE_OF_CONTENTS_CONTINUATION"),
+  v.literal("CHAPTER_COVER"),
+  v.literal("PAGE")
+);
+
 const presetDimensions: Record<string, { widthPx: number; heightPx: number }> = {
   A4: { widthPx: 794, heightPx: 1123 },
   US_LETTER: { widthPx: 816, heightPx: 1056 },
@@ -69,6 +77,8 @@ function toPageDto(doc: {
     title: doc.title ?? "",
     is_hidden: Boolean(doc.isHidden),
     is_locked: Boolean(doc.isLocked),
+    page_type: (doc as any).pageType ?? undefined,
+    show_in_toc: (doc as any).showInToc ?? undefined,
     size_preset: doc.sizePreset,
     width_px: doc.widthPx,
     height_px: doc.heightPx,
@@ -106,7 +116,8 @@ export const create = mutationGeneric({
     viewerSubject: v.optional(v.string()),
     storybookId: v.id("storybooks"),
     sizePreset: v.optional(pageSizePresetValidator),
-    background: v.optional(backgroundValidator)
+    background: v.optional(backgroundValidator),
+    pageType: v.optional(pageTypeValidator)
   },
   handler: async (ctx, args) => {
     const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
@@ -119,11 +130,12 @@ export const create = mutationGeneric({
       existing.length === 0 ? 0 : Math.max(...existing.map((page) => page.orderIndex)) + 1;
     const now = Date.now();
     const dimensions = presetDimensions[preset];
-    const pageId = await ctx.db.insert("pages", {
+    const isToc = args.pageType === "TABLE_OF_CONTENTS" || args.pageType === "TABLE_OF_CONTENTS_CONTINUATION";
+    const insertData: Record<string, unknown> = {
       storybookId: args.storybookId,
       ownerId: access.storybook.ownerId,
       orderIndex: nextOrder,
-      title: "",
+      title: isToc ? "Contents" : "",
       isHidden: false,
       isLocked: false,
       sizePreset: preset,
@@ -134,7 +146,12 @@ export const create = mutationGeneric({
       background: args.background ?? { fill: "#ffffff" },
       createdAt: now,
       updatedAt: now
-    });
+    };
+    if (args.pageType) {
+      insertData.pageType = args.pageType;
+      insertData.showInToc = !isToc; // ToC pages don't list themselves
+    }
+    const pageId = await ctx.db.insert("pages", insertData as never);
     await ctx.db.patch(access.storybook._id as never, {
       updatedAt: now,
       settings: {

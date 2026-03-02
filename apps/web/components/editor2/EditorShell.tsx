@@ -572,6 +572,49 @@ export function Editor2Shell({// NOSONAR
     setMessage(null);
   }
 
+  async function handleAddTocPage() {
+    const result = await createPageAction(
+      storybook.id,
+      selectedPage?.size_preset ?? "BOOK_8_5X11",
+      "TABLE_OF_CONTENTS"
+    );
+    if (!result.ok) {
+      setMessage(result.error);
+      return;
+    }
+
+    // Insert ToC as the second page (after cover). If only 1 page exists,
+    // ToC becomes page 2. If 0 pages, it becomes the first.
+    const currentIds = pages.map((p) => p.id);
+    const tocId = result.data.id;
+    const insertAt = Math.min(1, currentIds.length); // index 1, or 0 if no pages
+    const reorderedIds = [
+      ...currentIds.slice(0, insertAt),
+      tocId,
+      ...currentIds.slice(insertAt)
+    ];
+
+    const reorderResult = await reorderPagesAction(storybook.id, reorderedIds);
+    if (!reorderResult.ok) {
+      // Reorder failed – still add the page at the end
+      setPages((current) => sortPages([...current, result.data]));
+      setMessage(reorderResult.error);
+    } else {
+      // Fetch fresh pages to get correct order_index values
+      const freshPages = await listPagesAction(storybook.id);
+      if (freshPages.ok) {
+        setPages(sortPages(freshPages.data));
+      } else {
+        setPages((current) => sortPages([...current, result.data]));
+      }
+    }
+
+    setSelectedPageId(tocId);
+    setSelectedFrameIds([]);
+    setFramesByPageId((current) => ({ ...current, [tocId]: [] }));
+    setMessage("Table of Contents page added as page 2.");
+  }
+
   async function handleAddPageAfter(pageId: string) {
     const result = await createPageAction(storybook.id, selectedPage?.size_preset ?? "BOOK_8_5X11");
     if (!result.ok) {
@@ -1813,6 +1856,7 @@ export function Editor2Shell({// NOSONAR
         framesByPageId={framesByPageId}
         onSelectPage={handleSelectPage}
         onAddPage={handleAddPage}
+        onAddTocPage={handleAddTocPage}
         onMovePage={handleMovePage}
         onDuplicatePage={handleDuplicatePage}
         onDeletePage={handleDeletePage}
@@ -1877,9 +1921,9 @@ export function Editor2Shell({// NOSONAR
             setCropDraft((current) =>
               current?.frameId === selectedCropTargetFrame.id
                 ? {
-                    ...current,
-                    value: buildCropRotationPatch(current.value, deltaDeg)
-                  }
+                  ...current,
+                  value: buildCropRotationPatch(current.value, deltaDeg)
+                }
                 : current
             )
           }
@@ -1887,9 +1931,9 @@ export function Editor2Shell({// NOSONAR
             setCropDraft((current) =>
               current?.frameId === selectedCropTargetFrame.id
                 ? {
-                    ...current,
-                    value: resetCropModelV1(current.originalCrop, selectedCropTargetFrame.type === "FRAME" ? "frame" : "free")
-                  }
+                  ...current,
+                  value: resetCropModelV1(current.originalCrop, selectedCropTargetFrame.type === "FRAME" ? "frame" : "free")
+                }
                 : current
             )
           }
@@ -2302,6 +2346,188 @@ export function Editor2Shell({// NOSONAR
   function renderCanvasForPage(page: PageDTO, options: { embedded: boolean; isActive: boolean }) {
     const pageFrames = sortFrames(framesByPageId[page.id] ?? []);
     const pageIssueHighlights = issueHighlightMap[page.id] ?? {};
+
+    // ── ToC page: render within normal CanvasStage + overlay ToC content ──
+    const isTocPage = page.page_type === "TABLE_OF_CONTENTS" || page.page_type === "TABLE_OF_CONTENTS_CONTINUATION";
+    if (isTocPage) {
+      // Collect only titled pages (chapters) — skip cover, ToC itself, and untitled pages
+      const chapterEntries = pages
+        .filter((p) => {
+          if (p.page_type === "TABLE_OF_CONTENTS" || p.page_type === "TABLE_OF_CONTENTS_CONTINUATION") return false;
+          if (p.page_type === "COVER") return false;
+          if (!p.title || p.title.trim() === "") return false;
+          return true;
+        })
+        .map((p) => ({
+          id: p.id,
+          title: p.title!.trim(),
+          pageNumber: pages.indexOf(p) + 1,
+        }));
+
+      const safeLeft = page.margins.left + (storybookExportSettings.printPreset.safeAreaPadding ?? 0);
+      const safeTop = page.margins.top + (storybookExportSettings.printPreset.safeAreaPadding ?? 0);
+      const safeW = page.width_px - safeLeft - page.margins.right - (storybookExportSettings.printPreset.safeAreaPadding ?? 0);
+      const safeH = page.height_px - safeTop - page.margins.bottom - (storybookExportSettings.printPreset.safeAreaPadding ?? 0);
+      const bookTitle = storybook.title || "";
+
+      // Render the same CanvasStage (zoom, grid, margins, safe area, orientation)
+      // then overlay ToC content on top
+      return (
+        <div key={`toc-wrap-${page.id}`} className="relative">
+          {/* Normal CanvasStage — applies zoom, grid, margins overlay, safe area */}
+          <CanvasStage
+            key={`stage-${page.id}`}
+            embedded={options.embedded}
+            page={page}
+            frames={pageFrames}
+            pageLocked={Boolean(page.is_locked)}
+            pageHidden={Boolean(page.is_hidden)}
+            selectedFrameId={null}
+            selectedFrameIds={[]}
+            selectionBounds={null}
+            zoom={zoom}
+            showGrid={showGridOverlay}
+            showMarginsOverlay={showMarginsOverlay}
+            showSafeAreaOverlay={showSafeAreaOverlay}
+            safeAreaPadding={storybookExportSettings.printPreset.safeAreaPadding}
+            issueHighlightMessagesByFrameId={{}}
+            snapEnabled={false}
+            editingTextFrameId={null}
+            cropModeFrameId={null}
+            onSelectFrame={() => { }}
+            onStartTextEdit={() => { }}
+            onEndTextEdit={() => { }}
+            onTextContentChange={() => { }}
+            onPatchSelectedTextStyle={() => { }}
+            onDuplicateSelectedTextFrame={() => { }}
+            onDeleteSelectedTextFrame={() => { }}
+            onToggleSelectedFrameLock={() => { }}
+            onStartCropEdit={() => { }}
+            onEndCropEdit={() => { }}
+            onCropChange={() => { }}
+            onFramePatchPreview={() => { }}
+            onFramePatchCommit={async () => { }}
+            onClearSelection={options.isActive ? handleClearSelection : undefined}
+          />
+
+          {/* ToC content overlay — positioned on top of the CanvasStage at correct scale */}
+          <div
+            className="pointer-events-none absolute"
+            style={{
+              left: 0,
+              top: 0,
+              width: page.width_px * zoom,
+              height: page.height_px * zoom,
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                left: safeLeft * zoom,
+                top: safeTop * zoom,
+                transform: `scale(${zoom})`,
+                transformOrigin: "top left",
+                width: safeW,
+                height: safeH,
+                fontFamily: "'Georgia', 'Times New Roman', serif",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Title */}
+              <h1
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  color: "#111",
+                  lineHeight: 1.2,
+                  margin: "0 0 28px 0",
+                }}
+              >
+                TABLE OF CONTENTS
+              </h1>
+
+              {/* Entries */}
+              <div style={{ flex: 1 }}>
+                {chapterEntries.length === 0 ? (
+                  <p style={{ color: "#999", fontStyle: "italic", fontSize: 14, marginTop: 16 }}>
+                    No chapters yet — add titled pages to populate.
+                  </p>
+                ) : (
+                  chapterEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        marginBottom: 12,
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: "#111",
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        {entry.title}
+                      </span>
+                      <span
+                        style={{
+                          flex: 1,
+                          borderBottom: "1px dotted #bbb",
+                          marginLeft: 8,
+                          marginRight: 8,
+                          minWidth: 20,
+                          position: "relative",
+                          top: -3,
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontWeight: 700,
+                          fontSize: 13,
+                          color: "#111",
+                          flexShrink: 0,
+                          minWidth: 24,
+                          textAlign: "right" as const,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {entry.pageNumber}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 9,
+                  color: "#888",
+                  textTransform: "uppercase" as const,
+                  letterSpacing: "0.06em",
+                }}
+              >
+                <span>{bookTitle}</span>
+                <span>{pages.indexOf(pages.find((p) => p.id === page.id)!) + 1}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Regular page: render the normal CanvasStage ──
     return (
       <CanvasStage
         key={`stage-${page.id}`}
@@ -2531,127 +2757,127 @@ export function Editor2Shell({// NOSONAR
     >
       {canvasOnlyFullscreen ? null : (
         <>
-      <div className="relative z-40 border-b border-white/10 px-0 py-0">
-        <div className="relative overflow-visible rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] shadow-[0_12px_40px_rgba(4,10,20,0.35)] backdrop-blur-2xl">
-          <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:20px_20px]" />
-          <div className="pointer-events-none absolute left-8 top-0 h-px w-28 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
-          <div className="pointer-events-none absolute -right-8 top-1/2 h-16 w-16 -translate-y-1/2 rounded-full border border-gold/20 bg-gold/10 blur-xl" />
+          <div className="relative z-40 border-b border-white/10 px-0 py-0">
+            <div className="relative overflow-visible rounded-2xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0.02))] shadow-[0_12px_40px_rgba(4,10,20,0.35)] backdrop-blur-2xl">
+              <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,white_1px,transparent_1px),linear-gradient(to_bottom,white_1px,transparent_1px)] [background-size:20px_20px]" />
+              <div className="pointer-events-none absolute left-8 top-0 h-px w-28 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
+              <div className="pointer-events-none absolute -right-8 top-1/2 h-16 w-16 -translate-y-1/2 rounded-full border border-gold/20 bg-gold/10 blur-xl" />
 
-          <div className="relative flex flex-wrap items-center justify-between gap-3 px-3 py-2 sm:px-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <Link
-                href={`/book/${storybook.id}/chapters`}
-                className="rounded-xl border border-white/12 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-white/85 transition hover:bg-white/[0.06] hover:text-white"
-              >
-                Back
-              </Link>
-              <div className="hidden h-7 w-px bg-white/10 sm:block" />
-              <Link
-                href="/app"
-                className="min-w-0 rounded-xl transition hover:bg-white/[0.03]"
-              >
-                <MemoriosoLogo compact className="origin-left scale-[0.82]" />
-              </Link>
-              <span className="hidden rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/60 md:inline-flex">
-                Studio
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Editor2SaveStatus
-                status={autosave.status}
-                error={autosave.error}
-              />
-              <ExportButton
-                storybookId={storybook.id}
-                storybookSettings={storybookExportSettings}
-                issueDisplayMeta={issueDisplayMeta}
-                onExportSettingsChange={setStorybookExportSettings}
-                onIssueNavigate={handleNavigateToExportIssue}
-                onIssuesUpdate={setPreflightIssues}
-                onOpen={() =>
-                  recordStudioMilestone("export_step", "export_click", {
-                    flow: "studio_export",
-                    storybookId: storybook.id,
-                    pageId: effectiveSelectedPageId ?? undefined
-                  }, "start")
-                }
-              />
-              <div className="hidden lg:block">
-                <PlanStatusBanner compact />
-              </div>
-              <div ref={userMenuRef} className="relative ml-1">
-                <button
-                  type="button"
-                  aria-label="Open account menu"
-                  aria-haspopup="menu"
-                  aria-expanded={userMenuOpen}
-                  className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-white/[0.03] text-xs font-semibold text-white transition hover:bg-white/[0.06]"
-                  onClick={() => setUserMenuOpen((current) => !current)}
-                >
-                  {avatarInitials}
-                </button>
-                {userMenuOpen ? (
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-[calc(100%+10px)] z-50 w-52 overflow-hidden rounded-2xl border border-white/12 bg-[#0b1220]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+              <div className="relative flex flex-wrap items-center justify-between gap-3 px-3 py-2 sm:px-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Link
+                    href={`/book/${storybook.id}/chapters`}
+                    className="rounded-xl border border-white/12 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-white/85 transition hover:bg-white/[0.06] hover:text-white"
                   >
-                    <div className="mb-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2">
-                      <p className="truncate text-sm font-semibold text-white">
-                        {userDisplayName || "Memorioso Member"}
-                      </p>
-                      <p className="truncate text-xs text-white/55">
-                        {userEmail ?? "Signed in"}
-                      </p>
-                    </div>
-                    <Link
-                      href="/app/profile"
-                      role="menuitem"
-                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <Link
-                      href="/app/settings"
-                      role="menuitem"
-                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Settings
-                    </Link>
-                    <Link
-                      href="/app/account/billing"
-                      role="menuitem"
-                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
-                      onClick={() => setUserMenuOpen(false)}
-                    >
-                      Billing
-                    </Link>
+                    Back
+                  </Link>
+                  <div className="hidden h-7 w-px bg-white/10 sm:block" />
+                  <Link
+                    href="/app"
+                    className="min-w-0 rounded-xl transition hover:bg-white/[0.03]"
+                  >
+                    <MemoriosoLogo compact className="origin-left scale-[0.82]" />
+                  </Link>
+                  <span className="hidden rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/60 md:inline-flex">
+                    Studio
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Editor2SaveStatus
+                    status={autosave.status}
+                    error={autosave.error}
+                  />
+                  <ExportButton
+                    storybookId={storybook.id}
+                    storybookSettings={storybookExportSettings}
+                    issueDisplayMeta={issueDisplayMeta}
+                    onExportSettingsChange={setStorybookExportSettings}
+                    onIssueNavigate={handleNavigateToExportIssue}
+                    onIssuesUpdate={setPreflightIssues}
+                    onOpen={() =>
+                      recordStudioMilestone("export_step", "export_click", {
+                        flow: "studio_export",
+                        storybookId: storybook.id,
+                        pageId: effectiveSelectedPageId ?? undefined
+                      }, "start")
+                    }
+                  />
+                  <div className="hidden lg:block">
+                    <PlanStatusBanner compact />
+                  </div>
+                  <div ref={userMenuRef} className="relative ml-1">
                     <button
                       type="button"
-                      role="menuitem"
-                      className="mt-1 flex h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm text-rose-100 hover:bg-rose-500/10"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        trackAuthLogout({ source: "studio_header_menu" });
-                        void signOut({ callbackUrl: "/login?loggedOut=1" });
-                      }}
+                      aria-label="Open account menu"
+                      aria-haspopup="menu"
+                      aria-expanded={userMenuOpen}
+                      className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/15 bg-white/[0.03] text-xs font-semibold text-white transition hover:bg-white/[0.06]"
+                      onClick={() => setUserMenuOpen((current) => !current)}
                     >
-                      Logout
+                      {avatarInitials}
                     </button>
+                    {userMenuOpen ? (
+                      <div
+                        role="menu"
+                        className="absolute right-0 top-[calc(100%+10px)] z-50 w-52 overflow-hidden rounded-2xl border border-white/12 bg-[#0b1220]/95 p-2 shadow-[0_20px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+                      >
+                        <div className="mb-2 rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2">
+                          <p className="truncate text-sm font-semibold text-white">
+                            {userDisplayName || "Memorioso Member"}
+                          </p>
+                          <p className="truncate text-xs text-white/55">
+                            {userEmail ?? "Signed in"}
+                          </p>
+                        </div>
+                        <Link
+                          href="/app/profile"
+                          role="menuitem"
+                          className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          Profile
+                        </Link>
+                        <Link
+                          href="/app/settings"
+                          role="menuitem"
+                          className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          Settings
+                        </Link>
+                        <Link
+                          href="/app/account/billing"
+                          role="menuitem"
+                          className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                          onClick={() => setUserMenuOpen(false)}
+                        >
+                          Billing
+                        </Link>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="mt-1 flex h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm text-rose-100 hover:bg-rose-500/10"
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            trackAuthLogout({ source: "studio_header_menu" });
+                            void signOut({ callbackUrl: "/login?loggedOut=1" });
+                          }}
+                        >
+                          Logout
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {message ? (
-        <div className="border-b border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">
-          {message}
-        </div>
-      ) : null}
+          {message ? (
+            <div className="border-b border-rose-300/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">
+              {message}
+            </div>
+          ) : null}
         </>
       )}
 
@@ -2760,187 +2986,187 @@ export function Editor2Shell({// NOSONAR
       </div>
 
       {canvasOnlyFullscreen ? null : (
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <p>WYSIWYG canvas v1</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-4 w-4 text-white/70"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="5" />
-              <path d="m20 20-4-4" />
-            </svg>
-            <input
-              type="range"
-              min={45}
-              max={160}
-              step={1}
-              aria-label="Zoom"
-              value={Math.round(zoom * 100)}
-              onChange={(event) => setZoom(Number(event.target.value) / 100)}
-              className="h-1.5 w-28 cursor-pointer accent-white sm:w-36"
-            />
-            <span className="min-w-10 text-right font-semibold text-white/85">
-              {Math.round(zoom * 100)}%
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#0b1320] px-4 py-2 text-xs text-white/55">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
+            <p>WYSIWYG canvas v1</p>
           </div>
-          <div className="flex items-center gap-1">
-            <FooterCanvasToggleButton
-              label={pageViewMode === "single_page" ? "Single" : "Multi"}
-              active={pageViewMode === "continuous"}
-              onClick={(event) => {
-                event.stopPropagation();
-                void handleTogglePagesMode();
-              }}
-            >
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 py-1">
               <svg
                 viewBox="0 0 24 24"
-                className="h-4 w-4"
+                className="h-4 w-4 text-white/70"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.7"
+                strokeWidth="1.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 aria-hidden="true"
               >
-                <rect x="4" y="5" width="9" height="14" rx="1.6" />
-                <rect x="11" y="5" width="9" height="14" rx="1.6" />
+                <circle cx="11" cy="11" r="5" />
+                <path d="m20 20-4-4" />
               </svg>
-            </FooterCanvasToggleButton>
-            <FooterCanvasToggleButton
-              label="Overlay Grid"
-              active={showGridOverlay}
-              onClick={() => setShowGridOverlay((value) => !value)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+              <input
+                type="range"
+                min={45}
+                max={160}
+                step={1}
+                aria-label="Zoom"
+                value={Math.round(zoom * 100)}
+                onChange={(event) => setZoom(Number(event.target.value) / 100)}
+                className="h-1.5 w-28 cursor-pointer accent-white sm:w-36"
+              />
+              <span className="min-w-10 text-right font-semibold text-white/85">
+                {Math.round(zoom * 100)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <FooterCanvasToggleButton
+                label={pageViewMode === "single_page" ? "Single" : "Multi"}
+                active={pageViewMode === "continuous"}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleTogglePagesMode();
+                }}
               >
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-                <path d="M9.33 4v16" />
-                <path d="M14.66 4v16" />
-                <path d="M4 9.33h16" />
-                <path d="M4 14.66h16" />
-              </svg>
-            </FooterCanvasToggleButton>
-            <FooterCanvasToggleButton
-              label="Margins"
-              active={showMarginsOverlay}
-              onClick={() => setShowMarginsOverlay((value) => !value)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="5" width="9" height="14" rx="1.6" />
+                  <rect x="11" y="5" width="9" height="14" rx="1.6" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <FooterCanvasToggleButton
+                label="Overlay Grid"
+                active={showGridOverlay}
+                onClick={() => setShowGridOverlay((value) => !value)}
               >
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-                <rect x="7.5" y="7.5" width="9" height="9" rx="1" />
-              </svg>
-            </FooterCanvasToggleButton>
-            <FooterCanvasToggleButton
-              label="Safe Area"
-              active={showSafeAreaOverlay}
-              onClick={() => setShowSafeAreaOverlay((value) => !value)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <path d="M9.33 4v16" />
+                  <path d="M14.66 4v16" />
+                  <path d="M4 9.33h16" />
+                  <path d="M4 14.66h16" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <FooterCanvasToggleButton
+                label="Margins"
+                active={showMarginsOverlay}
+                onClick={() => setShowMarginsOverlay((value) => !value)}
               >
-                <rect x="4" y="4" width="16" height="16" rx="2" />
-                <path d="M8 8h8v8H8z" strokeDasharray="2 2" />
-              </svg>
-            </FooterCanvasToggleButton>
-            <FooterCanvasToggleButton
-              label="Snap"
-              active={snapEnabled}
-              onClick={() => setSnapEnabled((value) => !value)}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <rect x="7.5" y="7.5" width="9" height="9" rx="1" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <FooterCanvasToggleButton
+                label="Safe Area"
+                active={showSafeAreaOverlay}
+                onClick={() => setShowSafeAreaOverlay((value) => !value)}
               >
-                <path d="M12 4v4" />
-                <path d="M12 16v4" />
-                <path d="M4 12h4" />
-                <path d="M16 12h4" />
-                <circle cx="12" cy="12" r="3.5" />
-              </svg>
-            </FooterCanvasToggleButton>
-            <FooterCanvasToggleButton
-              label="Fullscreen Canvas"
-              active={canvasOnlyFullscreen}
-              onClick={() => {
-                void enterCanvasFullscreen();
-              }}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="16" height="16" rx="2" />
+                  <path d="M8 8h8v8H8z" strokeDasharray="2 2" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <FooterCanvasToggleButton
+                label="Snap"
+                active={snapEnabled}
+                onClick={() => setSnapEnabled((value) => !value)}
               >
-                <path d="M9 4H4v5" />
-                <path d="M15 4h5v5" />
-                <path d="M20 15v5h-5" />
-                <path d="M4 15v5h5" />
-              </svg>
-            </FooterCanvasToggleButton>
-            <OrientationToggle
-              orientation={orientation}
-              onClick={(e) => {
-                e.stopPropagation();
-                setOrientationPendingTarget(orientation === "portrait" ? "landscape" : "portrait");
-              }}
-            />
-          </div>
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M12 4v4" />
+                  <path d="M12 16v4" />
+                  <path d="M4 12h4" />
+                  <path d="M16 12h4" />
+                  <circle cx="12" cy="12" r="3.5" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <FooterCanvasToggleButton
+                label="Fullscreen Canvas"
+                active={canvasOnlyFullscreen}
+                onClick={() => {
+                  void enterCanvasFullscreen();
+                }}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M9 4H4v5" />
+                  <path d="M15 4h5v5" />
+                  <path d="M20 15v5h-5" />
+                  <path d="M4 15v5h5" />
+                </svg>
+              </FooterCanvasToggleButton>
+              <OrientationToggle
+                orientation={orientation}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOrientationPendingTarget(orientation === "portrait" ? "landscape" : "portrait");
+                }}
+              />
+            </div>
 
-          <p className="shrink-0">
-            {pages.length} pages ·{" "}
-            {Object.values(framesByPageId).reduce(
-              (sum, frames) => sum + frames.length,
-              0,
-            )}{" "}
-            frames
-            {imagePanelAssetSummary}
-          </p>
+            <p className="shrink-0">
+              {pages.length} pages ·{" "}
+              {Object.values(framesByPageId).reduce(
+                (sum, frames) => sum + frames.length,
+                0,
+              )}{" "}
+              frames
+              {imagePanelAssetSummary}
+            </p>
+          </div>
         </div>
-      </div>
       )}
 
       {isPending ? (

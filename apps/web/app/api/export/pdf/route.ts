@@ -59,6 +59,7 @@ type ExportPayload = {
     margins: { top: number; right: number; bottom: number; left: number; unit: "px" };
     grid: { enabled: boolean; columns: number; gutter: number; rowHeight: number; showGuides: boolean };
     background: { fill: string };
+    page_type?: string | null;
     updated_at: string;
   }>;
   frames: Array<{
@@ -132,7 +133,9 @@ function toContract(payload: ExportPayload, exportTarget: ExportTarget): PdfRend
       heightPx: page.height_px,
       margins: page.margins,
       grid: page.grid,
-      background: page.background
+      background: page.background,
+      pageType: page.page_type ?? undefined,
+      title: page.title,
     })),
     frames: payload.frames.map((frame) => ({
       id: frame.id,
@@ -440,14 +443,14 @@ export async function POST(request: Request) { // NOSONAR
     preview?: boolean;
     validateOnly?: boolean;
     debug?:
-      | boolean
-      | {
-          enabled?: boolean;
-          showSafeArea?: boolean;
-          showBleed?: boolean;
-          showNodeBounds?: boolean;
-          showNodeIds?: boolean;
-        };
+    | boolean
+    | {
+      enabled?: boolean;
+      showSafeArea?: boolean;
+      showBleed?: boolean;
+      showNodeBounds?: boolean;
+      showNodeIds?: boolean;
+    };
   };
   if (!parsed.storybookId) {
     return jsonExportError({
@@ -729,12 +732,12 @@ export async function POST(request: Request) { // NOSONAR
     const contract = toContract(resolvedPayload, parsed.exportTarget);
     let debug:
       | {
-          enabled: boolean;
-          showSafeArea?: boolean;
-          showBleed?: boolean;
-          showNodeBounds?: boolean;
-          showNodeIds?: boolean;
-        }
+        enabled: boolean;
+        showSafeArea?: boolean;
+        showBleed?: boolean;
+        showNodeBounds?: boolean;
+        showNodeIds?: boolean;
+      }
       | undefined;
     if (typeof parsed.debug === "boolean") {
       debug = { enabled: parsed.debug };

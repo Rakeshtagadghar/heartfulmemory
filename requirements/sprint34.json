@@ -1,0 +1,435 @@
+{
+    "meta": {
+        "project": "Memorioso",
+        "feature": "Table of Contents (ToC) Page",
+        "specType": "FEATURE_JSON_SPEC",
+        "version": "1.1",
+        "status": "UPDATED_FOR_SPRINT_32_33",
+        "dependsOnSprints": [
+            "SPRINT_32_ORIENTATION",
+            "SPRINT_33_REFLOW_MODE"
+        ]
+    },
+    "goals": [
+        "Insert a ToC page into a multi-page book/story",
+        "Auto-generate ToC entries from chapters/sections/pages",
+        "Show correct page numbers after pagination",
+        "Clickable links in digital exports when supported",
+        "Remain correct under Orientation changes (portrait/landscape) and Reflow Mode"
+    ],
+    "assumptions": {
+        "orientation": {
+            "supported": true,
+            "types": [
+                "portrait",
+                "landscape"
+            ],
+            "scope": [
+                "project",
+                "page"
+            ]
+        },
+        "reflowMode": {
+            "supported": true,
+            "description": "When toggled, layout recalculates positions/sizes of blocks based on safe-area and constraints"
+        }
+    },
+    "compatibility": {
+        "noBreakingChanges": true,
+        "pageTypes": [
+            "COVER",
+            "TABLE_OF_CONTENTS",
+            "CHAPTER_COVER",
+            "PAGE"
+        ],
+        "exportModes": [
+            "digital",
+            "print"
+        ]
+    },
+    "userStories": [
+        {
+            "id": "TOC_US_001",
+            "title": "Insert a ToC page",
+            "acceptanceCriteria": [
+                "User can add a page with type=TABLE_OF_CONTENTS",
+                "Insert location: beginning / after cover / before first chapter / custom index",
+                "ToC page appears in page list with ToC icon and 'Contents' label"
+            ]
+        },
+        {
+            "id": "TOC_US_002",
+            "title": "Auto-generate ToC entries and keep updated",
+            "acceptanceCriteria": [
+                "Entries generated from CHAPTER_COVER and/or PAGE based on settings",
+                "Entries update when pages added/removed/renamed/reordered",
+                "Computed page numbers remain null until pagination is computed"
+            ]
+        },
+        {
+            "id": "TOC_US_007",
+            "title": "ToC remains correct under Orientation changes",
+            "asA": "user",
+            "iWant": "ToC to update when I switch portrait/landscape",
+            "soThat": "page numbers and line breaks remain accurate",
+            "acceptanceCriteria": [
+                "Changing project orientation triggers a full repagination (same as any layout-changing event)",
+                "After orientation change, ToC computedPageNumber values match the new pagination mapping",
+                "ToC layout (line wrapping, dot leaders alignment, column/indent spacing) re-renders to fit new safe-area",
+                "If the ToC itself is locked to a specific page orientation override, it repaginates using that page’s orientation"
+            ]
+        },
+        {
+            "id": "TOC_US_008",
+            "title": "ToC supports Reflow Mode and safe-area resizing",
+            "asA": "user",
+            "iWant": "ToC to reflow cleanly when Reflow Mode adjusts widths",
+            "soThat": "it stays readable and doesn't overflow",
+            "acceptanceCriteria": [
+                "When Reflow Mode changes canvas safe-area width/height, ToC reflows: wraps long titles and keeps page numbers aligned",
+                "If ToC entry text overflows, it wraps to the next line with preserved indentation for wrapped lines",
+                "Dot leaders (if enabled) only render on the final line of a wrapped entry (between last text segment and page number)",
+                "Page number column maintains a fixed min-width and right alignment within safe-area",
+                "ToC can flow onto continuation pages when height is insufficient after reflow/orientation"
+            ]
+        },
+        {
+            "id": "TOC_US_005",
+            "title": "Clickable navigation in digital exports",
+            "acceptanceCriteria": [
+                "digital export adds internal PDF links from ToC entries to target page anchors",
+                "print export disables links but keeps identical layout",
+                "If exporter lacks link support, ToC still renders with page numbers"
+            ]
+        }
+    ],
+    "ui": {
+        "tocPageEditor": {
+            "layout": "Canva-lite canvas center; controls at corners",
+            "orientationAwareness": {
+                "showIndicator": "Page settings shows current orientation (inherit/project or override)",
+                "staleBanner": "Show 'ToC needs refresh' after orientation/reflow changes until pagination recomputed"
+            },
+            "settingsPanel": {
+                "sections": [
+                    {
+                        "id": "toc_layout_behavior",
+                        "title": "Layout behavior",
+                        "controls": [
+                            {
+                                "type": "toggle",
+                                "key": "allowMultiPage",
+                                "default": true,
+                                "help": "If contents exceed page height, create continuation ToC pages automatically."
+                            },
+                            {
+                                "type": "select",
+                                "key": "wrapMode",
+                                "options": [
+                                    "wrap",
+                                    "truncate",
+                                    "wrap_then_truncate"
+                                ],
+                                "default": "wrap"
+                            },
+                            {
+                                "type": "number",
+                                "key": "maxLinesPerEntry",
+                                "min": 1,
+                                "max": 6,
+                                "default": 3,
+                                "visibleWhen": {
+                                    "wrapMode": [
+                                        "wrap",
+                                        "wrap_then_truncate"
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    },
+    "dataModel": {
+        "entities": [
+            {
+                "name": "Page",
+                "fields": [
+                    {
+                        "key": "id",
+                        "type": "string"
+                    },
+                    {
+                        "key": "type",
+                        "type": "enum",
+                        "values": [
+                            "COVER",
+                            "TABLE_OF_CONTENTS",
+                            "CHAPTER_COVER",
+                            "PAGE",
+                            "TABLE_OF_CONTENTS_CONTINUATION"
+                        ]
+                    },
+                    {
+                        "key": "title",
+                        "type": "string"
+                    },
+                    {
+                        "key": "showInToc",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    {
+                        "key": "orderIndex",
+                        "type": "number"
+                    },
+                    {
+                        "key": "orientation",
+                        "type": "enum",
+                        "values": [
+                            "inherit",
+                            "portrait",
+                            "landscape"
+                        ],
+                        "default": "inherit",
+                        "description": "inherit uses project orientation"
+                    },
+                    {
+                        "key": "content",
+                        "type": "json"
+                    }
+                ]
+            },
+            {
+                "name": "TocSettings",
+                "fields": [
+                    {
+                        "key": "title",
+                        "type": "string",
+                        "default": "Contents"
+                    },
+                    {
+                        "key": "includeMode",
+                        "type": "enum",
+                        "values": [
+                            "chapters_only",
+                            "chapters_and_pages",
+                            "custom"
+                        ]
+                    },
+                    {
+                        "key": "includePageNumbers",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    {
+                        "key": "template",
+                        "type": "enum",
+                        "values": [
+                            "minimal",
+                            "classic_dots",
+                            "royal"
+                        ]
+                    },
+                    {
+                        "key": "dotLeaders",
+                        "type": "boolean",
+                        "default": true
+                    },
+                    {
+                        "key": "indentPerLevelPx",
+                        "type": "number",
+                        "default": 18
+                    },
+                    {
+                        "key": "manualOrder",
+                        "type": "boolean",
+                        "default": false
+                    },
+                    {
+                        "key": "allowMultiPage",
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Auto-create continuation ToC pages when overflow occurs."
+                    },
+                    {
+                        "key": "wrapMode",
+                        "type": "enum",
+                        "values": [
+                            "wrap",
+                            "truncate",
+                            "wrap_then_truncate"
+                        ],
+                        "default": "wrap"
+                    },
+                    {
+                        "key": "maxLinesPerEntry",
+                        "type": "number",
+                        "default": 3
+                    }
+                ]
+            },
+            {
+                "name": "TocRenderCache",
+                "fields": [
+                    {
+                        "key": "lastComputedAt",
+                        "type": "string",
+                        "format": "isoDateTime"
+                    },
+                    {
+                        "key": "layoutSignature",
+                        "type": "string",
+                        "description": "Hash of orientation + safe-area + reflow settings + typography + page order."
+                    },
+                    {
+                        "key": "paginationVersion",
+                        "type": "string",
+                        "description": "Version emitted by pagination engine; changes on any layout-affecting event."
+                    },
+                    {
+                        "key": "pageIdToPageNumberMap",
+                        "type": "record<string, number>"
+                    }
+                ]
+            }
+        ]
+    },
+    "orientationAndReflowIntegration": {
+        "newConcepts": {
+            "layoutSignature": "A deterministic hash used to detect when ToC numbers/layout are stale due to orientation/reflow/width changes.",
+            "paginationVersion": "A version string emitted by the pagination engine after layout pass."
+        },
+        "layoutSignatureInputs": [
+            "project.orientation",
+            "page.orientation override for ToC + targets",
+            "safeArea.widthPx",
+            "safeArea.heightPx",
+            "reflowMode.enabled",
+            "reflowMode.safeAreaWidthPercent / constraint rules",
+            "toc.template, fonts, sizes, indent, lineSpacing, wrapMode",
+            "page order + titles + showInToc flags"
+        ],
+        "stalenessRules": [
+            "If currentLayoutSignature != TocRenderCache.layoutSignature => ToC is stale (numbers and wrapping may be wrong)",
+            "If paginationVersion changed since TocRenderCache.paginationVersion => ToC is stale",
+            "Stale ToC must be auto-corrected during export regardless of UI refresh state"
+        ],
+        "eventHooks": {
+            "layoutAffectingEvents": [
+                "PROJECT_ORIENTATION_CHANGED",
+                "PAGE_ORIENTATION_CHANGED",
+                "REFLOW_MODE_TOGGLED",
+                "SAFE_AREA_DIMENSIONS_CHANGED",
+                "PAGE_REORDERED",
+                "PAGE_ADDED",
+                "PAGE_REMOVED",
+                "PAGE_TITLE_UPDATED",
+                "PAGE_TOC_VISIBILITY_UPDATED",
+                "TEMPLATE_CHANGED",
+                "TYPOGRAPHY_CHANGED"
+            ],
+            "handlers": [
+                {
+                    "on": [
+                        "PROJECT_ORIENTATION_CHANGED",
+                        "PAGE_ORIENTATION_CHANGED",
+                        "REFLOW_MODE_TOGGLED",
+                        "SAFE_AREA_DIMENSIONS_CHANGED"
+                    ],
+                    "action": "Invalidate pagination; mark ToC stale; schedule background repagination (debounced)."
+                },
+                {
+                    "on": [
+                        "PAGINATION_COMPUTED"
+                    ],
+                    "action": "Update pageIdToPageNumberMap; recompute TocEntry.computedPageNumber; update TocRenderCache.layoutSignature + paginationVersion."
+                }
+            ]
+        }
+    },
+    "renderingRules": {
+        "entryWrapping": {
+            "wrapIndentStrategy": "Continuation lines keep same indent as the entry text start (not including dot leaders area).",
+            "pageNumberColumn": {
+                "align": "right",
+                "minWidthPx": 36,
+                "paddingLeftPx": 8
+            },
+            "dotLeaders": {
+                "renderWhen": "dotLeaders=true AND includePageNumbers=true",
+                "wrappedEntryRule": "Dot leaders render only on the last visible line (line that contains the page number)."
+            }
+        },
+        "overflowHandling": {
+            "whenAllowMultiPageTrue": "Auto-create TABLE_OF_CONTENTS_CONTINUATION pages immediately after the ToC page until all entries render.",
+            "whenAllowMultiPageFalse": "Truncate entries beyond page height and show warning badge 'ToC truncated'."
+        }
+    },
+    "pdfExportIntegration": {
+        "criticalRequirement": "Export must recompute pagination in the final orientation + reflow configuration before rendering ToC numbers/links.",
+        "exportPipelineOrder": [
+            "1) Resolve effective orientation per page (inherit/project or override)",
+            "2) Resolve safe-area dims based on orientation + reflow constraints",
+            "3) Layout all pages to compute paginationVersion + pageIdToPageNumberMap",
+            "4) Generate/refresh ToC entries (respect manual overrides) and apply computed page numbers",
+            "5) Render ToC pages (including continuation pages) with final wrapping",
+            "6) If digital: add internal links using targetAnchorId"
+        ]
+    },
+    "tests": {
+        "orientation": [
+            "Switch portrait->landscape: ToC page numbers update to match new pagination",
+            "Switch landscape->portrait: ToC wrapping changes but page number column remains aligned",
+            "ToC page has orientation override=landscape while project=portrait: ToC uses landscape safe-area and correct numbers"
+        ],
+        "reflowMode": [
+            "Enable reflow reduces safe-area width: long entries wrap; dot leaders only on last line",
+            "Reflow changes safe-area width threshold (60% rule): ToC recomputes layoutSignature and becomes non-stale after pagination",
+            "Reflow makes ToC overflow: continuation pages created when allowMultiPage=true"
+        ],
+        "exportConsistency": [
+            "UI ToC stale state does not affect export: export always re-paginates and writes correct numbers",
+            "Digital export links still point to correct pages after orientation/reflow changes"
+        ]
+    },
+    "implementationMilestones": [
+        {
+            "id": "TOC_M1",
+            "title": "Base ToC page + entry generation",
+            "deliverables": [
+                "TABLE_OF_CONTENTS page type",
+                "auto entries",
+                "basic styling templates"
+            ]
+        },
+        {
+            "id": "TOC_M2",
+            "title": "Sprint 32: Orientation integration",
+            "deliverables": [
+                "effective orientation resolution (inherit/override)",
+                "pagination invalidation on orientation change",
+                "layoutSignature + stale detection"
+            ]
+        },
+        {
+            "id": "TOC_M3",
+            "title": "Sprint 33: Reflow Mode integration",
+            "deliverables": [
+                "wrap rules + dot leader last-line logic",
+                "continuation pages on overflow",
+                "debounced repagination on safe-area changes"
+            ]
+        },
+        {
+            "id": "TOC_M4",
+            "title": "Export correctness",
+            "deliverables": [
+                "export pipeline order enforced",
+                "digital links",
+                "print mode parity"
+            ]
+        }
+    ]
+}

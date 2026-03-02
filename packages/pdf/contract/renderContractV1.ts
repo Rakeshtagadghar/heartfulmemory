@@ -32,6 +32,8 @@ export type RenderablePageV1 = {
   margins: { top: number; right: number; bottom: number; left: number; unit: "px" };
   background: { fill: string };
   drawOrder: string[];
+  pageType?: string;
+  title?: string;
 };
 
 export type RenderableAssetV1 = {
@@ -89,7 +91,7 @@ export function toRenderableContractV1FromLegacy(contract: PdfRenderContract): R
     childrenIds:
       frame.type === "GROUP" && Array.isArray((frame.content as { childrenIds?: unknown }).childrenIds)
         ? ((frame.content as { childrenIds?: unknown }).childrenIds as unknown[])
-            .filter((value): value is string => typeof value === "string" && value.length > 0)
+          .filter((value): value is string => typeof value === "string" && value.length > 0)
         : undefined
   }));
 
@@ -117,7 +119,9 @@ export function toRenderableContractV1FromLegacy(contract: PdfRenderContract): R
       heightPx: page.heightPx,
       margins: page.margins,
       background: page.background,
-      drawOrder: pageDrawOrder.get(page.id) ?? []
+      drawOrder: pageDrawOrder.get(page.id) ?? [],
+      pageType: page.pageType,
+      title: page.title,
     })),
     nodes,
     assets: contract.assets

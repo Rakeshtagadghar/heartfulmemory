@@ -41,6 +41,8 @@ export type PdfRenderPage = {
   margins: PdfRenderMargins;
   grid: PdfRenderGrid;
   background: { fill: string };
+  pageType?: string;
+  title?: string;
 };
 
 export type PdfRenderFrame = {

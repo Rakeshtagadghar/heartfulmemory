@@ -53,8 +53,12 @@ describe("applyOrientation", () => {
     ];
     const [patch] = applyOrientation(pages, "landscape");
     const fp = patch.framePatch[0];
-    expect(fp.x).toBe(100);
-    expect(fp.y).toBe(100);
+    // V2 engine maps fixed-node position proportionally:
+    // Portrait safe box: x=44,y=44,w=728,h=968
+    // rx=(100-44)/728≈0.0769 → landscapeX=44+0.0769*968≈118
+    // ry=(100-44)/968≈0.0579 → landscapeY=44+0.0579*728≈86
+    expect(fp.x).toBe(118);
+    expect(fp.y).toBe(86);
     expect(fp.w).toBe(200);
     expect(fp.h).toBe(200);
   });

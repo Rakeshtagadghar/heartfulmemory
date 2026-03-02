@@ -52,6 +52,7 @@ export const getPdfExportPayload = queryGeneric({
           margins: page.margins,
           grid: page.grid,
           background: page.background,
+          page_type: page.pageType ?? null,
           updated_at: toIso(page.updatedAt)
         })),
       frames: frames.map((frame) => ({

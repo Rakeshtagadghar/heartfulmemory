@@ -46,10 +46,11 @@ export async function listPagesAction(storybookId: string): Promise<DataResult<P
 
 export async function createPageAction(
   storybookId: string,
-  sizePreset?: PageDTO["size_preset"]
+  sizePreset?: PageDTO["size_preset"],
+  pageType?: PageDTO["page_type"]
 ): Promise<DataResult<PageDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
-  const result = await createPageForUser(user.id, storybookId, { sizePreset });
+  const result = await createPageForUser(user.id, storybookId, { sizePreset, pageType });
   revalidatePath(layoutPath(storybookId));
   return result;
 }

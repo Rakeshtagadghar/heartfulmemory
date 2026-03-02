@@ -447,6 +447,24 @@ export default defineSchema({
     title: v.optional(v.string()),
     isHidden: v.optional(v.boolean()),
     isLocked: v.optional(v.boolean()),
+    // Sprint 34: Table of Contents – page classification
+    pageType: v.optional(
+      v.union(
+        v.literal("COVER"),
+        v.literal("TABLE_OF_CONTENTS"),
+        v.literal("TABLE_OF_CONTENTS_CONTINUATION"),
+        v.literal("CHAPTER_COVER"),
+        v.literal("PAGE")
+      )
+    ),
+    showInToc: v.optional(v.boolean()),
+    orientation: v.optional(
+      v.union(
+        v.literal("inherit"),
+        v.literal("portrait"),
+        v.literal("landscape")
+      )
+    ),
     sizePreset: v.union(
       v.literal("A4"),
       v.literal("US_LETTER"),
@@ -477,6 +495,43 @@ export default defineSchema({
   })
     .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"])
     .index("by_ownerId", ["ownerId"]),
+  // Sprint 34: ToC settings stored per storybook
+  tocSettings: defineTable({
+    storybookId: v.id("storybooks"),
+    title: v.string(),
+    includeMode: v.union(
+      v.literal("chapters_only"),
+      v.literal("chapters_and_pages"),
+      v.literal("custom")
+    ),
+    includePageNumbers: v.boolean(),
+    template: v.union(
+      v.literal("minimal"),
+      v.literal("classic_dots"),
+      v.literal("royal")
+    ),
+    dotLeaders: v.boolean(),
+    indentPerLevelPx: v.number(),
+    manualOrder: v.boolean(),
+    allowMultiPage: v.boolean(),
+    wrapMode: v.union(
+      v.literal("wrap"),
+      v.literal("truncate"),
+      v.literal("wrap_then_truncate")
+    ),
+    maxLinesPerEntry: v.number(),
+    updatedAt: v.number()
+  }).index("by_storybookId", ["storybookId"]),
+  // Sprint 34: ToC render-cache / staleness tracking per storybook
+  tocRenderCache: defineTable({
+    storybookId: v.id("storybooks"),
+    layoutSignature: v.string(),
+    paginationVersion: v.string(),
+    pageIdToPageNumberMap: v.any(),
+    lastComputedAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_storybookId", ["storybookId"]),
+
   frames: defineTable({
     storybookId: v.id("storybooks"),
     pageId: v.id("pages"),

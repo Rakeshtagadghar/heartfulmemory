@@ -46,6 +46,8 @@ import type * as studioPopulate from "../studioPopulate.js";
 import type * as studioPopulateFromPhotos from "../studioPopulateFromPhotos.js";
 import type * as templateSeeds from "../templateSeeds.js";
 import type * as templates from "../templates.js";
+import type * as tocRenderCache from "../tocRenderCache.js";
+import type * as tocSettings from "../tocSettings.js";
 import type * as users from "../users.js";
 import type * as waitlist from "../waitlist.js";
 
@@ -94,6 +96,8 @@ declare const fullApi: ApiFromModules<{
   studioPopulateFromPhotos: typeof studioPopulateFromPhotos;
   templateSeeds: typeof templateSeeds;
   templates: typeof templates;
+  tocRenderCache: typeof tocRenderCache;
+  tocSettings: typeof tocSettings;
   users: typeof users;
   waitlist: typeof waitlist;
 }>;

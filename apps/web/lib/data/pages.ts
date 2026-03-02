@@ -15,13 +15,14 @@ export async function listPagesByStorybookForUser(
 export async function createPageForUser(
   viewerSubject: string,
   storybookId: string,
-  input?: { sizePreset?: PageDTO["size_preset"] }
+  input?: { sizePreset?: PageDTO["size_preset"]; pageType?: PageDTO["page_type"] }
 ): Promise<DataResult<PageDTO>> {
   if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
   const result = await convexMutation<unknown>(anyApi.pages.create, {
     viewerSubject,
     storybookId,
-    sizePreset: input?.sizePreset
+    sizePreset: input?.sizePreset,
+    pageType: input?.pageType,
   });
   if (!result.ok) return result;
   return { ok: true, data: pageDtoSchema.parse(result.data) };

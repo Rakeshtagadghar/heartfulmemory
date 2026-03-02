@@ -5,6 +5,22 @@ import { Button } from "../ui/button";
 import type { PageDTO } from "../../lib/dto/page";
 import type { FrameDTO } from "../../lib/dto/frame";
 
+const TOC_PAGE_TYPES = new Set(["TABLE_OF_CONTENTS", "TABLE_OF_CONTENTS_CONTINUATION"]);
+
+function isTocPage(page: PageDTO) {
+  return page.page_type != null && TOC_PAGE_TYPES.has(page.page_type);
+}
+
+function pageTypeLabel(page: PageDTO): string | null {
+  switch (page.page_type) {
+    case "COVER": return "Cover";
+    case "TABLE_OF_CONTENTS": return "ToC";
+    case "TABLE_OF_CONTENTS_CONTINUATION": return "ToC (cont.)";
+    case "CHAPTER_COVER": return "Chapter";
+    default: return null;
+  }
+}
+
 function frameThumbStyle(frame: FrameDTO, page: PageDTO) {
   const scaleX = 120 / page.width_px;
   const scaleY = 160 / page.height_px;
@@ -22,6 +38,7 @@ export function PagesPanel({
   framesByPageId,
   onSelectPage,
   onAddPage,
+  onAddTocPage,
   onMovePage,
   onDuplicatePage,
   onDeletePage
@@ -31,6 +48,7 @@ export function PagesPanel({
   framesByPageId: Record<string, FrameDTO[]>;
   onSelectPage: (pageId: string) => void;
   onAddPage: () => Promise<void>;
+  onAddTocPage?: () => Promise<void>;
   onMovePage: (pageId: string, direction: -1 | 1) => Promise<void>;
   onDuplicatePage: (pageId: string) => Promise<void>;
   onDeletePage: (pageId: string) => Promise<void>;
@@ -42,10 +60,21 @@ export function PagesPanel({
     <aside className="flex h-full w-[280px] flex-col border-r border-white/10 bg-[#0d1626]">
       <div className="border-b border-white/10 px-4 py-3">
         <p className="text-xs uppercase tracking-[0.16em] text-white/45">Pages</p>
-        <div className="mt-3">
-          <Button type="button" size="sm" className="w-full justify-center" onClick={() => void onAddPage()}>
+        <div className="mt-3 flex gap-2">
+          <Button type="button" size="sm" className="flex-1 justify-center" onClick={() => void onAddPage()}>
             + Add Page
           </Button>
+          {onAddTocPage && (
+            <Button
+              type="button"
+              size="sm"
+              className="justify-center bg-emerald-600/80 hover:bg-emerald-500/80 text-white"
+              onClick={() => void onAddTocPage()}
+              title="Add Table of Contents page"
+            >
+              + ToC
+            </Button>
+          )}
         </div>
       </div>
 
@@ -59,9 +88,8 @@ export function PagesPanel({
           return (
             <div
               key={page.id}
-              className={`relative rounded-xl border p-2 ${
-                selected ? "border-cyan-300/40 bg-cyan-400/10" : "border-white/10 bg-white/[0.02]"
-              }`}
+              className={`relative rounded-xl border p-2 ${selected ? "border-cyan-300/40 bg-cyan-400/10" : "border-white/10 bg-white/[0.02]"
+                }`}
             >
               <button
                 type="button"
@@ -74,17 +102,26 @@ export function PagesPanel({
               >
                 <div className="relative mx-auto h-40 w-[120px] overflow-hidden rounded-md border border-black/10 bg-[#fbfaf6] shadow-[0_8px_16px_rgba(0,0,0,0.25)]">
                   <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(to_right,#111827_1px,transparent_1px),linear-gradient(to_bottom,#111827_1px,transparent_1px)] [background-size:10px_10px]" />
-                  {frames.map((frame) => (
-                    <div
-                      key={frame.id}
-                      className={`absolute rounded-sm border ${
-                        frame.type === "TEXT"
-                          ? "border-cyan-700/30 bg-cyan-500/20"
-                          : "border-amber-700/30 bg-amber-400/25"
-                      }`}
-                      style={frameThumbStyle(frame, page)}
-                    />
-                  ))}
+                  {isTocPage(page) ? (
+                    /* ToC page special thumbnail */
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3">
+                      <svg className="h-6 w-6 text-emerald-700/60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 6h16" /><path d="M4 10h12" /><path d="M4 14h14" /><path d="M4 18h10" />
+                      </svg>
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-800/60">Contents</span>
+                    </div>
+                  ) : (
+                    frames.map((frame) => (
+                      <div
+                        key={frame.id}
+                        className={`absolute rounded-sm border ${frame.type === "TEXT"
+                            ? "border-cyan-700/30 bg-cyan-500/20"
+                            : "border-amber-700/30 bg-amber-400/25"
+                          }`}
+                        style={frameThumbStyle(frame, page)}
+                      />
+                    ))
+                  )}
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <div>
@@ -92,7 +129,14 @@ export function PagesPanel({
                       Page {index + 1}
                       {page.title ? ` - ${page.title}` : ""}
                     </p>
-                    <p className="text-[11px] text-white/50">{page.size_preset}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[11px] text-white/50">{page.size_preset}</p>
+                      {pageTypeLabel(page) && (
+                        <span className="rounded bg-emerald-500/20 px-1 py-px text-[9px] font-semibold uppercase text-emerald-300">
+                          {pageTypeLabel(page)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-right">
                     <p className="text-[11px] text-white/45">{frames.length} frames</p>
