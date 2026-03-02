@@ -55,12 +55,14 @@ export function CanvasStage({ // NOSONAR
   onStartTextEdit,
   onEndTextEdit,
   onTextContentChange,
+  onRichTextContentChange,
   onPatchSelectedTextStyle,
   onOpenTextFontPanel,
   onOpenTextColorPanel,
   onDuplicateSelectedTextFrame,
   onDeleteSelectedTextFrame,
   onToggleSelectedFrameLock,
+  onApplyImprovedTextToFrame,
   onNodeMenuAction,
   nodeMenuCanPaste = false,
   nodeMenuCanAlignSelection = false,
@@ -95,12 +97,14 @@ export function CanvasStage({ // NOSONAR
   onStartTextEdit: (frameId: string) => void;
   onEndTextEdit: (frameId: string) => void;
   onTextContentChange: (frameId: string, text: string) => void;
+  onRichTextContentChange?: (frameId: string, doc: import("../../../../packages/shared/richtext/tiptapTypes").TiptapDoc, plainText: string) => void;
   onPatchSelectedTextStyle: (patch: Record<string, unknown>) => void;
   onOpenTextFontPanel?: () => void;
   onOpenTextColorPanel?: () => void;
   onDuplicateSelectedTextFrame: () => void;
   onDeleteSelectedTextFrame: () => void;
   onToggleSelectedFrameLock: () => void;
+  onApplyImprovedTextToFrame?: (frameId: string, text: string) => void;
   onNodeMenuAction?: (action: NodeMenuActionId) => void;
   nodeMenuCanPaste?: boolean;
   nodeMenuCanAlignSelection?: boolean;
@@ -380,6 +384,7 @@ export function CanvasStage({ // NOSONAR
                     onStartTextEdit={() => onStartTextEdit(frame.id)}
                     onEndTextEdit={() => onEndTextEdit(frame.id)}
                     onTextChange={(value) => onTextContentChange(frame.id, value)}
+                    onRichTextChange={(doc, plainText) => onRichTextContentChange?.(frame.id, doc, plainText)}
                     onOpenTextContextMenu={(clientX, clientY) => {
                       const stageRect = stageRef.current?.getBoundingClientRect();
                       if (!stageRect) return;
@@ -460,7 +465,7 @@ export function CanvasStage({ // NOSONAR
 
       {selectedTextFrame && selectedTextStyle ? (
         <FloatingTextToolbar
-          open={Boolean(selectedTextFrame && !interaction)}
+          open={Boolean(selectedTextFrame && !interaction && editingTextFrameId !== selectedTextFrame.id)}
           position={floatingTextToolbar}
           selectionPosition={floatingTextQuickActions}
           maxWidthPx={toolbarMaxWidthPx}
@@ -472,6 +477,8 @@ export function CanvasStage({ // NOSONAR
           onDelete={onDeleteSelectedTextFrame}
           onToggleLock={onToggleSelectedFrameLock}
           locked={Boolean(selectedTextFrame.locked)}
+          frameText={typeof selectedTextFrame.content?.text === "string" ? selectedTextFrame.content.text : ""}
+          onApplyImprovedText={onApplyImprovedTextToFrame ? (text) => onApplyImprovedTextToFrame(selectedTextFrame.id, text) : undefined}
         />
       ) : null}
       {selectedFrame ? (

@@ -47,6 +47,7 @@ import { Editor2SaveStatus } from "./SaveStatus";
 import { TemplatePicker } from "./TemplatePicker";
 import { ExportButton } from "./ExportButton";
 import { buildIssueHighlightMap } from "./CanvasFocus";
+import { plainTextToTiptapDoc } from "../../../../packages/shared/richtext/normalize";
 import { useInsertImage } from "./hooks/useInsertImage";
 import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
 import { showStudioToast } from "../studio/ui/toasts";
@@ -1172,6 +1173,22 @@ export function Editor2Shell({// NOSONAR
     }
   }
 
+  function handleRichTextContentChange(frameId: string, doc: unknown, plainText: string) {
+    const frame = findFrameById(frameId);
+    if (frame?.type !== "TEXT") return;
+    if (isPageLockedById(frame.page_id)) return;
+    const nextContent = { ...frame.content, kind: "text_frame_v1", text: plainText, contentRich: doc };
+    setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, content: nextContent }));
+    if (selectedFrameId === frameId) {
+      setSelectedFrameDraftPatch((current) => ({ ...current, content: nextContent }));
+    }
+  }
+
+  function handleApplyImprovedText(frameId: string, improvedText: string) {
+    const doc = plainTextToTiptapDoc(improvedText);
+    handleRichTextContentChange(frameId, doc, improvedText);
+  }
+
   function patchSelectedTextStyle(patch: Record<string, unknown>) {
     if (!selectedTextFrame) return;
     applySelectedFrameDraftPatch({
@@ -2242,6 +2259,8 @@ export function Editor2Shell({// NOSONAR
         onStartTextEdit={handleStartTextEdit}
         onEndTextEdit={handleEndTextEdit}
         onTextContentChange={handleTextContentChange}
+        onRichTextContentChange={handleRichTextContentChange}
+        onApplyImprovedTextToFrame={handleApplyImprovedText}
         onPatchSelectedTextStyle={patchSelectedTextStyle}
         onOpenTextFontPanel={selectedTextFrame && options.isActive ? openTextFontPanel : undefined}
         onOpenTextColorPanel={selectedTextFrame && options.isActive ? openTextColorPanel : undefined}

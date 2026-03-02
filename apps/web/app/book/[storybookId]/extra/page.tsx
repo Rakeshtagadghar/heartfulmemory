@@ -25,16 +25,14 @@ export default async function ExtraQuestionPage({ params }: Props) {
   if (!storybookResult.ok) {
     return (
       <AppShell email={user.email} profile={profile}>
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-          <Card className="p-6">
-            <p className="text-sm text-rose-100">Could not load storybook: {storybookResult.error}</p>
-            <div className="mt-4">
-              <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
-                Back to Chapters
-              </ButtonLink>
-            </div>
-          </Card>
-        </div>
+        <Card className="p-6">
+          <p className="text-sm text-rose-100">Could not load storybook: {storybookResult.error}</p>
+          <div className="mt-4">
+            <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
+              Back to Chapters
+            </ButtonLink>
+          </div>
+        </Card>
       </AppShell>
     );
   }
@@ -56,6 +54,7 @@ export default async function ExtraQuestionPage({ params }: Props) {
   return (
     <AppShell email={user.email} profile={profile}>
       <ExtraQuestionStep
+        storybookId={storybookId}
         storybookTitle={storybookResult.data.title}
         defaultText={storybookResult.data.extraAnswer?.text ?? null}
         saveAction={saveExtra}

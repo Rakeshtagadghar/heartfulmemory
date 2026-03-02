@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import { estimateTextOverflow } from "../../lib/editor2/textMetrics";
 import type { FrameDTO } from "../../lib/dto/frame";
 import { CropMode } from "./CropMode";
 import { FrameHandles } from "./FrameHandles";
 import type { ResizeHandle } from "./FrameHandles";
-import { getSanitizedPastedText, shouldEnterTextEditMode } from "../../../../packages/editor/interaction/textEditController";
+import { shouldEnterTextEditMode } from "../../../../packages/editor/interaction/textEditController";
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
 import { TextRenderer } from "../../../../packages/editor/renderers/TextRenderer";
 import { ShapeRenderer } from "../../../../packages/editor/renderers/ShapeRenderer";
@@ -16,6 +15,9 @@ import { GroupRenderer } from "../../../../packages/editor/renderers/GroupRender
 import { ImageRenderer } from "../../../../packages/editor/renderers/ImageRenderer";
 import { normalizeFrameNodeContentV1 } from "../../../../packages/editor/nodes/frameNode";
 import { LockedBadge } from "../../../../packages/editor/ui/LockedBadge";
+import { RichTextEditorOverlay } from "../../../../packages/editor/edit/RichTextEditorOverlay";
+import { ReadOnlyRichText } from "../../../../packages/editor/render/ReadOnlyRichText";
+import type { TiptapDoc } from "../../../../packages/shared/richtext/tiptapTypes";
 
 function getTextValue(frame: FrameDTO) {
   const text = frame.content?.text;
@@ -89,6 +91,7 @@ export function FrameRenderer({ // NOSONAR
   onStartTextEdit,
   onEndTextEdit,
   onTextChange,
+  onRichTextChange,
   onStartCropEdit,
   onEndCropEdit,
   onCropChange,
@@ -108,6 +111,7 @@ export function FrameRenderer({ // NOSONAR
   onStartTextEdit?: () => void;
   onEndTextEdit?: () => void;
   onTextChange?: (value: string) => void;
+  onRichTextChange?: (doc: TiptapDoc, plainText: string) => void;
   onStartCropEdit?: () => void;
   onEndCropEdit?: () => void;
   onCropChange?: (crop: Record<string, unknown>) => void;
@@ -125,15 +129,8 @@ export function FrameRenderer({ // NOSONAR
   const frameFillImageSrc = frame.type === "FRAME" ? getFrameImageSource(frame) : null;
   const renderCrop = cropOverride ?? frame.crop;
   const cropEditableImageSrc = getFrameImageSource(frame);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const isTextFrame = frame.type === "TEXT";
   const interactionLocked = frame.locked || pageLocked;
-
-  useEffect(() => {
-    if (!textEditing || !textareaRef.current) return;
-    textareaRef.current.focus();
-    textareaRef.current.setSelectionRange(textareaRef.current.value.length, textareaRef.current.value.length);
-  }, [textEditing]);
 
   let overflow = false;
   if (isTextFrame) {
@@ -156,46 +153,21 @@ export function FrameRenderer({ // NOSONAR
   function renderTextFrameContent() {
     if (textEditing) {
       return (
-        <textarea
-          ref={textareaRef}
-          value={previewText}
-          onChange={(event) => onTextChange?.(event.target.value)}
-          onBlur={() => onEndTextEdit?.()}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
+        <div className="h-full w-full" onPointerDown={(e) => e.stopPropagation()}>
+          <RichTextEditorOverlay
+            nodeContent={frame.content}
+            onCommit={(doc, plainText) => {
+              onRichTextChange?.(doc, plainText);
+              onTextChange?.(plainText);
               onEndTextEdit?.();
-            }
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault();
-              onEndTextEdit?.();
-            }
-          }}
-          onPaste={(event) => {
-            event.preventDefault();
-            const pasted = getSanitizedPastedText(event.nativeEvent);
-            const target = event.currentTarget;
-            const start = target.selectionStart ?? target.value.length;
-            const end = target.selectionEnd ?? target.value.length;
-            const next = `${target.value.slice(0, start)}${pasted}${target.value.slice(end)}`;
-            onTextChange?.(next);
-            globalThis.requestAnimationFrame(() => {
-              const caret = start + pasted.length;
-              target.setSelectionRange(caret, caret);
-            });
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-          className="h-full w-full resize-none border-0 bg-transparent p-0 text-inherit outline-none"
-          style={{
-            fontFamily: "inherit",
-            fontSize: "inherit",
-            lineHeight: "inherit",
-            fontWeight: "inherit",
-            textAlign: "inherit",
-            color: "inherit"
-          }}
-        />
+            }}
+            onDiscard={() => onEndTextEdit?.()}
+          />
+        </div>
       );
+    }
+    if (frame.content?.contentRich) {
+      return <ReadOnlyRichText contentRich={frame.content.contentRich} plainText={previewText} />;
     }
     if (previewText) {
       return <TextRenderer text={previewText} style={normalizedTextStyle} />;

@@ -81,11 +81,9 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
 
   if (!storybook.ok) {
     return renderInAppShell(
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Could not load storybook: {storybook.error}</p>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load storybook: {storybook.error}</p>
+      </Card>
     );
   }
 
@@ -195,7 +193,7 @@ export default async function GuidedChapterListPage({ params, searchParams }: Pr
   }
 
   return renderInAppShell(
-    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="space-y-6">
       <ViewportEvent eventName="chapters_view" eventProps={{ storybookId }} />
       {completedChapter ? (
         <ViewportEvent eventName="chapter_complete" eventProps={{ chapterKey: completedChapter.chapterKey }} />

@@ -13,7 +13,7 @@
         "Floating/Bubble toolbar works in Studio and is not part of the navbar",
         "Content is stored as Tiptap JSON (canonical) plus derived plain text (for search/AI/quotas)",
         "Existing plain-text answers and studio text nodes are migrated safely to Tiptap JSON",
-        "PDF/export renderer can render rich text (MVP: basic marks + lists) without breaking layout",
+        "PDF/export renderer can render rich text without breaking layout",
         "Performance is stable: no dozens of live contenteditable editors mounted at once",
         "No Pro/paid Tiptap Platform features used (no Comments/Snapshots/Content AI)"
       ]
@@ -45,12 +45,12 @@
             "StarterKit (history, paragraph, hardBreak, bold, italic, strike, blockquote, code, headings etc.)",
             "Link",
             "Underline",
-            "TextStyle + Color (optional but OSS)",
-            "TextAlign (optional but OSS)",
+            "TextStyle + Color",
+            "TextAlign",
             "ListKit (Bullet/Ordered/Task lists + keymap)",
             "Placeholder",
-            "CharacterCount (optional for limits)",
-            "Typography (optional)"
+            "CharacterCount",
+            "Typography"
           ],
           "explicitlyExcluded": [
             "Tiptap Platform/Cloud",
@@ -60,7 +60,6 @@
         },
         "constraints": [
           "Only free/OSS features",
-          "Minimize formatting surface in Wizard (elder-friendly)"
         ]
       },
       "acceptanceTests": [
@@ -270,14 +269,14 @@
     },
     {
       "id": "S31-T08",
-      "title": "Export pipeline compatibility: render Tiptap JSON in PDF output (MVP marks + lists)",
+      "title": "Export pipeline compatibility: render Tiptap JSON in PDF output",
       "skill": ["Rendering", "Backend"],
       "priority": "P0",
       "requirements": {
         "approachV1": [
           "Convert tiptap JSON -> HTML using a safe serializer",
           "Render HTML into PDF text layout (or map to your renderer's rich-text painter if exists)",
-          "Support MVP: bold, italic, underline, strike, links (styled), bullet/ordered lists"
+          "Support all OSS features : bold, italic, underline, strike, links (styled), bullet/ordered lists etc"
         ],
         "constraints": [
           "No script injection; sanitize HTML",
@@ -396,7 +395,6 @@
     },
     "notes": [
       "Use read-only rendering for all Studio text nodes and mount Tiptap only for the active node to keep performance stable.",
-      "Keep Wizard formatting minimal even if Studio supports more: too many options can confuse elder users.",
       "Avoid Pro extensions (Comments/Snapshots/Content AI). Stick to OSS extensions and your own menus."
     ]
   }

@@ -27,6 +27,9 @@ type UpsertAnswerArgs = {
   questionId: string;
   answerText?: string | null;
   answerJson?: unknown | null;
+  // Sprint 31: rich text
+  answerRich?: unknown | null;
+  answerPlain?: string | null;
   sttMeta?: {
     provider: "groq" | "elevenlabs";
     confidence?: number | null;
@@ -52,6 +55,8 @@ function toAnswerDto(doc: ChapterAnswerDoc) {
     questionId: doc.questionId,
     answerText: doc.answerText ?? null,
     answerJson: doc.answerJson ?? null,
+    answerRich: doc.answerRich ?? null,
+    answerPlain: doc.answerPlain ?? null,
     sttMeta: doc.sttMeta ?? null,
     audioRef: doc.audioRef ?? null,
     skipped: doc.skipped,
@@ -100,6 +105,8 @@ async function upsertAnswerInternal(ctx: MutationCtx, args: UpsertAnswerArgs) {
     questionId: args.questionId,
     answerText: "answerText" in args ? (args.answerText ?? null) : null,
     answerJson: "answerJson" in args ? (args.answerJson ?? null) : null,
+    answerRich: "answerRich" in args ? (args.answerRich ?? null) : null,
+    answerPlain: "answerPlain" in args ? (args.answerPlain ?? null) : null,
     sttMeta: "sttMeta" in args ? (args.sttMeta ?? null) : null,
     audioRef: "audioRef" in args ? (args.audioRef ?? null) : null,
     skipped: args.skipped ?? false,
@@ -111,6 +118,8 @@ async function upsertAnswerInternal(ctx: MutationCtx, args: UpsertAnswerArgs) {
     await ctx.db.patch(existing._id, {
       answerText: payload.answerText,
       answerJson: payload.answerJson,
+      answerRich: payload.answerRich,
+      answerPlain: payload.answerPlain,
       sttMeta: payload.sttMeta,
       audioRef: payload.audioRef,
       skipped: payload.skipped,
@@ -246,6 +255,8 @@ export const upsert = mutationGeneric({
     questionId: v.string(),
     answerText: v.optional(v.union(v.string(), v.null())),
     answerJson: v.optional(v.union(v.any(), v.null())),
+    answerRich: v.optional(v.union(v.any(), v.null())),
+    answerPlain: v.optional(v.union(v.string(), v.null())),
     sttMeta: v.optional(v.union(sttMetaValidator, v.null())),
     audioRef: v.optional(v.union(v.string(), v.null())),
     skipped: v.optional(v.boolean()),

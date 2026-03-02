@@ -22,7 +22,7 @@ export default async function PopulatePage({ params }: Props) {
   if (!getConvexUrl()) {
     return (
       <AppShell email={user.email} profile={profile}>
-        <div className="mx-auto max-w-3xl px-4 py-6">
+        <div>
           <Card className="p-6">
             <p className="text-sm text-rose-100">Convex is not configured.</p>
             <div className="mt-4">
@@ -50,7 +50,7 @@ export default async function PopulatePage({ params }: Props) {
 
     return (
       <AppShell email={user.email} profile={profile}>
-        <div className="mx-auto max-w-3xl px-4 py-6">
+        <div>
           <Card className="p-6 space-y-4">
             <PopulateProgress error={errMsg} />
             <ButtonLink href={`/book/${storybookId}/photos`} variant="secondary">

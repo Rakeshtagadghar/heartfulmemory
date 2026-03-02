@@ -146,52 +146,44 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
 
   if (!storybookResult.ok) {
     return renderInAppShell(
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Could not load storybook: {storybookResult.error}</p>
-          <div className="mt-4">
-            <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
-              Back to Chapters
-            </ButtonLink>
-          </div>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load storybook: {storybookResult.error}</p>
+        <div className="mt-4">
+          <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
+            Back to Chapters
+          </ButtonLink>
+        </div>
+      </Card>
     );
   }
 
   if (!chaptersResult.ok) {
     return renderInAppShell(
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Could not load chapter list: {chaptersResult.error}</p>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load chapter list: {chaptersResult.error}</p>
+      </Card>
     );
   }
 
   if (!answersResult.ok) {
     return renderInAppShell(
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Could not load answers: {answersResult.error}</p>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Could not load answers: {answersResult.error}</p>
+      </Card>
     );
   }
 
   const chapter = chaptersResult.data.find((item) => item.id === chapterInstanceId);
   if (!chapter) {
     return renderInAppShell(
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-rose-100">Chapter not found for this storybook.</p>
-          <div className="mt-4">
-            <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
-              Back to Chapters
-            </ButtonLink>
-          </div>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-rose-100">Chapter not found for this storybook.</p>
+        <div className="mt-4">
+          <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
+            Back to Chapters
+          </ButtonLink>
+        </div>
+      </Card>
     );
   }
 
@@ -200,11 +192,9 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     const templateResult = await getGuidedTemplateById(storybookResult.data.templateId);
     if (!templateResult.ok) {
       return renderInAppShell(
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-          <Card className="p-6">
-            <p className="text-sm text-rose-100">Could not load template flow: {templateResult.error}</p>
-          </Card>
-        </div>
+        <Card className="p-6">
+          <p className="text-sm text-rose-100">Could not load template flow: {templateResult.error}</p>
+        </Card>
       );
     }
     const template = templateResult.data;
@@ -215,18 +205,16 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
 
   if (questions.length === 0) {
     return renderInAppShell(
-      <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
-        <Card className="p-6">
-          <p className="text-sm text-white/75">
-            No question flow is configured for this chapter yet.
-          </p>
-          <div className="mt-4">
-            <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
-              Back to Chapters
-            </ButtonLink>
-          </div>
-        </Card>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-white/75">
+          No question flow is configured for this chapter yet.
+        </p>
+        <div className="mt-4">
+          <ButtonLink href={`/book/${storybookId}/chapters`} variant="secondary">
+            Back to Chapters
+          </ButtonLink>
+        </div>
+      </Card>
     );
   }
 
@@ -249,6 +237,7 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
   const currentAnswerForStep = currentAnswer
     ? {
         answerText: currentAnswer.answerText,
+        answerRich: currentAnswer.answerRich ?? null,
         skipped: currentAnswer.skipped,
         source: currentAnswer.source,
         sttMeta: currentAnswer.sttMeta,
@@ -301,6 +290,14 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
     const answerAudioRefRaw = formData.get("answerAudioRef");
     const answerAudioRef = typeof answerAudioRefRaw === "string" && answerAudioRefRaw.trim() ? answerAudioRefRaw : null;
 
+    // Sprint 31: rich text fields from hidden inputs
+    const answerRichJsonRaw = formData.get("answerRichJson");
+    const answerRich = (() => {
+      if (typeof answerRichJsonRaw !== "string" || !answerRichJsonRaw.trim()) return null;
+      try { return JSON.parse(answerRichJsonRaw) as unknown; } catch { return null; }
+    })();
+    const answerPlain = answerText.trim() || null;
+
     if ((intent === "next" || intent === "finish") && !hasAnswerText(answerText)) {
       redirect(
         buildWizardUrl(storybookId, chapterInstanceId, {
@@ -315,6 +312,8 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
       chapterInstanceId,
       questionId: submittedQuestion.questionId,
       answerText: intent === "skip" ? null : answerText,
+      answerRich: intent === "skip" ? null : answerRich,
+      answerPlain: intent === "skip" ? null : answerPlain,
       skipped: intent === "skip",
       source: intent === "skip" ? "text" : answerSource,
       sttMeta: intent === "skip" ? null : answerSttMeta,
@@ -421,6 +420,8 @@ export default async function ChapterWizardPage({ params, searchParams }: Props)
             currentAnswer={currentAnswerForStep}
             chapterKey={chapter.chapterKey}
             chapterTitle={chapter.title}
+            storybookId={storybookId}
+            chapterInstanceId={chapterInstanceId}
           />
         </form>
       </WizardShell>

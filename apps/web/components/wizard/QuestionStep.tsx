@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Card } from "../ui/card";
 import type { GuidedTemplateQuestion } from "../../../../packages/shared/templates/templateTypes";
+import type { TiptapDoc } from "../../../../packages/shared/richtext/tiptapTypes";
 import { getClientSttConfig } from "../../lib/config/stt";
 import { VoiceAnswerPanel, maybeTrackVoiceTranscriptEdit } from "./VoiceAnswerPanel";
 import { AINarratePanel } from "./AINarratePanel";
+import { AnswerEditorTiptap, type AnswerEditorHandle } from "./AnswerEditorTiptap";
 
 type CurrentAnswer = {
   answerText: string | null;
+  answerRich?: TiptapDoc | null;
   skipped: boolean;
   source: "text" | "voice" | "ai_narrated";
   sttMeta: {
@@ -30,7 +33,6 @@ type TrackArgs = {
   questionId: string;
   provider: "groq" | "elevenlabs" | null;
   hasTrackedEditRef: RefObject<boolean>;
-  setAnswerText: (v: string) => void;
   setAnswerSource: (v: AnswerSource) => void;
 };
 
@@ -38,11 +40,10 @@ function tabBtnClass(active: boolean) {
   return `inline-flex h-11 cursor-pointer items-center justify-center rounded-xl border text-sm font-semibold ${active ? "border-gold/50 bg-gold/10 text-gold" : "border-white/10 text-white/60"}`;
 }
 
-function onAnswerTextChange(nextValue: string, args: TrackArgs) {
-  args.setAnswerText(nextValue);
+function onEditorPlainTextChange(nextValue: string, args: TrackArgs) {
   if (args.answerSource === "voice") {
     maybeTrackVoiceTranscriptEdit({
-      enabled: true,
+      enabled: Boolean(nextValue),
       hasTrackedEditRef: args.hasTrackedEditRef,
       chapterKey: args.chapterKey,
       questionId: args.questionId,
@@ -58,7 +59,9 @@ export function QuestionStep({
   chapterTitle,
   stepIndex,
   totalSteps,
-  currentAnswer
+  currentAnswer,
+  storybookId,
+  chapterInstanceId
 }: {
   question: GuidedTemplateQuestion;
   chapterKey: string;
@@ -66,16 +69,20 @@ export function QuestionStep({
   stepIndex: number;
   totalSteps: number;
   currentAnswer: CurrentAnswer | null;
+  storybookId: string;
+  chapterInstanceId: string;
 }) {
   const sttConfig = getClientSttConfig();
   const [mode, setMode] = useState<"voice" | "type">(
     sttConfig.enableVoiceInput ? "voice" : "type"
   );
-  const [answerText, setAnswerText] = useState(currentAnswer?.answerText ?? "");
+  // Plain text mirrored from the Tiptap editor — used by AINarratePanel
+  const [answerPlainText, setAnswerPlainText] = useState(currentAnswer?.answerText ?? "");
   const [answerSource, setAnswerSource] = useState<AnswerSource>(currentAnswer?.source ?? "text");
   const [sttMeta, setSttMeta] = useState<CurrentAnswer["sttMeta"]>(currentAnswer?.sttMeta ?? null);
   const [audioRef, setAudioRef] = useState<string | null>(currentAnswer?.audioRef ?? null);
   const voiceEditTrackedRef = useRef(false);
+  const editorRef = useRef<AnswerEditorHandle | null>(null);
 
   const resumeInVoiceMode = currentAnswer?.source === "voice" && sttConfig.enableVoiceInput;
   useEffect(() => {
@@ -85,8 +92,8 @@ export function QuestionStep({
   }, [resumeInVoiceMode]);
 
   const voiceSource: "text" | "voice" = answerSource === "ai_narrated" ? "text" : answerSource;
-  const textareaLabel = answerSource === "voice" ? "Transcript (editable)" : "Your answer";
-  const textareaPlaceholder = mode === "voice" ? "Record to generate transcript, or type here..." : "Type your memory here...";
+  const editorPlaceholder =
+    mode === "voice" ? "Record to generate transcript, or type here…" : "Type your memory here…";
 
   return (
     <Card className="p-5 sm:p-6">
@@ -144,7 +151,10 @@ export function QuestionStep({
                 questionId={question.questionId}
                 chapterKey={chapterKey}
                 questionPrompt={question.prompt}
-                setAnswerText={setAnswerText}
+                setAnswerText={(value) => {
+                  setAnswerPlainText(value);
+                  editorRef.current?.replaceWithPlainText(value);
+                }}
                 source={voiceSource}
                 setSource={setAnswerSource}
                 sttMeta={sttMeta}
@@ -157,32 +167,37 @@ export function QuestionStep({
         ) : null}
 
         <div className="space-y-3">
-          <label className="block">
-            <span className="mb-2 block text-sm font-semibold text-white/85">{textareaLabel}</span>
-            <textarea
-              name="answerText"
-              value={answerText}
-              onChange={(event) => onAnswerTextChange(event.target.value, {
+          <span className="block text-sm font-semibold text-white/85">
+            {answerSource === "voice" ? "Transcript (editable)" : "Your answer"}
+          </span>
+          <AnswerEditorTiptap
+            ref={editorRef}
+            storybookId={storybookId}
+            chapterInstanceId={chapterInstanceId}
+            questionId={question.questionId}
+            initialContent={currentAnswer?.answerRich ?? null}
+            initialPlainText={currentAnswer?.answerText ?? null}
+            placeholder={editorPlaceholder}
+            onPlainTextChange={(text) => {
+              setAnswerPlainText(text);
+              onEditorPlainTextChange(text, {
                 answerSource,
                 chapterKey,
                 questionId: question.questionId,
                 provider: sttMeta?.provider ?? null,
                 hasTrackedEditRef: voiceEditTrackedRef,
-                setAnswerText,
                 setAnswerSource
-              })}
-              rows={7}
-              className="w-full rounded-2xl border border-white/15 bg-white/[0.03] px-4 py-3 text-base leading-7 text-white outline-none placeholder:text-white/35 focus:border-gold/45"
-              placeholder={textareaPlaceholder}
-            />
-          </label>
+              });
+            }}
+          />
           <AINarratePanel
-            answerText={answerText}
+            answerText={answerPlainText}
             questionPrompt={question.prompt}
             chapterTitle={chapterTitle}
             onAccept={(narratedText) => {
-              setAnswerText(narratedText);
+              setAnswerPlainText(narratedText);
               setAnswerSource("ai_narrated");
+              editorRef.current?.replaceWithPlainText(narratedText);
             }}
           />
           <p className="text-xs text-white/55">

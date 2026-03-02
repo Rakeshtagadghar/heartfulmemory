@@ -9,6 +9,7 @@ import type {
 } from "../../../../packages/shared/entities/entitiesTypes";
 import { normalizeEntityDateValue } from "../../../../lib/entities/normalizeDates";
 import type { DataResult } from "./_shared";
+import type { TiptapDoc } from "../../../../packages/shared/richtext/tiptapTypes";
 
 export type GuidedTemplateForCreate = GuidedTemplateSummary & {
   chapterCount: number;
@@ -68,6 +69,8 @@ export type GuidedChapterAnswer = {
   chapterInstanceId: string;
   questionId: string;
   answerText: string | null;
+  answerRich: TiptapDoc | null;
+  answerPlain: string | null;
   answerJson: unknown;
   sttMeta: {
     provider: "groq" | "elevenlabs";
@@ -371,6 +374,8 @@ export async function upsertGuidedChapterAnswerForUser(
     questionId: string;
     answerText?: string | null;
     answerJson?: unknown;
+    answerRich?: unknown;
+    answerPlain?: string | null;
     sttMeta?: GuidedChapterAnswer["sttMeta"];
     audioRef?: string | null;
     skipped?: boolean;

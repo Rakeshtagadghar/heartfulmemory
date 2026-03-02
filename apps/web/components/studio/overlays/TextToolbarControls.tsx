@@ -1,227 +1,279 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useRef, useState, useEffect } from "react";
 import type { TextAlign, TextFontFamily } from "../../../../../packages/editor/nodes/textNode";
 
 const lineHeights = [1, 1.1, 1.2, 1.4, 1.6];
 const letterSpacings = [0, 0.5, 1, 1.5, 2];
+const FONT_FAMILIES: TextFontFamily[] = ["Inter", "Arial", "Georgia", "Times New Roman"];
+
 export type TextToolbarStyleState = {
   fontFamily: TextFontFamily;
   fontSize: number;
   fontWeight: number;
   fontStyle: "normal" | "italic";
-  textDecoration: "none" | "underline";
+  textDecoration: "none" | "underline" | "line-through";
   lineHeight: number;
   letterSpacing: number;
   textAlign: TextAlign;
   color: string;
 };
 
-function ToolbarIconButton({
-  active = false,
-  label,
-  title,
-  onClick,
-  children
-}: {
-  active?: boolean;
-  label: string;
-  title?: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={title ?? label}
-      onClick={onClick}
-      className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl border text-slate-700 shadow-sm transition ${
-        active
-          ? "border-blue-300 bg-blue-50 text-blue-700"
-          : "border-slate-300 bg-white hover:bg-slate-100"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
+const BTN =
+  "inline-flex items-center justify-center w-8 h-8 cursor-pointer rounded text-sm font-medium text-gray-600 " +
+  "hover:bg-gray-100 hover:text-gray-900 transition-colors " +
+  "data-[active]:bg-gray-100 data-[active]:text-gray-900";
+
+const SEP = "h-5 w-px bg-gray-200 mx-0.5 shrink-0";
+
+const CHEVRON = (
+  <svg viewBox="0 0 16 16" className="h-3 w-3 fill-current opacity-50 shrink-0" aria-hidden="true">
+    <path d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" />
+  </svg>
+);
 
 function AlignIcon({ align }: { align: TextAlign }) {
-  const common = {
-    className: "h-[15px] w-[15px]",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.8,
-    strokeLinecap: "round" as const
-  };
   if (align === "center") {
     return (
-      <svg {...common}>
-        <path d="M6 7h12M4 12h16M6 17h12" />
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+        <rect x="1" y="3" width="14" height="1.5" rx="0.5" /><rect x="3.5" y="6.5" width="9" height="1.5" rx="0.5" />
+        <rect x="1" y="10" width="14" height="1.5" rx="0.5" /><rect x="3.5" y="13.5" width="9" height="1.5" rx="0.5" />
       </svg>
     );
   }
   if (align === "right") {
     return (
-      <svg {...common}>
-        <path d="M8 7h10M4 12h14M10 17h8" />
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+        <rect x="1" y="3" width="14" height="1.5" rx="0.5" /><rect x="6" y="6.5" width="9" height="1.5" rx="0.5" />
+        <rect x="1" y="10" width="14" height="1.5" rx="0.5" /><rect x="6" y="13.5" width="9" height="1.5" rx="0.5" />
       </svg>
     );
   }
+  if (align === "justify") {
+    return (
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+        <rect x="1" y="3" width="14" height="1.5" rx="0.5" /><rect x="1" y="6.5" width="14" height="1.5" rx="0.5" />
+        <rect x="1" y="10" width="14" height="1.5" rx="0.5" /><rect x="1" y="13.5" width="14" height="1.5" rx="0.5" />
+      </svg>
+    );
+  }
+  // left
   return (
-    <svg {...common}>
-      <path d="M6 7h10M6 12h14M6 17h8" />
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+      <rect x="1" y="3" width="14" height="1.5" rx="0.5" /><rect x="1" y="6.5" width="9" height="1.5" rx="0.5" />
+      <rect x="1" y="10" width="14" height="1.5" rx="0.5" /><rect x="1" y="13.5" width="9" height="1.5" rx="0.5" />
     </svg>
+  );
+}
+
+/** Compact dropdown for font family, matching BubbleMenu block-type style */
+function FontFamilyDropdown({ value, onChange }: { value: TextFontFamily; onChange: (v: TextFontFamily) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={(e) => { e.preventDefault(); setOpen((s) => !s); }}
+        className="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-xs font-medium text-gray-700 hover:bg-gray-100"
+      >
+        <span className="max-w-[80px] truncate">{value}</span>
+        {CHEVRON}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          {FONT_FAMILIES.map((f) => (
+            <button key={f} type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(f); setOpen(false); }}
+              className={[
+                "w-full cursor-pointer px-3 py-1.5 text-left text-xs hover:bg-gray-50",
+                value === f ? "font-semibold text-gray-900" : "text-gray-700"
+              ].join(" ")}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Spacing dropdown — combines line-height and letter-spacing */
+function SpacingDropdown({
+  lineHeight, letterSpacing, onPatchStyle
+}: { lineHeight: number; letterSpacing: number; onPatchStyle: (p: Record<string, unknown>) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onMouseDown={(e) => { e.preventDefault(); setOpen((s) => !s); }}
+        className="flex h-8 cursor-pointer items-center gap-1 rounded px-2 text-xs font-medium text-gray-700 hover:bg-gray-100"
+      >
+        <span>Spacing</span>
+        {CHEVRON}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+          <p className="px-3 pb-1 pt-0 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Line height</p>
+          <div className="flex flex-wrap gap-1 px-3 pb-2">
+            {lineHeights.map((v) => (
+              <button key={v} type="button"
+                onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ lineHeight: v }); }}
+                className={[
+                  "rounded px-2 py-1 text-xs cursor-pointer transition-colors",
+                  lineHeight === v ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                ].join(" ")}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+          <div className="mx-3 border-t border-gray-100" />
+          <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Letter spacing</p>
+          <div className="flex flex-wrap gap-1 px-3 pb-1">
+            {letterSpacings.map((v) => (
+              <button key={v} type="button"
+                onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ letterSpacing: v }); }}
+                className={[
+                  "rounded px-2 py-1 text-xs cursor-pointer transition-colors",
+                  letterSpacing === v ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                ].join(" ")}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
 export function TextToolbarControls({
   style,
-  onPatchStyle,
-  onOpenFontPanel,
-  onOpenColorPanel
+  onPatchStyle
 }: {
   style: TextToolbarStyleState;
   onPatchStyle: (patch: Record<string, unknown>) => void;
   onOpenFontPanel?: () => void;
-  onOpenColorPanel?: () => void;
 }) {
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const isBold = style.fontWeight >= 700;
+  const isItalic = style.fontStyle === "italic";
+  const isUnderline = style.textDecoration === "underline";
+  const isStrike = style.textDecoration === "line-through";
+
+  function handleColorClick(e: React.MouseEvent) {
+    e.preventDefault();
+    colorInputRef.current?.click();
+  }
+
   return (
-    <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap text-[#0f172a]">
-      <button
-        type="button"
-        aria-label="Open font sidebar"
-        title="Open font sidebar"
-        onClick={() => onOpenFontPanel?.()}
-        className="flex h-8 min-w-[126px] cursor-pointer items-center justify-between gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm hover:bg-slate-50"
-      >
-        <span>{style.fontFamily}</span>
-        <svg
-          className="h-3.5 w-3.5 text-slate-500"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
+    <div className="flex items-center gap-0.5 whitespace-nowrap">
+
+      {/* Font family */}
+      <FontFamilyDropdown
+        value={style.fontFamily}
+        onChange={(f) => onPatchStyle({ fontFamily: f })}
+      />
+
+      <div className={SEP} />
+
+      {/* Font size */}
+      <button type="button" title="Decrease font size" className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ fontSize: Math.max(8, style.fontSize - 1) }); }}>
+        <span className="text-base leading-none font-semibold">−</span>
+      </button>
+      <input
+        type="number" min={8} max={240}
+        value={style.fontSize}
+        onChange={(e) => onPatchStyle({ fontSize: Number(e.target.value) })}
+        className="h-8 w-9 bg-transparent text-center text-xs font-semibold text-gray-800 outline-none"
+        aria-label="Font size"
+      />
+      <button type="button" title="Increase font size" className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ fontSize: Math.min(240, style.fontSize + 1) }); }}>
+        <span className="text-base leading-none font-semibold">+</span>
       </button>
 
-      <div className="h-5 w-px bg-slate-300" />
+      <div className={SEP} />
 
-      <div className="flex items-center rounded-xl border border-slate-300 bg-white shadow-sm">
-        <button
-          type="button"
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-l-xl text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          onClick={() => onPatchStyle({ fontSize: Math.max(8, style.fontSize - 1) })}
-          aria-label="Decrease font size"
-        >
-          -
-        </button>
-        <input
-          type="number"
-          min={8}
-          max={240}
-          value={style.fontSize}
-          onChange={(event) => onPatchStyle({ fontSize: Number(event.target.value) })}
-          className="h-8 w-12 border-x border-slate-200 bg-white px-1.5 text-center text-sm font-semibold text-slate-800 outline-none"
-          aria-label="Font size"
-        />
-        <button
-          type="button"
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-r-xl text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          onClick={() => onPatchStyle({ fontSize: Math.min(240, style.fontSize + 1) })}
-          aria-label="Increase font size"
-        >
-          +
-        </button>
-      </div>
+      {/* Inline marks */}
+      <button type="button" title="Bold" data-active={isBold || undefined} className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ fontWeight: isBold ? 400 : 700 }); }}>
+        <strong>B</strong>
+      </button>
+      <button type="button" title="Italic" data-active={isItalic || undefined} className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ fontStyle: isItalic ? "normal" : "italic" }); }}>
+        <em>I</em>
+      </button>
+      <button type="button" title="Underline" data-active={isUnderline || undefined} className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ textDecoration: isUnderline ? "none" : "underline" }); }}>
+        <span className="underline">U</span>
+      </button>
+      <button type="button" title="Strikethrough" data-active={isStrike || undefined} className={BTN}
+        onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ textDecoration: isStrike ? "none" : "line-through" }); }}>
+        <span className="line-through">S</span>
+      </button>
 
-      <div className="h-5 w-px bg-slate-300" />
+      <div className={SEP} />
 
-      <ToolbarIconButton
-        active={style.fontWeight >= 700}
-        label="Bold"
-        onClick={() => onPatchStyle({ fontWeight: style.fontWeight >= 700 ? 400 : 700 })}
-      >
-        B
-      </ToolbarIconButton>
-      <ToolbarIconButton
-        active={style.fontStyle === "italic"}
-        label="Italic"
-        onClick={() => onPatchStyle({ fontStyle: style.fontStyle === "italic" ? "normal" : "italic" })}
-      >
-        I
-      </ToolbarIconButton>
-      <ToolbarIconButton
-        active={style.textDecoration === "underline"}
-        label="Underline"
-        onClick={() =>
-          onPatchStyle({ textDecoration: style.textDecoration === "underline" ? "none" : "underline" })
-        }
-      >
-        U
-      </ToolbarIconButton>
-
-      <div className="h-5 w-px bg-slate-300" />
-
-      {(["left", "center", "right"] as const).map((align) => (
-        <ToolbarIconButton
-          key={align}
-          active={style.textAlign === align}
-          label={`Align ${align}`}
-          onClick={() => onPatchStyle({ textAlign: align })}
-        >
+      {/* Alignment */}
+      {(["left", "center", "right", "justify"] as const).map((align) => (
+        <button key={align} type="button" title={`Align ${align}`}
+          data-active={style.textAlign === align || undefined} className={BTN}
+          onMouseDown={(e) => { e.preventDefault(); onPatchStyle({ textAlign: align }); }}>
           <AlignIcon align={align} />
-        </ToolbarIconButton>
+        </button>
       ))}
 
-      <div className="h-5 w-px bg-slate-300" />
+      <div className={SEP} />
 
-      <select
-        aria-label="Line height"
-        value={style.lineHeight}
-        onChange={(event) => onPatchStyle({ lineHeight: Number(event.target.value) })}
-        className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 shadow-sm"
-      >
-        {lineHeights.map((value) => (
-          <option key={value} value={value}>
-            LH {value}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label="Letter spacing"
-        value={style.letterSpacing}
-        onChange={(event) => onPatchStyle({ letterSpacing: Number(event.target.value) })}
-        className="h-8 rounded-xl border border-slate-300 bg-white px-2.5 text-sm font-medium text-slate-800 shadow-sm"
-      >
-        {letterSpacings.map((value) => (
-          <option key={value} value={value}>
-            LS {value}
-          </option>
-        ))}
-      </select>
+      {/* Spacing (LH + LS combined) */}
+      <SpacingDropdown
+        lineHeight={style.lineHeight}
+        letterSpacing={style.letterSpacing}
+        onPatchStyle={onPatchStyle}
+      />
 
-      <div className="h-5 w-px bg-slate-300" />
-      <button
-        type="button"
-        aria-label="Open color sidebar"
-        title="Open color sidebar"
-        onClick={() => onOpenColorPanel?.()}
-        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50"
-      >
-        <span
-          className="h-4 w-4 rounded-full border border-slate-300 shadow-sm"
-          style={{ backgroundColor: style.color }}
-          aria-hidden
-        />
-      </button>
+      <div className={SEP} />
+
+      {/* Color */}
+      <div className="relative">
+        <button type="button" title="Text color"
+          onMouseDown={handleColorClick}
+          className={BTN} style={{ flexDirection: "column", gap: 1 }}>
+          <span className="text-sm font-bold leading-none">A</span>
+          <span className="h-0.5 w-4 rounded-full" style={{ backgroundColor: style.color }} />
+        </button>
+        <input ref={colorInputRef} type="color" className="sr-only"
+          value={style.color}
+          onChange={(e) => onPatchStyle({ color: e.target.value })} />
+      </div>
+
     </div>
   );
 }

@@ -133,7 +133,7 @@ export function StoryPhotoUploader({
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="space-y-5">
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5 sm:p-6">
         <p className="text-xs uppercase tracking-[0.18em] text-gold/80">Upload your photos</p>
         <h1 className="mt-2 font-display text-2xl text-parchment sm:text-3xl">Add photos to your story</h1>

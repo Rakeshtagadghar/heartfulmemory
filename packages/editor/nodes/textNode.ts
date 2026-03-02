@@ -1,4 +1,4 @@
-export type TextAlign = "left" | "center" | "right";
+export type TextAlign = "left" | "center" | "right" | "justify";
 export type TextFontFamily = "Inter" | "Arial" | "Georgia" | "Times New Roman";
 
 export type TextNodeStyleV1 = {
@@ -6,7 +6,7 @@ export type TextNodeStyleV1 = {
   fontSize: number;
   fontWeight: number;
   fontStyle: "normal" | "italic";
-  textDecoration: "none" | "underline";
+  textDecoration: "none" | "underline" | "line-through";
   lineHeight: number;
   letterSpacing: number;
   textAlign: TextAlign;
@@ -48,7 +48,7 @@ export function normalizeTextNodeStyleV1(
 
   const textAlignInput = input.textAlign ?? input.align;
   const textAlign =
-    textAlignInput === "center" || textAlignInput === "right" || textAlignInput === "left"
+    textAlignInput === "center" || textAlignInput === "right" || textAlignInput === "left" || textAlignInput === "justify"
       ? textAlignInput
       : defaultTextNodeStyleV1.textAlign;
 
@@ -57,7 +57,9 @@ export function normalizeTextNodeStyleV1(
     fontSize: clampNumber(input.fontSize, defaultTextNodeStyleV1.fontSize, 8, 240),
     fontWeight: clampNumber(input.fontWeight, defaultTextNodeStyleV1.fontWeight, 100, 900),
     fontStyle: input.fontStyle === "italic" ? "italic" : "normal",
-    textDecoration: input.textDecoration === "underline" ? "underline" : "none",
+    textDecoration: (["underline", "line-through"] as const).includes(input.textDecoration as "underline" | "line-through")
+      ? (input.textDecoration as "underline" | "line-through")
+      : "none",
     lineHeight: clampNumber(input.lineHeight, defaultTextNodeStyleV1.lineHeight, 0.8, 3),
     letterSpacing: clampNumber(input.letterSpacing, defaultTextNodeStyleV1.letterSpacing, -2, 20),
     textAlign,

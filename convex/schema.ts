@@ -178,6 +178,9 @@ export default defineSchema({
     questionId: v.string(),
     answerText: v.optional(v.union(v.string(), v.null())),
     answerJson: v.optional(v.union(v.any(), v.null())),
+    // Sprint 31: rich text fields
+    answerRich: v.optional(v.union(v.any(), v.null())),
+    answerPlain: v.optional(v.union(v.string(), v.null())),
     sttMeta: v.optional(
       v.union(
         v.object({

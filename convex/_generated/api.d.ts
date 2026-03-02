@@ -12,6 +12,7 @@ import type * as ai_answersNarrate from "../ai/answersNarrate.js";
 import type * as ai_chapterNarratives from "../ai/chapterNarratives.js";
 import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
 import type * as ai_rateLimit from "../ai/rateLimit.js";
+import type * as ai_textImprove from "../ai/textImprove.js";
 import type * as assets from "../assets.js";
 import type * as authz from "../authz.js";
 import type * as billing from "../billing.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   "ai/chapterNarratives": typeof ai_chapterNarratives;
   "ai/entitiesExtractor": typeof ai_entitiesExtractor;
   "ai/rateLimit": typeof ai_rateLimit;
+  "ai/textImprove": typeof ai_textImprove;
   assets: typeof assets;
   authz: typeof authz;
   billing: typeof billing;
