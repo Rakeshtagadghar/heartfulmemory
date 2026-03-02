@@ -34,6 +34,7 @@ import {
   removePageAction,
   removeFrameAction,
   reorderPagesAction,
+  setOrientationAction,
   updateFrameAction,
   updateLayoutStorybookSettingsAction,
   updatePageSettingsAction
@@ -51,6 +52,10 @@ import { plainTextToTiptapDoc } from "../../../../packages/shared/richtext/norma
 import { useInsertImage } from "./hooks/useInsertImage";
 import { StudioToastsViewport } from "../studio/ui/ToastsViewport";
 import { showStudioToast } from "../studio/ui/toasts";
+import { OrientationToggle } from "../studio/OrientationToggle";
+import { OrientationConfirmModal } from "../studio/OrientationConfirmModal";
+import { applyOrientation, type PageWithFrames } from "../../../../packages/editor/orientation/applyOrientation";
+import { OrientationWarningsPanel, type OrientationWarning } from "../../../../packages/editor/ui/OrientationWarningsPanel";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
 import { MINI_SIDEBAR_WIDTH_PX, type StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
@@ -341,6 +346,16 @@ export function Editor2Shell({// NOSONAR
     () => getStudioDocMetaFromSettings(storybook.settings)
   );
   const [pageViewMode, setPageViewMode] = useState<PageViewMode>(() => getInitialPageViewMode(storybook.id, storybook.settings));
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">(() => {
+    const s = storybook.settings;
+    if (s && typeof s === "object" && !Array.isArray(s)) {
+      const val = (s as Record<string, unknown>).orientation;
+      if (val === "landscape") return "landscape";
+    }
+    return "portrait";
+  });
+  const [orientationPendingTarget, setOrientationPendingTarget] = useState<"portrait" | "landscape" | null>(null);
+  const [orientationWarnings, setOrientationWarnings] = useState<OrientationWarning[]>([]);
   const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<EditorFramePatch>({});
   const [isPending, startTransition] = useTransition();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -931,6 +946,59 @@ export function Editor2Shell({// NOSONAR
       setStudioDocMeta(previousMeta);
       setPageViewMode(pageViewMode);
     }
+  }
+
+  async function handleConfirmOrientation() {
+    const target = orientationPendingTarget;
+    if (!target) return;
+    setOrientationPendingTarget(null);
+    const result = await setOrientationAction(storybook.id, target);
+    if (!result.ok) {
+      showStudioToast({ title: "Could not switch orientation. Please try again.", kind: "error" });
+      return;
+    }
+    const updatedPages = await listPagesAction(storybook.id);
+    if (!updatedPages.ok) return;
+    setPages(sortPages(updatedPages.data));
+    // Build pages-with-frames for clamp pass
+    const pagesWithFrames: PageWithFrames[] = updatedPages.data.map((page) => ({
+      id: page.id,
+      widthPx: page.width_px,
+      heightPx: page.height_px,
+      margins: {
+        top: page.margins.top,
+        right: page.margins.right,
+        bottom: page.margins.bottom,
+        left: page.margins.left
+      },
+      frames: (framesByPageId[page.id] ?? []).map((f) => ({ id: f.id, x: f.x, y: f.y, w: f.w, h: f.h }))
+    }));
+    const patches = applyOrientation(pagesWithFrames, target);
+    const warnings: OrientationWarning[] = [];
+    for (const pagePatch of patches) {
+      for (const fp of pagePatch.framePatch) {
+        const origFrame = pagesWithFrames
+          .flatMap((p) => p.frames)
+          .find((f) => f.id === fp.frameId);
+        // Detect frames that changed size (potential text overflow)
+        if (origFrame && (origFrame.w !== fp.w || origFrame.h !== fp.h)) {
+          const allFrames = framesByPageId[pagePatch.pageId] ?? [];
+          const frameData = allFrames.find((f) => f.id === fp.frameId);
+          if (frameData && (frameData as Record<string, unknown>).type === "text") {
+            warnings.push({
+              nodeId: fp.frameId,
+              pageId: pagePatch.pageId,
+              label: `Text frame resized on page`,
+              kind: "text-overflow",
+            });
+          }
+        }
+        void updateFrameAction(storybook.id, fp.frameId, { x: fp.x, y: fp.y, w: fp.w, h: fp.h });
+      }
+    }
+    setOrientationWarnings(warnings);
+    setOrientation(target);
+    showStudioToast({ title: `Switched to ${target === "landscape" ? "Landscape" : "Portrait"}.`, kind: "success" });
   }
 
   async function handleCommitPageTitle(pageId: string, title: string) {
@@ -2853,6 +2921,13 @@ export function Editor2Shell({// NOSONAR
                 <path d="M4 15v5h5" />
               </svg>
             </FooterCanvasToggleButton>
+            <OrientationToggle
+              orientation={orientation}
+              onClick={(e) => {
+                e.stopPropagation();
+                setOrientationPendingTarget(orientation === "portrait" ? "landscape" : "portrait");
+              }}
+            />
           </div>
 
           <p className="shrink-0">
@@ -2873,6 +2948,17 @@ export function Editor2Shell({// NOSONAR
           Working...
         </div>
       ) : null}
+      {orientationPendingTarget ? (
+        <OrientationConfirmModal
+          targetOrientation={orientationPendingTarget}
+          onConfirm={() => void handleConfirmOrientation()}
+          onCancel={() => setOrientationPendingTarget(null)}
+        />
+      ) : null}
+      <OrientationWarningsPanel
+        warnings={orientationWarnings}
+        onDismiss={() => setOrientationWarnings([])}
+      />
       <StudioToastsViewport />
     </div>
   );

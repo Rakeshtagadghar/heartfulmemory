@@ -50,19 +50,21 @@ async function getBrowser() {
   return browserPromise;
 }
 
-function getPageFormat(sizePreset: PdfRenderContract["pages"][number]["sizePreset"]) {
-  switch (sizePreset) {
-    case "A4":
-      return "A4";
-    case "US_LETTER":
-      return "Letter";
-    case "BOOK_6X9":
-      return { width: "6in", height: "9in" };
-    case "BOOK_8_5X11":
-      return { width: "8.5in", height: "11in" };
-    default:
-      return "Letter";
-  }
+const PRESET_SIZES_IN: Record<string, { width: string; height: string }> = {
+  A4:          { width: "8.27in", height: "11.69in" },
+  US_LETTER:   { width: "8.5in",  height: "11in" },
+  BOOK_6X9:    { width: "6in",    height: "9in" },
+  BOOK_8_5X11: { width: "8.5in",  height: "11in" }
+};
+
+function getPageFormat(
+  sizePreset: PdfRenderContract["pages"][number]["sizePreset"],
+  isLandscape: boolean
+): { width: string; height: string } {
+  const size = PRESET_SIZES_IN[sizePreset] ?? PRESET_SIZES_IN.US_LETTER;
+  return isLandscape
+    ? { width: size.height, height: size.width }
+    : size;
 }
 
 export async function renderWithPlaywright(
@@ -82,16 +84,11 @@ export async function renderWithPlaywright(
 
     await page.setContent(doc.html, { waitUntil: "networkidle" });
     const firstPage = contract.pages.slice().sort((a, b) => a.orderIndex - b.orderIndex)[0];
+    const isLandscape = firstPage ? firstPage.widthPx > firstPage.heightPx : false;
+    const pageFormat = getPageFormat(firstPage?.sizePreset ?? "US_LETTER", isLandscape);
     const pdf = await page.pdf({
-      format: typeof getPageFormat(firstPage?.sizePreset ?? "US_LETTER") === "string"
-        ? (getPageFormat(firstPage?.sizePreset ?? "US_LETTER") as "A4" | "Letter")
-        : undefined,
-      width: typeof getPageFormat(firstPage?.sizePreset ?? "US_LETTER") === "object"
-        ? (getPageFormat(firstPage?.sizePreset ?? "US_LETTER") as { width: string; height: string }).width
-        : undefined,
-      height: typeof getPageFormat(firstPage?.sizePreset ?? "US_LETTER") === "object"
-        ? (getPageFormat(firstPage?.sizePreset ?? "US_LETTER") as { width: string; height: string }).height
-        : undefined,
+      width: pageFormat.width,
+      height: pageFormat.height,
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
       printBackground: targetConfig.printBackground,
       preferCSSPageSize: false,

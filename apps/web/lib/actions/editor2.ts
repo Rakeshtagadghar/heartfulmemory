@@ -16,7 +16,7 @@ import {
 import { createFrameForUser, listFramesByPageForUser, listFramesByStorybookForUser, removeFrameForUser, updateFrameForUser } from "../data/frames";
 import { createAssetMetadataForUser, listAssetsForUser } from "../data/assets";
 import { getMediaConfig } from "../config/media";
-import { updateStorybookSettingsForUser } from "../data/storybooks";
+import { setStorybookOrientationForUser, updateStorybookSettingsForUser } from "../data/storybooks";
 import type { PageDTO } from "../dto/page";
 import type { FrameDTO } from "../dto/frame";
 import type { StorybookDTO } from "../dto/storybook";
@@ -147,6 +147,17 @@ export async function updateLayoutStorybookSettingsAction(
 ): Promise<DataResult<StorybookDTO>> {
   const user = await requireAuthenticatedUser(layoutPath(storybookId));
   const result = await updateStorybookSettingsForUser(user.id, storybookId, settingsPatch);
+  revalidatePath(layoutPath(storybookId));
+  revalidatePath(storybookPath(storybookId));
+  return result;
+}
+
+export async function setOrientationAction(
+  storybookId: string,
+  orientation: "portrait" | "landscape"
+): Promise<DataResult<StorybookDTO>> {
+  const user = await requireAuthenticatedUser(layoutPath(storybookId));
+  const result = await setStorybookOrientationForUser(user.id, storybookId, orientation);
   revalidatePath(layoutPath(storybookId));
   revalidatePath(storybookPath(storybookId));
   return result;

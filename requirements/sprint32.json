@@ -1,0 +1,242 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper Studio",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 32,
+      "title": "Studio Orientation v1: Portrait ↔ Landscape Toggle (Page Presets + Safe Area + Export)",
+      "duration": "1 week",
+      "goal": "Add an Orientation toggle in Studio to support horizontal (landscape) books. Switching orientation updates page presets, safe/bleed boxes, and template layout mapping, and is respected by PDF export.",
+      "definitionOfDone": [
+        "Studio has an Orientation toggle: Portrait / Landscape in footer",
+        "Orientation is stored per storybook (and optionally per document preset)",
+        "Changing orientation updates page width/height (preset swap) and recomputes safe/bleed boxes",
+        "All pages render correctly in both orientations (continuous + single-page modes remain functional)",
+        "Populate-to-Studio uses orientation-aware templates (or remaps layouts safely)",
+        "Export respects orientation and produces correct PDF page sizes",
+        "UI clearly warns if switching orientation may require layout adjustments",
+        "No content ends up outside safe area by default after orientation change (clamp pass runs)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex for doc persistence",
+      "printModel": "Page presets already exist (trim/safe/bleed)",
+      "export": "PDF renderer consumes page preset dimensions"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S32-T01",
+      "title": "Define orientation presets and print-safe geometry (portrait/landscape variants)",
+      "skill": ["Architecture", "Rendering/Geometry"],
+      "priority": "P0",
+      "requirements": {
+        "presets": [
+          {
+            "id": "standard_portrait",
+            "orientation": "portrait",
+            "trim": "W x H",
+            "bleed": "mm/px",
+            "safeMargin": "mm/px",
+            "gutter": "mm/px (optional for binding)"
+          },
+          {
+            "id": "standard_landscape",
+            "orientation": "landscape",
+            "trim": "H x W (swap)",
+            "bleed": "mm/px",
+            "safeMargin": "mm/px",
+            "gutter": "mm/px"
+          }
+        ],
+        "notes": [
+          "Landscape uses width > height; safe/bleed recalculated with new dimensions."
+        ],
+        "constraints": [
+          "Preset must be compatible with your eventual print partners (Blurb/Lulu etc.)"
+        ]
+      },
+      "acceptanceTests": [
+        "Preset objects exist and compute safeBox/bleedBox deterministically",
+        "Landscape preset has width > height"
+      ],
+      "deliverables": [
+        "packages/shared/print/pagePresets.ts updated",
+        "packages/shared/print/boxes.ts updated",
+        "docs/orientation_presets.md"
+      ]
+    },
+    {
+      "id": "S32-T02",
+      "title": "Persist orientation per storybook/document (Convex schema + migration default)",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "storage": [
+          "storybook.printPresetId OR storybook.orientation ('portrait'|'landscape')",
+          "default to portrait for existing books"
+        ],
+        "constraints": [
+          "Changing orientation updates preset id; keep stable doc ids"
+        ]
+      },
+      "acceptanceTests": [
+        "Existing storybooks default to portrait",
+        "Orientation can be saved and restored on refresh"
+      ],
+      "deliverables": [
+        "convex/schema.ts updated",
+        "convex/storybooks.ts updated",
+        "docs/orientation_persistence.md"
+      ]
+    },
+    {
+      "id": "S32-T03",
+      "title": "Studio UI: Orientation toggle (Portrait/Landscape) + confirmation modal",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Toggle in Studio top bar or settings drawer",
+          "Modal warning: switching orientation may move/rescale content",
+          "Option: 'Apply & auto-fit' vs 'Cancel'"
+        ],
+        "constraints": ["Elder-friendly wording", "No accidental flips"]
+      },
+      "acceptanceTests": [
+        "Toggle updates the editor view immediately after confirmation",
+        "Orientation state persists"
+      ],
+      "deliverables": [
+        "components/studio/OrientationToggle.tsx",
+        "components/studio/OrientationConfirmModal.tsx"
+      ]
+    },
+    {
+      "id": "S32-T04",
+      "title": "Orientation switch engine: remap page dimensions and run clamp/fit pass",
+      "skill": ["Editor Engineering", "Geometry"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Swap page width/height based on preset",
+          "Recompute safeBox/bleedBox",
+          "Run clamp pass for nodes: keep text inside safeBox",
+          "For images/frames: preserve aspect via crop; clamp to safe unless full-bleed layout"
+        ],
+        "constraints": [
+          "Do not delete content",
+          "Be deterministic and reversible (switch back works)"
+        ]
+      },
+      "acceptanceTests": [
+        "After switching, nodes are still visible and inside safe area (text)",
+        "No crashes for multi-page docs"
+      ],
+      "deliverables": [
+        "packages/editor/orientation/applyOrientation.ts",
+        "packages/editor/guards/safeClamp.ts reused",
+        "docs/orientation_switch_rules.md"
+      ]
+    },
+    {
+      "id": "S32-T05",
+      "title": "Template/layout mapping: choose portrait vs landscape layouts per chapter/page",
+      "skill": ["Product", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "templateChange": [
+          "Add optional layout variants per page: layoutIdPortrait, layoutIdLandscape",
+          "If landscape variant missing, fallback to portrait layout with auto-fit"
+        ],
+        "constraints": [
+          "No template explosion: only maintain variants for key pages first",
+          "Keep slot ids stable across variants when possible"
+        ]
+      },
+      "acceptanceTests": [
+        "Landscape uses landscape layouts when available",
+        "Fallback path works when variant missing"
+      ],
+      "deliverables": [
+        "packages/shared/templates/templateSchema.ts updated",
+        "packages/shared/templates/layoutVariants.ts",
+        "docs/template_orientation_variants.md"
+      ]
+    },
+    {
+      "id": "S32-T06",
+      "title": "Export respects orientation (PDF page sizes + safe/bleed boxes)",
+      "skill": ["Rendering", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "PDF renderer uses storybook preset orientation for page size",
+          "Hidden pages policy unchanged",
+          "Optional debug overlay for safe/bleed (dev only)"
+        ],
+        "constraints": [
+          "No distortion; content renders in the rotated geometry"
+        ]
+      },
+      "acceptanceTests": [
+        "Landscape export pages are wider than tall",
+        "Margins/safe area align with preset"
+      ],
+      "deliverables": [
+        "packages/pdf/renderers/renderDocument.ts updated",
+        "docs/export_orientation_support.md"
+      ]
+    },
+    {
+      "id": "S32-T07",
+      "title": "QA + tests (switching, layout fallback, export)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Switch portrait -> landscape -> portrait and confirm content survives",
+          "Check text stays inside safe area after switch",
+          "Populate + open studio in landscape preset",
+          "Export landscape PDF and verify page dimensions"
+        ],
+        "automation": [
+          "Unit: preset box calculations",
+          "Unit: applyOrientation clamps text nodes",
+          "Integration: export uses preset dimensions"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 3 automated tests added and passing",
+        "No regressions to Studio pages scroll modes"
+      ],
+      "deliverables": [
+        "tests/orientation/presets.test.ts",
+        "tests/orientation/applyOrientation.test.ts",
+        "tests/pdf/orientationExport.integration.test.ts",
+        "docs/qa_sprint32_orientation.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S32-T01",
+      "S32-T02",
+      "S32-T03",
+      "S32-T04",
+      "S32-T05",
+      "S32-T06",
+      "S32-T07"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 0.5,
+      "buffer_days": 1.5
+    },
+    "notes": [
+      "Landscape books are commonly used for photo books and panoramic content; providers like Blurb explicitly offer standard landscape formats. :contentReference[oaicite:3]{index=3}",
+      "Changing orientation requires recomputing safe/bleed/margins; print guidance emphasizes margins and bleed considerations. :contentReference[oaicite:4]{index=4}"
+    ]
+  }
+}

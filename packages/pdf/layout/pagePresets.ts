@@ -37,6 +37,24 @@ export function getPagePresetV1(name: PdfPagePresetName) {
   return PAGE_PRESETS_V1[name];
 }
 
+// Portrait pixel dimensions at PDF_PX_DPI=96 — matches convex/pages.ts presetDimensions
+export const PORTRAIT_PRESET_PX: Record<PdfPagePresetName, { widthPx: number; heightPx: number }> = {
+  A4:          { widthPx: 794,  heightPx: 1123 },
+  US_LETTER:   { widthPx: 816,  heightPx: 1056 },
+  BOOK_6X9:    { widthPx: 720,  heightPx: 1080 },
+  BOOK_8_5X11: { widthPx: 816,  heightPx: 1056 }
+};
+
+export function getPresetDimensionsPx(
+  preset: PdfPagePresetName,
+  orientation: "portrait" | "landscape"
+): { widthPx: number; heightPx: number } {
+  const { widthPx, heightPx } = PORTRAIT_PRESET_PX[preset];
+  return orientation === "landscape"
+    ? { widthPx: heightPx, heightPx: widthPx }
+    : { widthPx, heightPx };
+}
+
 export function buildPageBoxModelV1(input: {
   preset: PdfPagePresetName;
   pageWidthPx: number;

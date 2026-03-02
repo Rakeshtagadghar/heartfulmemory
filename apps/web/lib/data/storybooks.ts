@@ -94,6 +94,21 @@ export async function updateStorybookSettingsForUser(
   return { ok: true, data: storybookDtoSchema.parse(result.data) };
 }
 
+export async function setStorybookOrientationForUser(
+  viewerSubject: string,
+  storybookId: string,
+  orientation: "portrait" | "landscape"
+): Promise<DataResult<StorybookDTO>> {
+  if (!getConvexUrl()) return { ok: false, error: "Convex is not configured." };
+  const result = await convexMutation<unknown>(anyApi.storybooks.setOrientation, {
+    viewerSubject,
+    storybookId,
+    orientation
+  });
+  if (!result.ok) return result;
+  return { ok: true, data: storybookDtoSchema.parse(result.data) };
+}
+
 export async function removeStorybookForUser(
   viewerSubject: string,
   storybookId: string

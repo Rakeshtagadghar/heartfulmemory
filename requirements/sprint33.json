@@ -1,0 +1,256 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper Studio",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 33,
+      "title": "Orientation Switch v2: Responsive Reflow (Preserve % Width for Wide Components)",
+      "duration": "1 week",
+      "goal": "Fix portrait↔landscape conversion so wide components preserve their relative width (percentage of safe area) and relative positioning. If a component’s width is >60% of the safe area width, it is treated as responsive and reflowed to the new safe width with the same percentage.",
+      "definitionOfDone": [
+        "Orientation switching preserves layout proportions for wide components (>60% safe width)",
+        "Both directions work: portrait→landscape and landscape→portrait",
+        "Reflow uses safe-area boxes (not full page) and maintains margins/relative positions",
+        "Non-wide components keep their absolute size unless they overflow, then clamp rules apply",
+        "Text boxes and image frames reflow without breaking crop/aspect rules",
+        "Changes are deterministic, reversible, and do not push content outside safe area",
+        "Unit + integration tests cover the reflow thresholds and edge cases"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex doc persistence",
+      "editorModel": "Studio doc with pages + nodes with x/y/w/h (plus crop/style/meta)",
+      "printModel": "Safe area boxes computed from presets for portrait/landscape"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S33-T01",
+      "title": "Define responsive reflow rules and node classification (wide vs fixed)",
+      "skill": ["Architecture", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "definitions": {
+          "safeBox": "the printable safe area rectangle per page (x,y,w,h)",
+          "wideNodeThreshold": "0.60 (60% of safeBox width)",
+          "wideNode": "node.w / safeBox.w >= wideNodeThreshold",
+          "fixedNode": "node.w / safeBox.w < wideNodeThreshold"
+        },
+        "reflowGoals": [
+          "Preserve relative width for wide nodes: newW = (oldW/safeW_old) * safeW_new",
+          "Preserve relative X positioning inside safeBox: newX = safeX_new + ( (oldX-safeX_old) / safeW_old ) * safeW_new",
+          "Preserve relative Y positioning using safe height similarly (optional but recommended for symmetry)",
+          "Clamp to safeBox after reflow"
+        ],
+        "nodeTypes": [
+          "text",
+          "image",
+          "frame",
+          "shape",
+          "group (if supported)"
+        ],
+        "constraints": [
+          "Reflow is based on safeBox, not page box",
+          "Do not scale font size in v1 (keep it stable); handle overflow via clamp/warnings"
+        ]
+      },
+      "acceptanceTests": [
+        "Rules doc clearly defines wide vs fixed behavior and formulas",
+        "Classification works consistently across node types"
+      ],
+      "deliverables": [
+        "docs/orientation_responsive_reflow_rules.md",
+        "packages/shared/orientation/reflowTypes.ts"
+      ]
+    },
+    {
+      "id": "S33-T02",
+      "title": "Implement core reflow math utilities (percent-based resizing + position mapping)",
+      "skill": ["Geometry", "Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "utilities": [
+          "computeSafeBox(pagePreset, orientation)",
+          "toRelativeRect(nodeRect, safeBoxOld) -> {rx, ry, rw, rh}",
+          "fromRelativeRect(relRect, safeBoxNew) -> newRect",
+          "clampRectToBox(rect, safeBoxNew, padding)"
+        ],
+        "formulas": {
+          "rw": "oldW/safeW_old",
+          "rx": "(oldX-safeX_old)/safeW_old",
+          "newW": "rw*safeW_new",
+          "newX": "safeX_new + rx*safeW_new"
+        },
+        "constraints": [
+          "Deterministic outputs",
+          "No floating drift: round to a consistent precision (e.g., 0.5px or 1px)"
+        ]
+      },
+      "acceptanceTests": [
+        "Relative->absolute mapping round-trips with minimal drift",
+        "Clamping keeps nodes inside safe area"
+      ],
+      "deliverables": [
+        "packages/shared/orientation/reflowMath.ts",
+        "packages/shared/geometry/clampRectToBox.ts"
+      ]
+    },
+    {
+      "id": "S33-T03",
+      "title": "Apply responsive reflow during orientation switch (wide nodes preserve % width)",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "On orientation change, compute safeBoxOld and safeBoxNew for each page",
+          "For each node:",
+          "1) classify wide vs fixed using old safeBox",
+          "2) if wide: reflow using relative mapping for x and width (and optionally y/height)",
+          "3) if fixed: keep absolute size, but map x/y using relative position (optional) OR keep x/y and clamp",
+          "4) clamp to safeBoxNew"
+        ],
+        "policies": {
+          "wideNodes": "preserve rw (percentage width) and rx position; clamp",
+          "fixedNodes": "preserve absolute w/h; map x/y proportionally OR keep x/y then clamp (choose one)",
+          "recommendedFixedPolicy": "map x/y proportionally (keeps layout intent) then clamp"
+        },
+        "constraints": [
+          "Must work both directions (portrait→landscape and landscape→portrait)",
+          "Must not overwrite user edits; this runs as an orientation transformation on the current doc state"
+        ]
+      },
+      "acceptanceTests": [
+        "A node that was 80% of safe width stays ~80% after switch",
+        "A node that was 30% stays ~same pixel width unless it overflows (then clamp)",
+        "No nodes end outside safe area after switch"
+      ],
+      "deliverables": [
+        "packages/editor/orientation/applyOrientationReflowV2.ts",
+        "docs/orientation_switch_reflow_v2.md"
+      ]
+    },
+    {
+      "id": "S33-T04",
+      "title": "Special handling for text boxes (overflow detection + warnings after reflow)",
+      "skill": ["Editor Engineering", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "After reflow/clamp, re-measure text overflow (client DOM measure)",
+          "If overflow: set node.meta.overflow=true and record warning (page warnings)",
+          "Do not auto-shrink font in v1 (optional future); keep content stable"
+        ],
+        "constraints": [
+          "No layout loops; measure once after commit",
+          "Warnings must be actionable (click to focus node)"
+        ]
+      },
+      "acceptanceTests": [
+        "Text boxes that overflow after orientation switch get flagged",
+        "User can find and fix overflow quickly"
+      ],
+      "deliverables": [
+        "packages/editor/measure/richTextOverflow.ts reused/updated",
+        "packages/editor/ui/OrientationWarningsPanel.tsx"
+      ]
+    },
+    {
+      "id": "S33-T05",
+      "title": "Special handling for images/frames (preserve crop + aspect, adjust frame size safely)",
+      "skill": ["Editor Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Frame rect reflows like other nodes (wide vs fixed)",
+          "Image crop model remains unchanged unless frame aspect changes dramatically",
+          "If frame aspect changes, keep crop mode=cover center; do not stretch image"
+        ],
+        "constraints": [
+          "Never distort image pixels",
+          "Always clamp frame inside safeBoxNew"
+        ]
+      },
+      "acceptanceTests": [
+        "Images remain correctly cropped and not distorted after switch",
+        "Frames remain inside safe area"
+      ],
+      "deliverables": [
+        "packages/editor/orientation/reflowImageFrames.ts",
+        "docs/orientation_image_rules.md"
+      ]
+    },
+    {
+      "id": "S33-T06",
+      "title": "Persist orientation switch result + provide undo/redo integration",
+      "skill": ["State Management", "Backend"],
+      "priority": "P1",
+      "requirements": {
+        "behavior": [
+          "Orientation change is a single undoable operation",
+          "Persist updated docJson and orientation preset in Convex"
+        ],
+        "constraints": ["No partial state saved mid-switch"]
+      },
+      "acceptanceTests": [
+        "Undo returns to previous orientation/layout",
+        "Refresh shows the same orientation/layout"
+      ],
+      "deliverables": [
+        "packages/editor/history/orientationCommand.ts",
+        "convex/studioDocs.ts updated (if needed)"
+      ]
+    },
+    {
+      "id": "S33-T07",
+      "title": "QA + automated tests (threshold behavior, both directions, edge cases)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Portrait→Landscape: wide component (>=60%) keeps same relative width",
+          "Landscape→Portrait: wide component keeps same relative width",
+          "Fixed component keeps pixel size but stays inside safe area",
+          "Text overflow warnings appear when needed",
+          "Images not distorted; crops preserved"
+        ],
+        "automation": [
+          "Unit: classifyWideNode threshold at 0.60",
+          "Unit: relative mapping math round-trip tests",
+          "Integration: applyOrientationReflowV2 keeps wide nodes percentage",
+          "Integration: clamp ensures inside safe box"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "Regression prevents the reported wide-node layout issue"
+      ],
+      "deliverables": [
+        "tests/orientation/wideNodeThreshold.test.ts",
+        "tests/orientation/reflowMath.test.ts",
+        "tests/orientation/applyOrientationReflowV2.integration.test.ts",
+        "docs/qa_sprint33_orientation_reflow.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S33-T01",
+      "S33-T02",
+      "S33-T03",
+      "S33-T05",
+      "S33-T04",
+      "S33-T07",
+      "S33-T06"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "The 60% rule effectively treats wide elements as 'responsive' and preserves their layout intent across aspect changes.",
+      "Using safe-area-relative coordinates (rx, rw) avoids drift and keeps print-safe alignment consistent when orientation changes."
+    ]
+  }
+}

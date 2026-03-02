@@ -400,6 +400,51 @@ export const updateSettings = mutationGeneric({
   }
 });
 
+const portraitPresetDimensions: Record<string, { widthPx: number; heightPx: number }> = {
+  A4:          { widthPx: 794,  heightPx: 1123 },
+  US_LETTER:   { widthPx: 816,  heightPx: 1056 },
+  BOOK_6X9:    { widthPx: 720,  heightPx: 1080 },
+  BOOK_8_5X11: { widthPx: 816,  heightPx: 1056 }
+};
+
+export const setOrientation = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    orientation: v.union(v.literal("portrait"), v.literal("landscape"))
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+    const now = Date.now();
+    const currentSettings =
+      access.storybook.settings && typeof access.storybook.settings === "object" && !Array.isArray(access.storybook.settings)
+        ? (access.storybook.settings as Record<string, unknown>)
+        : {};
+    await ctx.db.patch(access.storybook._id as never, {
+      settings: { ...currentSettings, orientation: args.orientation },
+      updatedAt: now
+    });
+    const pages = await ctx.db
+      .query("pages")
+      .withIndex("by_storybookId_orderIndex", (q) => q.eq("storybookId", args.storybookId))
+      .collect();
+    for (const page of pages) {
+      const portrait = portraitPresetDimensions[page.sizePreset];
+      if (!portrait) continue;
+      const newWidth = args.orientation === "landscape"
+        ? Math.max(portrait.widthPx, portrait.heightPx)
+        : Math.min(portrait.widthPx, portrait.heightPx);
+      const newHeight = args.orientation === "landscape"
+        ? Math.min(portrait.widthPx, portrait.heightPx)
+        : Math.max(portrait.widthPx, portrait.heightPx);
+      await ctx.db.patch(page._id, { widthPx: newWidth, heightPx: newHeight, updatedAt: now });
+    }
+    const updated = await ctx.db.get(access.storybook._id as never);
+    if (!updated) throw new Error("Not found");
+    return toStorybookDto(updated as never);
+  }
+});
+
 export const updateNarration = mutationGeneric({
   args: {
     viewerSubject: v.optional(v.string()),

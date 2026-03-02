@@ -19,6 +19,7 @@ export type GuidedTemplateSlotBinding = {
   chapterKey: string;
   questionId: string;
   slotPath: string;
+  layoutIdLandscape?: string;
 };
 
 export type GuidedTemplateV2 = {

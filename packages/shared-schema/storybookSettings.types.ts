@@ -26,9 +26,12 @@ export type DigitalPresetV1 = {
   minImageWidthPx: number;
 };
 
+export type PageOrientationV1 = "portrait" | "landscape";
+
 export type StorybookExportSettingsV1 = {
   exportTargets: ExportTargetsV1;
   pageSize: ExportPageSizePreset;
+  orientation: PageOrientationV1;
   margins: ExportMarginsPx;
   printPreset: PrintPresetV1;
   digitalPreset: DigitalPresetV1;
@@ -40,6 +43,7 @@ export const defaultStorybookExportSettingsV1: StorybookExportSettingsV1 = {
     hardcopyPdf: true
   },
   pageSize: "BOOK_8_5X11",
+  orientation: "portrait",
   margins: {
     top: 44,
     right: 44,
@@ -98,6 +102,9 @@ export function normalizeStorybookExportSettingsV1(
     return fallbackPageSize ?? defaultStorybookExportSettingsV1.pageSize;
   })();
 
+  const orientation: PageOrientationV1 =
+    root.orientation === "landscape" ? "landscape" : "portrait";
+
   return {
     exportTargets: {
       digitalPdf: asBool(exportTargets?.digitalPdf, defaultStorybookExportSettingsV1.exportTargets.digitalPdf),
@@ -108,6 +115,7 @@ export function normalizeStorybookExportSettingsV1(
       )
     },
     pageSize,
+    orientation,
     margins: {
       top: asFiniteNumber(margins?.top, fallbackMargins?.top ?? defaultStorybookExportSettingsV1.margins.top),
       right: asFiniteNumber(margins?.right, fallbackMargins?.right ?? defaultStorybookExportSettingsV1.margins.right),
