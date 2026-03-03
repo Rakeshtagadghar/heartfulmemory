@@ -12,6 +12,8 @@
     "test:unit": "turbo test:unit",
     "test:integration": "turbo test:integration",
     "test:e2e": "turbo test:e2e",
+    "email:dev": "pnpm --filter @memorioso/emails dev",
+    "email:build": "pnpm --filter @memorioso/emails build",
     "commitlint": "commitlint --from=HEAD~1 --to=HEAD"
   },
   "devDependencies": {

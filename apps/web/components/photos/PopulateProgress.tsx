@@ -1,5 +1,7 @@
 "use client";
 
+import { SUPPORT_MAILTO } from "../../lib/support/contact";
+
 export function PopulateProgress({
   error,
   onRetry
@@ -23,7 +25,7 @@ export function PopulateProgress({
             </button>
           ) : null}
           <a
-            href="mailto:support@heartfulmemory.com"
+            href={SUPPORT_MAILTO}
             className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-white/60 hover:text-white/80"
           >
             Contact support

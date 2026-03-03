@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     signInUrl.searchParams.set("token", token);
     signInUrl.searchParams.set("returnTo", returnTo);
 
-    const emailContent = buildEmailSignInTemplate({
+    const emailContent = await buildEmailSignInTemplate({
       recipientEmail: email,
       actionUrl: signInUrl.toString()
     });

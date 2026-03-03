@@ -4,188 +4,324 @@
     "planType": "SPRINT_TASKS_JSON",
     "sprint": {
       "number": 37,
-      "title": "Data Retention v1: 90-Day Policy + Account Delete + Scheduled Purge (Convex + R2)",
+      "title": "Email Templates v1: React Email (Branded, Cross-Client, Auth + Billing)",
       "duration": "1 week",
-      "goal": "Implement a user-safe, compliant data lifecycle: 90-day retention, account delete with undo window, and scheduled purge that removes personal data and media from storage. Provide clear UX and policy documentation.",
+      "goal": "Create beautiful, branded transactional email templates using React Email that render consistently across major email clients. Include Memorioso logo/theme, dark-safe styling, accessible buttons, and plain-text fallbacks. Ship templates needed for Auth + Billing flows.",
       "definitionOfDone": [
-        "Data retention policy is implemented: purge personal data after 90 days post-deletion (or last activity if you choose)",
-        "Account delete flow exists (soft delete immediately, purge scheduled)",
-        "Undo deletion is available until purge time",
-        "Purge job deletes Convex records and R2 media assets",
-        "User can export/download their data before deletion (optional but recommended)",
-        "Privacy pages updated with retention + deletion policy",
-        "All actions logged for support (no sensitive content in logs)",
-        "Automated tests cover delete/undo/purge behavior"
+        "React Email set up in repo with preview/dev workflow",
+        "Core branded layout (header/logo, container, typography, footer) implemented as reusable components",
+        "Auth templates created: Verify Email, Login Code/Magic Link, Reset Password, Password Changed (optional)",
+        "Billing templates created: Subscription Active, Payment Failed, Invoice/Receipt (optional if using Stripe portal)",
+        "All templates render well in common clients per React Email compatibility tooling",
+        "Templates support variables (name, code, link, expiry, support link) and have plain-text fallbacks",
+        "Emails are safe (no external hotlinked images required; logo served reliably; links validated)",
+        "Docs added: how to add/edit templates, how to preview/test, and brand tokens"
       ]
     },
     "stackAssumptions": {
-      "backend": "Convex",
-      "storage": "Cloudflare R2",
-      "privacy": "UK GDPR storage limitation + right to erasure concepts"
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex/Next route handlers send emails",
+      "emailTemplates": "React Email + @react-email/components",
+      "sender": "Provider-agnostic (can use Resend/SES later); templates generate HTML"
     },
     "sourceNotes": {
-      "retention": "UK GDPR requires retention to be justified and not longer than necessary; right to erasure exists.",
-      "citations": ["turn0search14", "turn0search3"]
+      "reactEmailIntro": "React Email provides components and a tooling workflow for building email-client friendly HTML, with a compatibility checker.",
+      "citations": [
+        "turn0search9",
+        "turn0search1",
+        "turn0search12",
+        "turn0search0",
+        "turn0search10"
+      ]
     }
   },
   "backlog": [
     {
       "id": "S37-T01",
-      "title": "Define retention policy & events (90-day window) + document it in product/legal",
-      "skill": ["Product", "Legal/Privacy"],
+      "title": "Set up React Email in the repo (dev preview + build output HTML)",
+      "skill": ["Frontend Tooling"],
       "priority": "P0",
       "requirements": {
-        "policy": [
-          "Account deletion triggers a 90-day retention window (undo available)",
-          "After 90 days: purge/anonymize personal data + delete media",
-          "If user requests erasure: handle per policy unless legal basis requires retention"
+        "setup": [
+          "Install @react-email/components and react-email tooling",
+          "Create /emails workspace with TS support",
+          "Add scripts: email:dev (preview), email:build (export HTML)"
         ],
-        "docs": [
-          "Privacy policy section: retention and deletion",
-          "In-app delete account confirmation copy"
+        "constraints": [
+          "Templates must be version-controlled",
+          "Build must run in CI"
+        ],
+        "notes": [
+          "React Email is designed for incremental adoption and quick setup.",
+          "Templates can be rendered to HTML for any sending provider."
         ]
       },
       "acceptanceTests": [
-        "Policy documented clearly and matches actual behavior"
+        "Local preview server works and shows sample template",
+        "email:build outputs HTML without errors"
       ],
-      "deliverables": [
-        "docs/data_retention_policy.md",
-        "app/privacy page updates"
-      ]
+      "deliverables": ["emails/package setup", "docs/email_dev_workflow.md"]
     },
     {
       "id": "S37-T02",
-      "title": "Schema changes: deletion status + scheduled purge timestamps (users + storybooks + media)",
-      "skill": ["Convex", "Data Modeling"],
+      "title": "Create Memorioso email design system (tokens + reusable layout components)",
+      "skill": ["UI Design", "Frontend"],
       "priority": "P0",
       "requirements": {
-        "fields": [
-          "users.deletionStatus ('active'|'pending_deletion'|'deleted')",
-          "users.deletionRequestedAt",
-          "users.purgeAt (timestamp)",
-          "users.lastActivityAt (optional)",
-          "mediaAssets.ownerUserId + deletion markers (optional)"
+        "brandTokens": [
+          "Primary color (Memorioso theme)",
+          "Neutral background",
+          "Typography scale",
+          "Button styles (primary/secondary)",
+          "Border radius and spacing"
+        ],
+        "reusableComponents": [
+          "EmailShell (Html, Head, Preview, Body)",
+          "Header (Logo + product name)",
+          "Container/Card",
+          "SectionTitle",
+          "PrimaryButton",
+          "Divider",
+          "Footer (support, unsubscribe if needed, legal)"
+        ],
+        "logo": [
+          "Include Memorioso logo via Img component",
+          "Prefer hosting logo from your own domain/static asset (stable)",
+          "Provide alt text"
         ],
         "constraints": [
-          "Soft delete should immediately block login/use (or block access to content) depending on your product decision"
+          "Use email-safe layout primitives (tables/sections via React Email components)",
+          "Avoid unsupported CSS; favor inline-safe styles"
         ]
       },
       "acceptanceTests": [
-        "Deletion fields persist and are queryable",
-        "Soft-deleted users are treated correctly by route guards"
+        "Shell renders consistently with header/footer and correct spacing",
+        "Logo displays with alt text and no layout shift"
       ],
-      "deliverables": ["convex/schema.ts updates", "convex/users.ts updates"]
+      "deliverables": [
+        "emails/components/*",
+        "emails/theme/tokens.ts",
+        "docs/email_branding_guidelines.md"
+      ]
     },
     {
       "id": "S37-T03",
-      "title": "Account delete UX (confirm, reason optional, export data reminder) + undo flow",
-      "skill": ["Frontend", "UX"],
+      "title": "Auth template set v1 (Verify Email, Login Code/Magic Link, Reset Password)",
+      "skill": ["Frontend", "Copywriting"],
       "priority": "P0",
       "requirements": {
-        "screens": [
-          "/account/settings (Delete account section)",
-          "/account/delete-confirm",
-          "/account/delete-pending (undo)"
+        "templates": [
+          {
+            "id": "verify_email",
+            "subject": "Verify your email for Memorioso",
+            "vars": ["userName", "verifyUrl", "expiryMinutes", "supportUrl"]
+          },
+          {
+            "id": "login_code_or_magic_link",
+            "subject": "Your Memorioso login link / code",
+            "vars": [
+              "userName",
+              "loginUrl",
+              "code",
+              "expiryMinutes",
+              "supportUrl"
+            ]
+          },
+          {
+            "id": "reset_password",
+            "subject": "Reset your Memorioso password",
+            "vars": ["userName", "resetUrl", "expiryMinutes", "supportUrl"]
+          }
         ],
-        "behavior": [
-          "Delete sets deletionStatus=pending_deletion and purgeAt=now+90days",
-          "Show countdown / date for purge",
-          "Undo clears deletion status and restores access"
+        "copyRules": [
+          "Short, calm, elder-friendly",
+          "Explain what to do in one line",
+          "Include fallback text if button doesn't work (plain URL)",
+          "Include security line: 'If you didn’t request this, ignore this email.'"
+        ],
+        "constraints": [
+          "Provide plain-text alternative output for each email",
+          "Links must be validated by linter tooling where possible"
         ]
       },
       "acceptanceTests": [
-        "Delete marks account pending deletion and user sees pending state",
-        "Undo restores account and content access"
+        "Each template renders with provided variables",
+        "Plain-text fallback exists and matches intent"
       ],
       "deliverables": [
-        "app/account/settings/page.tsx updates",
-        "components/account/DeleteAccountDialog.tsx",
-        "components/account/UndoDeleteCard.tsx"
+        "emails/templates/auth/VerifyEmail.tsx",
+        "emails/templates/auth/LoginLinkOrCode.tsx",
+        "emails/templates/auth/ResetPassword.tsx",
+        "emails/templates/auth/plaintext.ts"
       ]
     },
     {
       "id": "S37-T04",
-      "title": "Purge job orchestration (Convex scheduled job) + R2 media deletion",
-      "skill": ["Backend", "Storage"],
-      "priority": "P0",
+      "title": "Billing template set v1 (Subscription Active, Payment Failed, Invoice/Receipt optional)",
+      "skill": ["Frontend", "Copywriting"],
+      "priority": "P1",
       "requirements": {
-        "job": [
-          "Daily scheduled job scans for users where purgeAt <= now",
-          "Deletes/anonymizes: user profile, storybooks, answers, studio docs, billing links (keep minimal non-PII ledger if needed)",
-          "Deletes R2 objects for user uploads (story photos, cached uploads)"
+        "templates": [
+          {
+            "id": "subscription_active",
+            "subject": "You’re on Memorioso Pro",
+            "vars": ["userName", "planName", "manageBillingUrl", "supportUrl"]
+          },
+          {
+            "id": "payment_failed",
+            "subject": "Payment failed — action needed for Memorioso",
+            "vars": ["userName", "manageBillingUrl", "retryDate", "supportUrl"]
+          }
+        ],
+        "optional": [
+          "invoice_receipt (if you want a branded wrapper over Stripe invoice links)"
         ],
         "constraints": [
-          "Idempotent: running twice does not break",
-          "Audit log record created (non-PII)"
+          "Do not include sensitive billing details in email body; link to portal/invoice"
         ]
       },
       "acceptanceTests": [
-        "Purged user data is no longer retrievable",
-        "R2 assets are deleted (or marked and later deleted) reliably"
+        "Templates render correctly with portal link",
+        "Copy is clear and not alarming"
       ],
       "deliverables": [
-        "convex/jobs/purgeDeletedUsers.ts",
-        "lib/storage/r2Delete.ts",
-        "docs/purge_job_design.md"
+        "emails/templates/billing/SubscriptionActive.tsx",
+        "emails/templates/billing/PaymentFailed.tsx"
       ]
     },
     {
       "id": "S37-T05",
-      "title": "Access control changes: block pending-deletion users and hide content from UI",
-      "skill": ["Frontend", "Backend"],
+      "title": "Cross-client compatibility pass (React Email compatibility checker + CSS hardening)",
+      "skill": ["Email Engineering", "QA"],
       "priority": "P0",
       "requirements": {
-        "behavior": [
-          "If user.pending_deletion: block Studio/Book routes and show pending deletion page with Undo",
-          "API guards enforce same (server-side)"
+        "checks": [
+          "Run React Email compatibility tooling and fix unsupported styles",
+          "Avoid complex CSS (position:fixed, advanced gradients, webfonts-only assumptions)",
+          "Ensure buttons render as bulletproof buttons (table-based) via components"
+        ],
+        "targets": [
+          "Gmail (web/mobile)",
+          "Outlook (desktop/web)",
+          "Apple Mail (macOS/iOS)"
+        ],
+        "constraints": [
+          "Prefer simple layouts: Container -> Sections -> Text -> Button",
+          "Keep max width around 600px"
         ]
       },
       "acceptanceTests": [
-        "Pending deletion users cannot access content pages",
-        "Undo restores access"
+        "Templates pass compatibility checks with minimal warnings",
+        "Outlook does not break layout"
       ],
       "deliverables": [
-        "lib/auth/requireActiveUser.ts",
-        "middleware/guards updates"
+        "docs/email_client_compat_report.md",
+        "template fixes in emails/*"
       ]
     },
     {
       "id": "S37-T06",
-      "title": "Optional: Data export before deletion (download JSON/PDF links)",
-      "skill": ["Backend", "Frontend"],
-      "priority": "P1",
+      "title": "Variable contract + validation (fail fast if variables missing)",
+      "skill": ["Backend", "DX"],
+      "priority": "P0",
       "requirements": {
-        "export": [
-          "Provide 'Download your data' on delete confirm",
-          "Export includes storybooks metadata + answers + list of uploads (not necessarily the media bytes in v1)"
+        "contracts": [
+          "Define TypeScript types per template variables",
+          "Add runtime validation (zod) for required vars"
+        ],
+        "constraints": [
+          "Do not send partially rendered emails",
+          "Log only templateId + missing var names (no PII)"
         ]
       },
       "acceptanceTests": [
-        "User can download their data package before deletion"
+        "Missing vars are caught before sending",
+        "Send layer returns stable error codes"
+      ],
+      "deliverables": [
+        "emails/contracts/*.ts",
+        "lib/email/validateTemplateVars.ts"
       ]
     },
     {
       "id": "S37-T07",
-      "title": "QA + tests (delete, undo, purge scheduling, access blocking)",
-      "skill": ["QA", "Testing"],
+      "title": "Provider integration layer (render React Email -> HTML -> send) with a pluggable sender",
+      "skill": ["Backend"],
       "priority": "P0",
       "requirements": {
-        "automation": [
-          "Unit: computePurgeAt = now + 90days",
-          "Integration: delete sets pending + purgeAt, undo clears",
-          "Integration: purge job removes records and marks user deleted"
+        "design": [
+          "renderEmail(template, vars) => { html, text, subject }",
+          "sendEmail({to, subject, html, text}) => provider-specific",
+          "Keep provider behind interface so you can switch Resend/SES later"
         ],
-        "manualChecklist": [
-          "Delete account -> pending state shown",
-          "Undo -> restored",
-          "Simulate purge time -> data removed"
+        "constraints": [
+          "Do not block auth flows if email provider temporarily fails; surface a safe message",
+          "Rate limit auth emails per user/email"
+        ],
+        "notes": ["React Email templates can be sent via any provider."]
+      },
+      "acceptanceTests": [
+        "Calling renderEmail produces HTML+text outputs",
+        "Sender interface can be swapped without changing templates"
+      ],
+      "deliverables": [
+        "lib/email/renderEmail.ts",
+        "lib/email/sender.ts (interface + first implementation)",
+        "docs/email_sender_architecture.md"
+      ]
+    },
+    {
+      "id": "S37-T08",
+      "title": "Preview gallery + snapshot testing for templates (regression protection)",
+      "skill": ["Testing", "QA"],
+      "priority": "P1",
+      "requirements": {
+        "gallery": [
+          "Create a preview index page in React Email dev server for all templates",
+          "Provide sample data fixtures"
+        ],
+        "tests": [
+          "Snapshot HTML output for each template (or key sections) to detect accidental layout changes",
+          "Link validation linter (where supported)"
         ]
       },
       "acceptanceTests": [
-        "At least 5 tests added and passing",
-        "No accidental deletion of active users"
+        "Templates can be previewed quickly by non-dev team members",
+        "Snapshots catch breaking changes"
       ],
-      "deliverables": ["docs/qa_sprint37_retention.md", "tests/retention/*"]
+      "deliverables": [
+        "emails/preview/index.tsx",
+        "tests/emails/*.test.ts",
+        "docs/email_preview_guide.md"
+      ]
+    },
+    {
+      "id": "S37-T09",
+      "title": "Final polish: Memorioso theme, accessibility, and deliverability hygiene",
+      "skill": ["UX", "Email Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "a11y": [
+          "Alt text for logo/images",
+          "Readable font sizes (>=14px body)",
+          "High contrast button text"
+        ],
+        "deliverability": [
+          "Keep HTML lightweight",
+          "Avoid too many images",
+          "Include plain text alternative",
+          "Add a consistent from-name (e.g., 'Memorioso')"
+        ],
+        "constraints": ["No tracking pixels in v1 (keep it simple)"]
+      },
+      "acceptanceTests": [
+        "Emails look premium and readable on mobile",
+        "Plain-text version is clean and usable"
+      ],
+      "deliverables": [
+        "emails/theme polish commits",
+        "docs/email_deliverability_notes.md"
+      ]
     }
   ],
   "sprintPlanning": {
@@ -194,13 +330,20 @@
       "S37-T02",
       "S37-T03",
       "S37-T05",
-      "S37-T04",
+      "S37-T06",
       "S37-T07",
-      "S37-T06"
+      "S37-T09",
+      "S37-T04",
+      "S37-T08"
     ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1.5,
+      "buffer_days": 0.5
+    },
     "notes": [
-      "UK GDPR storage limitation: you decide retention but must justify it and avoid keeping data longer than necessary.",
-      "Right to erasure exists and should be supported via account deletion + purge."
+      "Use React Email’s compatibility checker to avoid CSS that breaks in Outlook/Gmail.",
+      "Keep templates provider-agnostic: render to HTML/text, then send with whichever provider you choose."
     ]
   }
 }

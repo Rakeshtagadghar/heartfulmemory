@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AuthPageShell } from "../../components/auth/auth-page-shell";
 import { MagicLinkForm } from "../../components/auth/magic-link-form";
 import { getSafeReturnTo } from "../../lib/auth/server";
@@ -27,13 +28,23 @@ export default async function LoginPage({ searchParams }: Props) {
 
   return (
     <AuthPageShell>
-      <MagicLinkForm
-        returnTo={returnTo}
-        configMissing={query.config === "missing"}
-        initialMessage={message}
-        initialMagicToken={token}
-        allowGoogle={allowGoogle}
-      />
+      <div className="space-y-4">
+        <MagicLinkForm
+          returnTo={returnTo}
+          configMissing={query.config === "missing"}
+          initialMessage={message}
+          initialMagicToken={token}
+          allowGoogle={allowGoogle}
+        />
+        <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
+          <p>
+            New here?{" "}
+            <Link href="/auth/sign-up" className="underline underline-offset-2 hover:text-white">
+              Create account
+            </Link>
+          </p>
+        </div>
+      </div>
     </AuthPageShell>
   );
 }

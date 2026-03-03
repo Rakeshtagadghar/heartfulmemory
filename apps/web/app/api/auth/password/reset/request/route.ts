@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     });
 
     const actionUrl = `${getBaseAppUrl(request)}/auth/reset-password/verify?token=${encodeURIComponent(token)}`;
-    const emailContent = buildPasswordResetTemplate({
+    const emailContent = await buildPasswordResetTemplate({
       recipientEmail: email,
       actionUrl
     });

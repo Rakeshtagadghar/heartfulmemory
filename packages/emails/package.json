@@ -1,0 +1,29 @@
+{
+  "name": "@memorioso/emails",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "email dev --dir ./src/templates",
+    "build": "email export --dir ./src/templates --outDir ./dist",
+    "lint": "echo \"emails lint not configured\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-email/components": "^1.0.8",
+    "@react-email/render": "^2.0.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@react-email/preview-server": "^5.2.9",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react-email": "^5.2.9",
+    "typescript": "^5.9.3"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

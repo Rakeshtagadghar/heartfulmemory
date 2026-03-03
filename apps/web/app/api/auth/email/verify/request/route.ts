@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     });
 
     const actionUrl = `${getBaseAppUrl(request)}/auth/verify-email?token=${encodeURIComponent(token)}`;
-    const emailContent = buildEmailVerificationTemplate({
+    const emailContent = await buildEmailVerificationTemplate({
       recipientEmail: email,
       actionUrl
     });

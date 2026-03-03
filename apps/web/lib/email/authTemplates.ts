@@ -1,127 +1,226 @@
+import { logError } from "../server-log";
+import { renderEmail } from "./renderEmail";
+import { validateTemplateVars } from "./validateTemplateVars";
+import { SUPPORT_CONTACT_PATH } from "../support/contact";
+
 type AuthTemplateInput = {
   appName?: string;
   recipientEmail: string;
   actionUrl: string;
 };
 
+const AUTH_EXPIRY_MINUTES = {
+  verifyEmail: 24 * 60,
+  signInLink: 20,
+  resetPassword: 30,
+} as const;
+
+function getSiteUrl() {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXTAUTH_URL ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
+}
+
+function getSupportUrl() {
+  return process.env.EMAIL_SUPPORT_URL || `${getSiteUrl()}${SUPPORT_CONTACT_PATH}`;
+}
+
+function getLogoUrl() {
+  return (
+    process.env.EMAIL_LOGO_URL ||
+    `${getSiteUrl()}/branding/memorioso-email-logo.png`
+  );
+}
+
 function getAppName(inputName?: string) {
   return inputName || "Memorioso";
 }
 
-function createBaseHtml(title: string, bodyLines: string[], ctaLabel: string, actionUrl: string, appName: string) {
-  const bodyHtml = bodyLines.map((line) => `<p style=\"margin:0 0 12px;color:#1f2937;line-height:1.6;\">${line}</p>`).join("");
-
-  return [
-    "<!doctype html>",
-    "<html>",
-    "<body style=\"margin:0;padding:24px;background:#f4f1ea;font-family:Georgia,serif;\">",
-    "  <table role=\"presentation\" width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">",
-    "    <tr>",
-    "      <td align=\"center\">",
-    "        <table role=\"presentation\" width=\"100%\" style=\"max-width:600px;background:#ffffff;border:1px solid #e5dcc8;border-radius:12px;padding:28px;\">",
-    `          <tr><td><p style=\"margin:0 0 10px;font-size:12px;letter-spacing:0.08em;color:#846400;text-transform:uppercase;\">${appName}</p></td></tr>`,
-    `          <tr><td><h1 style=\"margin:0 0 14px;color:#0f172a;font-size:28px;line-height:1.2;\">${title}</h1></td></tr>`,
-    `          <tr><td>${bodyHtml}</td></tr>`,
-    `          <tr><td style=\"padding-top:10px;\"><a href=\"${actionUrl}\" style=\"display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:600;\">${ctaLabel}</a></td></tr>`,
-    `          <tr><td><p style=\"margin:16px 0 0;color:#6b7280;font-size:12px;line-height:1.5;\">If this was not you, you can ignore this email. Your account remains safe.</p></td></tr>`,
-    "        </table>",
-    "      </td>",
-    "    </tr>",
-    "  </table>",
-    "</body>",
-    "</html>"
-  ].join("");
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
-export function buildPasswordResetTemplate(input: AuthTemplateInput) {
-  const appName = getAppName(input.appName);
-  const subject = `${appName}: Reset your password`;
-  const text = [
-    `${appName} password reset`,
-    "",
-    "We received a request to reset your password.",
-    `Use this secure link: ${input.actionUrl}`,
-    "",
-    "If you did not request this, you can ignore this email."
-  ].join("\n");
-
-  const html = createBaseHtml(
-    "Reset your password",
-    [
-      "We received a request to reset your password.",
-      "Use the secure button below to choose a new password."
-    ],
-    "Set new password",
-    input.actionUrl,
-    appName
-  );
+function createFallbackEmail(
+  subject: string,
+  line1: string,
+  line2: string,
+  actionUrl: string,
+) {
+  const safeLine1 = escapeHtml(line1);
+  const safeLine2 = escapeHtml(line2);
+  const safeActionUrl = escapeHtml(actionUrl);
 
   return {
-    to: input.recipientEmail,
     subject,
-    text,
-    html
+    html: [
+      "<!doctype html>",
+      "<html>",
+      '<body style="font-family:Arial,sans-serif;line-height:1.6;padding:24px;">',
+      `<h1 style=\"font-size:24px;margin-bottom:12px;\">${escapeHtml(subject)}</h1>`,
+      `<p>${safeLine1}</p>`,
+      `<p>${safeLine2}</p>`,
+      `<p><a href=\"${safeActionUrl}\">${safeActionUrl}</a></p>`,
+      "<p>If you did not request this, you can ignore this email.</p>",
+      "</body>",
+      "</html>",
+    ].join(""),
+    text: [
+      subject,
+      "",
+      line1,
+      line2,
+      actionUrl,
+      "",
+      "If you did not request this, ignore this email.",
+    ].join("\n"),
   };
 }
 
-export function buildEmailVerificationTemplate(input: AuthTemplateInput) {
-  const appName = getAppName(input.appName);
-  const subject = `${appName}: Verify your email`;
-  const text = [
-    `${appName} email verification`,
-    "",
-    "Please verify your email to continue.",
-    `Use this secure link: ${input.actionUrl}`,
-    "",
-    "If you did not request this, you can ignore this email."
-  ].join("\n");
+async function renderOrFallback(args: {
+  templateId: "verify_email" | "login_code_or_magic_link" | "reset_password";
+  vars:
+    | {
+        userName?: string;
+        verifyUrl: string;
+        expiryMinutes: number;
+        supportUrl: string;
+        appName?: string;
+        logoUrl?: string;
+      }
+    | {
+        userName?: string;
+        loginUrl: string;
+        code?: string;
+        expiryMinutes: number;
+        supportUrl: string;
+        appName?: string;
+        logoUrl?: string;
+      }
+    | {
+        userName?: string;
+        resetUrl: string;
+        expiryMinutes: number;
+        supportUrl: string;
+        appName?: string;
+        logoUrl?: string;
+      };
+  fallbackSubject: string;
+  fallbackLine1: string;
+  fallbackLine2: string;
+  fallbackActionUrl: string;
+}) {
+  try {
+    const validation = validateTemplateVars(args.templateId, args.vars);
+    if (!validation.ok) {
+      logError("email_template_vars_invalid", {
+        templateId: validation.templateId,
+        missingVarNames: validation.missingVarNames,
+      });
+      return createFallbackEmail(
+        args.fallbackSubject,
+        args.fallbackLine1,
+        args.fallbackLine2,
+        args.fallbackActionUrl,
+      );
+    }
 
-  const html = createBaseHtml(
-    "Verify your email",
-    [
-      "Please confirm this email address before continuing.",
-      "Verification helps keep your account secure."
-    ],
-    "Verify email",
-    input.actionUrl,
-    appName
-  );
+    return await renderEmail(args.templateId, validation.data);
+  } catch (error) {
+    logError("email_template_render_failed", {
+      templateId: args.templateId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+
+    return createFallbackEmail(
+      args.fallbackSubject,
+      args.fallbackLine1,
+      args.fallbackLine2,
+      args.fallbackActionUrl,
+    );
+  }
+}
+
+export async function buildPasswordResetTemplate(input: AuthTemplateInput) {
+  const appName = getAppName(input.appName);
+  const rendered = await renderOrFallback({
+    templateId: "reset_password",
+    vars: {
+      appName,
+      userName: undefined,
+      resetUrl: input.actionUrl,
+      expiryMinutes: AUTH_EXPIRY_MINUTES.resetPassword,
+      supportUrl: getSupportUrl(),
+      logoUrl: getLogoUrl(),
+    },
+    fallbackSubject: `${appName}: Reset your password`,
+    fallbackLine1: "We received a request to reset your password.",
+    fallbackLine2: "Use this secure link to choose a new password.",
+    fallbackActionUrl: input.actionUrl,
+  });
 
   return {
     to: input.recipientEmail,
-    subject,
-    text,
-    html
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   };
 }
 
-export function buildEmailSignInTemplate(input: AuthTemplateInput) {
+export async function buildEmailVerificationTemplate(input: AuthTemplateInput) {
   const appName = getAppName(input.appName);
-  const subject = `${appName}: Your secure sign-in link`;
-  const text = [
-    `${appName} secure sign-in`,
-    "",
-    "Use this secure link to sign in or continue setting up your account.",
-    `Sign-in link: ${input.actionUrl}`,
-    "",
-    "If you did not request this, you can ignore this email."
-  ].join("\n");
-
-  const html = createBaseHtml(
-    "Your secure sign-in link",
-    [
-      "Use the button below to sign in on this device.",
-      "This link expires soon for your security."
-    ],
-    "Sign in securely",
-    input.actionUrl,
-    appName
-  );
+  const rendered = await renderOrFallback({
+    templateId: "verify_email",
+    vars: {
+      appName,
+      userName: undefined,
+      verifyUrl: input.actionUrl,
+      expiryMinutes: AUTH_EXPIRY_MINUTES.verifyEmail,
+      supportUrl: getSupportUrl(),
+      logoUrl: getLogoUrl(),
+    },
+    fallbackSubject: `${appName}: Verify your email`,
+    fallbackLine1: "Please verify your email to continue.",
+    fallbackLine2: "Use this secure link to verify your address.",
+    fallbackActionUrl: input.actionUrl,
+  });
 
   return {
     to: input.recipientEmail,
-    subject,
-    text,
-    html
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  };
+}
+
+export async function buildEmailSignInTemplate(input: AuthTemplateInput) {
+  const appName = getAppName(input.appName);
+  const rendered = await renderOrFallback({
+    templateId: "login_code_or_magic_link",
+    vars: {
+      appName,
+      userName: undefined,
+      loginUrl: input.actionUrl,
+      expiryMinutes: AUTH_EXPIRY_MINUTES.signInLink,
+      supportUrl: getSupportUrl(),
+      logoUrl: getLogoUrl(),
+    },
+    fallbackSubject: `${appName}: Your secure sign-in link`,
+    fallbackLine1: "Use this secure link to sign in.",
+    fallbackLine2: "This link expires shortly for your security.",
+    fallbackActionUrl: input.actionUrl,
+  });
+
+  return {
+    to: input.recipientEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
   };
 }
