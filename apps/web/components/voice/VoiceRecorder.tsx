@@ -1,20 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useVoiceVisualizer } from "react-voice-visualizer";
 import { getClientSttConfig } from "../../lib/config/stt";
 import { useVoiceConsent } from "../../lib/consent/useVoiceConsent";
 import { storeOrDiscardAudioForVoiceAnswer } from "../../lib/audio/audioStorage";
-import {
-  blobToBase64,
-  createBrowserRecordingSession,
-  MediaRecorderClientError
-} from "../../lib/audio/mediaRecorder";
-import {
-  initialVoiceRecorderMachine,
-  voiceRecorderReducer
-} from "./recorderStateMachine";
+import { blobToBase64 } from "../../lib/audio/mediaRecorder";
+import { acquireVoiceSession, releaseVoiceSession } from "../../lib/voice/voiceSessionLock";
 import { VoiceConsent } from "./VoiceConsent";
 import { VoiceErrors } from "./VoiceErrors";
+import { VoiceWaveform } from "./VoiceWaveform";
+import { VoiceStatusPill } from "./VoiceStatusPill";
+import type { VoiceSessionState } from "./voiceStates";
 import {
   trackVoiceRecordStart,
   trackVoiceRecordStop,
@@ -49,14 +46,7 @@ type VoiceTranscribeApiResult =
     retryable: boolean;
   };
 
-function formatTimer(ms: number) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-async function transcribeViaApi(input: {
+export async function transcribeViaApi(input: {
   audioBase64: string;
   mimeType: string;
   durationMs?: number;
@@ -97,6 +87,8 @@ async function transcribeViaApi(input: {
   }
 }
 
+export type { SttMeta, VoiceTranscribeApiResult };
+
 export function VoiceRecorder({
   questionId,
   chapterKey,
@@ -118,67 +110,47 @@ export function VoiceRecorder({
 }) {
   const sttConfig = useMemo(() => getClientSttConfig(), []);
   const consent = useVoiceConsent();
-  const [machine, dispatch] = useReducer(voiceRecorderReducer, initialVoiceRecorderMachine);
-  const [timerMs, setTimerMs] = useState(0);
-  const [lastRecording, setLastRecording] = useState<{
-    blob: Blob;
-    mimeType: string;
-    durationMs: number;
-  } | null>(null);
+  const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
+  const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastTranscription, setLastTranscription] = useState<{
     transcriptText: string;
     provider: "groq" | "elevenlabs";
   } | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
-  const recorderRef = useRef<Awaited<ReturnType<typeof createBrowserRecordingSession>> | null>(null);
-  const startedAtRef = useRef<number | null>(null);
-  const timerIntervalRef = useRef<number | null>(null);
+  const recordStartTimeRef = useRef<number>(0);
 
   const maxMs = sttConfig.maxSecondsPerAnswer * 1000;
 
-  useEffect(() => {
-    return () => {
-      if (timerIntervalRef.current) window.clearInterval(timerIntervalRef.current);
-      void recorderRef.current?.cancel();
-    };
-  }, []);
-
-  const resetError = () => {
-    setErrorCode(null);
-  };
-
-  const beginRecording = async () => {
-    resetError();
-    dispatch({ type: "REQUEST_PERMISSION" });
-    try {
-      const recorder = await createBrowserRecordingSession();
-      recorderRef.current = recorder;
-      dispatch({ type: "PERMISSION_GRANTED" });
-      await recorder.start();
-      startedAtRef.current = Date.now();
-      setTimerMs(0);
+  const controls = useVoiceVisualizer({
+    onStartRecording: () => {
+      setSessionState("listening");
       setLastTranscription(null);
-      dispatch({ type: "START_RECORDING" });
+      recordStartTimeRef.current = Date.now();
       trackVoiceRecordStart({ questionId, chapterKey });
-    } catch (error) {
-      const code =
-        error instanceof MediaRecorderClientError
-          ? error.code
-          : "UNKNOWN";
-      setErrorCode(code);
-      dispatch({
-        type: "PERMISSION_DENIED",
-        message: error instanceof Error ? error.message : "Unable to start recording."
-      });
+    },
+    onStopRecording: () => {
+      // recordedBlob useEffect handles next steps
     }
-  };
+  });
+
+  const {
+    startRecording,
+    stopRecording,
+    recordedBlob,
+    isRecordingInProgress,
+    recordingTime,
+    formattedRecordingTime,
+    clearCanvas
+  } = controls;
 
   const runTranscription = useCallback(async (
-    recording: { blob: Blob; mimeType: string; durationMs: number }
+    blob: Blob,
+    durationMs: number
   ) => {
-    resetError();
-    dispatch({ type: "TRANSCRIBE_START" });
-    const durationSec = Math.max(1, Math.round(recording.durationMs / 1000));
+    setErrorCode(null);
+    setErrorMessage(null);
+    setSessionState("processing");
+    const durationSec = Math.max(1, Math.round(durationMs / 1000));
     trackVoiceTranscribeStart({
       provider: sttConfig.providerDefault,
       durationSec,
@@ -187,18 +159,20 @@ export function VoiceRecorder({
     });
 
     try {
-      const audioBase64 = await blobToBase64(recording.blob);
+      const audioBase64 = await blobToBase64(blob);
+      const mimeType = blob.type || "audio/webm";
       const result = await transcribeViaApi({
         audioBase64,
-        mimeType: recording.mimeType,
-        durationMs: recording.durationMs,
+        mimeType,
+        durationMs,
         provider: sttConfig.providerDefault,
         prompt: promptHint ? `Question context: ${promptHint}` : undefined
       });
 
       if (!result.ok) {
         setErrorCode(result.errorCode);
-        dispatch({ type: "TRANSCRIBE_ERROR", message: result.message });
+        setErrorMessage(result.message);
+        setSessionState("error");
         trackVoiceTranscribeError({
           provider: sttConfig.providerDefault,
           durationSec,
@@ -209,14 +183,14 @@ export function VoiceRecorder({
         return;
       }
 
-      const storage = await storeOrDiscardAudioForVoiceAnswer(recording.blob);
+      const storage = await storeOrDiscardAudioForVoiceAnswer(blob);
       const sttMeta: SttMeta = {
         provider: result.provider,
         confidence: result.confidence,
-        durationMs: result.durationMs ?? recording.durationMs,
+        durationMs: result.durationMs ?? durationMs,
         providerRequestId: result.providerRequestId,
-        mimeType: recording.mimeType,
-        bytes: recording.blob.size
+        mimeType: blob.type || "audio/webm",
+        bytes: blob.size
       };
 
       onTranscriptReady({
@@ -230,7 +204,7 @@ export function VoiceRecorder({
         transcriptText: result.transcriptText,
         provider: result.provider
       });
-      dispatch({ type: "TRANSCRIBE_SUCCESS" });
+      setSessionState("success");
       trackVoiceTranscribeSuccess({
         provider: result.provider,
         durationSec,
@@ -240,7 +214,8 @@ export function VoiceRecorder({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Transcription failed.";
       setErrorCode("UNKNOWN");
-      dispatch({ type: "TRANSCRIBE_ERROR", message });
+      setErrorMessage(message);
+      setSessionState("error");
       trackVoiceTranscribeError({
         provider: sttConfig.providerDefault,
         durationSec,
@@ -251,87 +226,77 @@ export function VoiceRecorder({
     }
   }, [chapterKey, onTranscriptReady, promptHint, questionId, sttConfig.providerDefault]);
 
-  const stopRecording = useCallback(async (autoStopped = false) => {
-    const recorder = recorderRef.current;
-    if (!recorder) return;
-    dispatch({ type: "STOP_RECORDING" });
-    try {
-      const result = await recorder.stop();
-      recorderRef.current = null;
-      const recording = {
-        blob: result.blob,
-        mimeType: recorder.mimeType,
-        durationMs: result.durationMs
-      };
-      setLastRecording(recording);
-      trackVoiceRecordStop({
-        questionId,
-        chapterKey,
-        durationSec: Math.max(1, Math.round(result.durationMs / 1000)),
-        auto_stop: autoStopped
-      });
-      await runTranscription(recording);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not stop recording.";
-      setErrorCode(error instanceof MediaRecorderClientError ? error.code : "UNKNOWN");
-      dispatch({ type: "TRANSCRIBE_ERROR", message });
-    }
-  }, [chapterKey, questionId, runTranscription]);
-
+  // Bridge: when the library produces a blob, run transcription
   useEffect(() => {
-    if (machine.state !== "recording") return;
-    timerIntervalRef.current = window.setInterval(() => {
-      const startedAt = startedAtRef.current;
-      if (!startedAt) return;
-      const elapsed = Date.now() - startedAt;
-      setTimerMs(elapsed);
-      if (elapsed >= maxMs) {
-        void stopRecording(true);
-      }
-    }, 250);
+    if (!recordedBlob) return;
+    const durationMs = Date.now() - recordStartTimeRef.current;
+    trackVoiceRecordStop({
+      questionId,
+      chapterKey,
+      durationSec: Math.max(1, Math.round(durationMs / 1000)),
+      auto_stop: false
+    });
+    globalThis.queueMicrotask(() => {
+      void runTranscription(recordedBlob, durationMs);
+    });
+  }, [recordedBlob]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-stop at max duration
+  useEffect(() => {
+    if (!isRecordingInProgress) return;
+    if (recordingTime >= maxMs) {
+      stopRecording();
+    }
+  }, [recordingTime, maxMs, isRecordingInProgress, stopRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      if (timerIntervalRef.current) {
-        window.clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
+      releaseVoiceSession("wizard");
     };
-  }, [machine.state, maxMs, stopRecording]);
+  }, []);
+
+  const beginRecording = async () => {
+    setErrorCode(null);
+    setErrorMessage(null);
+
+    if (!acquireVoiceSession("wizard")) {
+      setErrorCode("SESSION_LOCKED");
+      setErrorMessage("Voice recording is already active in another section.");
+      setSessionState("error");
+      return;
+    }
+
+    try {
+      startRecording();
+    } catch (error) {
+      releaseVoiceSession("wizard");
+      const message = error instanceof Error ? error.message : "Unable to start recording.";
+      setErrorCode("UNKNOWN");
+      setErrorMessage(message);
+      setSessionState("error");
+    }
+  };
+
+  const handleStop = () => {
+    stopRecording();
+  };
 
   const retryTranscription = async () => {
-    if (!lastRecording) return;
-    await runTranscription(lastRecording);
+    const blob = recordedBlob;
+    if (!blob) return;
+    const durationMs = Date.now() - recordStartTimeRef.current;
+    await runTranscription(blob, durationMs);
   };
 
-  const recordAgain = async () => {
-    await recorderRef.current?.cancel();
-    recorderRef.current = null;
-    startedAtRef.current = null;
-    setTimerMs(0);
-    setLastRecording(null);
+  const recordAgain = () => {
+    clearCanvas();
+    recordStartTimeRef.current = 0;
     setLastTranscription(null);
     setErrorCode(null);
-    dispatch({ type: "RECORD_AGAIN" });
+    setErrorMessage(null);
+    setSessionState("idle");
   };
-
-  const stateLabel = (() => {
-    switch (machine.state) {
-      case "requesting_permission":
-        return "Requesting microphone permission...";
-      case "recording":
-        return "Recording...";
-      case "processing_upload":
-        return "Preparing audio...";
-      case "transcribing":
-        return "Transcribing your voice...";
-      case "reviewing":
-        return "Transcript ready. Review and edit it below.";
-      case "error":
-        return "Voice input error";
-      default:
-        return "Ready to record";
-    }
-  })();
 
   if (!sttConfig.enableVoiceInput) {
     return (
@@ -350,38 +315,44 @@ export function VoiceRecorder({
   return (
     <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          <VoiceStatusPill state={sessionState} />
           <p className="text-sm font-semibold text-white/90">Voice Answer</p>
-          <p className="text-xs text-white/60">{stateLabel}</p>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-white/85">
-          {formatTimer(timerMs)}
+          {formattedRecordingTime}
         </div>
       </div>
 
-      {machine.state === "error" ? (
+      <VoiceWaveform
+        controls={controls}
+        visible={sessionState === "listening"}
+      />
+
+      {sessionState === "error" ? (
         <VoiceErrors
           code={errorCode}
-          message={machine.errorMessage}
-          onRetryTranscription={lastRecording ? retryTranscription : undefined}
+          message={errorMessage}
+          onRetryTranscription={recordedBlob ? retryTranscription : undefined}
           onRecordAgain={recordAgain}
           onSwitchToTyping={onSwitchToTyping}
         />
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-        {machine.state !== "recording" ? (
+        {!isRecordingInProgress ? (
           <button
             type="button"
-            onClick={beginRecording}
-            className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 px-5 text-base font-semibold text-rose-100"
+            onClick={() => void beginRecording()}
+            disabled={sessionState === "processing"}
+            className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 px-5 text-base font-semibold text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Start Recording
           </button>
         ) : (
           <button
             type="button"
-            onClick={() => void stopRecording(false)}
+            onClick={handleStop}
             className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-5 text-base font-semibold text-emerald-100"
           >
             Stop Recording
@@ -391,20 +362,20 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={recordAgain}
-          className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75"
+          disabled={isRecordingInProgress || sessionState === "processing"}
+          className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Record Again
         </button>
 
         <button
           type="button"
-          onClick={retryTranscription}
-          disabled={!lastRecording || machine.state === "recording" || machine.state === "transcribing"}
+          onClick={() => void retryTranscription()}
+          disabled={!recordedBlob || isRecordingInProgress || sessionState === "processing"}
           className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Retry Transcription
         </button>
-
       </div>
 
       {lastTranscription ? (

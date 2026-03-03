@@ -1,0 +1,309 @@
+{
+  "meta": {
+    "project": "Bloodline Storybook / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 35,
+      "title": "Voice UX v1: react-voice-visualizer Waveform + Studio Textbox Record & Append",
+      "duration": "1 week",
+      "goal": "Use react-voice-visualizer to show a live waveform while recording and hide it when recording stops. Add in-Studio voice recording for textboxes so new transcriptions are appended/concatenated to existing text (same pipeline as Q&A). Ship a polished, elder-friendly UI around recording states.",
+      "definitionOfDone": [
+        "Waveform component appears only while recording and hides when recording stops",
+        "Recording UI clearly shows states: Idle → Listening → Processing → Inserted/Error",
+        "Wizard Q&A uses waveform while recording and continues to send audio to ElevenLabs as before",
+        "Studio textbox: when user clicks a textbox, they can start recording; transcribed text is appended to existing content",
+        "Append behavior is deterministic (adds a space/newline as configured)",
+        "Cancel does not modify text; Retry works after failures",
+        "Microphone stream is released properly on stop/unmount (no stuck mic indicator)",
+        "No regressions to existing STT flow, editor selection, or save/resume"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript + React",
+      "backend": "Convex actions for STT",
+      "sttProvider": "ElevenLabs (existing implementation)",
+      "waveform": "react-voice-visualizer (useVoiceVisualizer + VoiceVisualizer)",
+      "editor": "Studio canvas editor supports entering text edit mode and committing content"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S35-T01",
+      "title": "Adopt react-voice-visualizer as the waveform layer (wrapper component + consistent states)",
+      "skill": ["Frontend", "UI Engineering"],
+      "priority": "P0",
+      "requirements": {
+        "libraryUsage": [
+          "Use useVoiceVisualizer hook to control recording and get state",
+          "Render VoiceVisualizer component only when recording is active"
+        ],
+        "stateMachine": [
+          "idle",
+          "listening (recording)",
+          "processing (upload/transcribe in-flight)",
+          "inserted (success toast)",
+          "error"
+        ],
+        "constraints": [
+          "Waveform must not be visible in idle state",
+          "Waveform must stop immediately on stopRecording (no lag)",
+          "No heavy rerenders: waveform component isolated"
+        ]
+      },
+      "acceptanceTests": [
+        "Waveform shows only during listening state",
+        "Stop hides waveform and releases mic"
+      ],
+      "deliverables": [
+        "components/voice/VoiceWaveform.tsx",
+        "components/voice/voiceStates.ts",
+        "docs/voice_waveform_integration.md"
+      ]
+    },
+    {
+      "id": "S35-T02",
+      "title": "Unify microphone capture pipeline: waveform + ElevenLabs upload from same recording session",
+      "skill": ["Frontend", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Recording uses react-voice-visualizer for capture/visualization",
+          "On stop, get recorded audio blob (from the library) and send to ElevenLabs (existing endpoint/action)",
+          "Show processing state while STT is running",
+          "On result, insert/append text"
+        ],
+        "constraints": [
+          "Do not change STT provider logic; only refactor how audio blob is produced",
+          "Ensure blob format is compatible with your ElevenLabs ingestion"
+        ]
+      },
+      "acceptanceTests": [
+        "Audio recorded via visualizer reaches ElevenLabs and returns transcript",
+        "Processing state shows until transcript is returned"
+      ],
+      "deliverables": [
+        "lib/voice/transcribeWithElevenLabs.ts",
+        "convex/stt/transcribe.ts reused (no breaking changes)"
+      ]
+    },
+    {
+      "id": "S35-T03",
+      "title": "Wizard Q&A recording UI refresh: show waveform + status pill + controls",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Mic button toggles recording",
+          "While recording: show waveform + 'Listening…' pill",
+          "On stop: show 'Processing…' with spinner",
+          "On success: show 'Inserted' toast + Undo (5s)",
+          "Buttons: Stop, Cancel (discard), Retry (after error)"
+        ],
+        "constraints": [
+          "Elder-friendly: large buttons, clear labels",
+          "No confusing multi-step controls"
+        ]
+      },
+      "acceptanceTests": [
+        "Waveform visible only while recording",
+        "Cancel discards and does not change text",
+        "Undo reverts inserted transcript"
+      ],
+      "deliverables": [
+        "components/wizard/VoiceRecorderInline.tsx",
+        "components/voice/VoiceStatusPill.tsx",
+        "components/voice/TranscriptToast.tsx"
+      ]
+    },
+    {
+      "id": "S35-T04",
+      "title": "Studio textbox voice: add 'Record' option on textbox focus and append transcript to existing text",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "entryPoints": [
+          "When a textbox is selected/focused in Studio: show a small mic button in the floating toolbar",
+          "Also allow a context menu action: 'Record & append'"
+        ],
+        "appendRules": [
+          "Default: append with a space if last char is not whitespace",
+          "If textbox supports paragraphs: append with '\\n\\n' (configurable)",
+          "Transcribed text is concatenated to existing content (no replacement unless user chooses)"
+        ],
+        "constraints": [
+          "Must work with your current text node model (plain or Tiptap JSON if already migrated)",
+          "If rich text: append as a new paragraph node",
+          "If page/textbox is locked: disable record action"
+        ]
+      },
+      "acceptanceTests": [
+        "Recording in Studio appends transcript to the selected textbox",
+        "Recording action is disabled on locked page/textbox",
+        "Cancel does not modify textbox content"
+      ],
+      "deliverables": [
+        "packages/editor/voice/RecordAppendController.tsx",
+        "packages/editor/voice/appendTranscript.ts",
+        "packages/editor/ui/TextboxMicAction.tsx"
+      ]
+    },
+    {
+      "id": "S35-T05",
+      "title": "Beautiful Studio recording UI: overlay anchored to textbox (waveform + controls)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Small overlay card anchored near the active textbox",
+          "Waveform (react-voice-visualizer) centered",
+          "Controls: Stop, Cancel, Retry",
+          "Status: Listening/Processing",
+          "Success: subtle checkmark + 'Added to text'"
+        ],
+        "motion": [
+          "Soft appear/disappear transitions",
+          "Respect prefers-reduced-motion"
+        ],
+        "constraints": [
+          "Must not block canvas interactions outside overlay",
+          "Overlay should reposition if textbox moves"
+        ]
+      },
+      "acceptanceTests": [
+        "Overlay appears near textbox and does not cover selection handles",
+        "Overlay closes automatically on completion or cancel"
+      ],
+      "deliverables": [
+        "packages/editor/voice/VoiceOverlayCard.tsx",
+        "packages/editor/voice/useAnchorPosition.ts",
+        "docs/studio_voice_overlay_design.md"
+      ]
+    },
+    {
+      "id": "S35-T06",
+      "title": "Handle microphone lifecycle cleanly (stop releases stream, unmount cleanup)",
+      "skill": ["Frontend", "Reliability"],
+      "priority": "P0",
+      "requirements": {
+        "cleanup": [
+          "Stop recording closes tracks and releases mic indicator",
+          "Component unmount stops recording if active",
+          "Prevent multiple simultaneous recorders (wizard vs studio) using a shared 'voice session lock'"
+        ],
+        "constraints": ["No zombie audio contexts or ongoing streams"]
+      },
+      "acceptanceTests": [
+        "Mic is released after stop/cancel and on route change",
+        "Attempting to start recording in two places shows a friendly message"
+      ],
+      "deliverables": [
+        "lib/voice/voiceSessionLock.ts",
+        "components/voice/useSafeMicLifecycle.ts"
+      ]
+    },
+    {
+      "id": "S35-T07",
+      "title": "Error handling + retries (ElevenLabs failures, permission denied, empty audio)",
+      "skill": ["Frontend", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "errorCases": [
+          "Mic permission denied",
+          "No audio captured / silent input",
+          "ElevenLabs request failed / timeout",
+          "Unsupported mime type"
+        ],
+        "ui": [
+          "Friendly message with Retry",
+          "Keep existing text unchanged on error",
+          "Optional help link: 'How to enable microphone'"
+        ],
+        "constraints": ["Errors must include stable error codes for Sentry"]
+      },
+      "acceptanceTests": [
+        "Failure does not corrupt editor state",
+        "Retry works after error"
+      ],
+      "deliverables": [
+        "lib/voice/voiceErrorCodes.ts",
+        "components/voice/VoiceErrorBanner.tsx"
+      ]
+    },
+    {
+      "id": "S35-T08",
+      "title": "Telemetry hooks (Sentry breadcrumbs/spans) for voice start/stop/transcribe",
+      "skill": ["DX", "Observability"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "voice_record_start (context=wizard|studio)",
+          "voice_record_stop",
+          "voice_transcribe_start",
+          "voice_transcribe_success (ms)",
+          "voice_transcribe_error (code)"
+        ],
+        "constraints": [
+          "No raw transcript/audio in logs",
+          "Attach storybookId/chapterKey/nodeId only"
+        ]
+      },
+      "acceptanceTests": [
+        "Voice errors appear in Sentry with context and codes",
+        "No sensitive content logged"
+      ],
+      "deliverables": ["lib/observability/voiceTelemetry.ts"]
+    },
+    {
+      "id": "S35-T09",
+      "title": "QA + automated tests for waveform visibility and studio append behavior",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Wizard: start recording -> waveform visible; stop -> processing; transcript inserted",
+          "Wizard: cancel -> no changes; waveform hidden",
+          "Studio: select textbox -> record overlay -> transcript appended with spacing",
+          "Locked page/textbox -> record disabled",
+          "Permission denied -> error shown; retry works after granting permission"
+        ],
+        "automation": [
+          "Unit: appendTranscript spacing rules",
+          "UI test: waveform component renders only in listening state",
+          "Integration: transcribeWithElevenLabs called on stop and result appended"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 automated tests added and passing",
+        "No regression to existing STT flow"
+      ],
+      "deliverables": [
+        "tests/voice/appendTranscript.test.ts",
+        "tests/ui/voiceWaveformVisibility.test.tsx",
+        "tests/integration/studioRecordAppend.test.tsx",
+        "docs/qa_sprint35_voice_waveform.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S35-T01",
+      "S35-T02",
+      "S35-T03",
+      "S35-T04",
+      "S35-T05",
+      "S35-T06",
+      "S35-T07",
+      "S35-T09",
+      "S35-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "react-voice-visualizer provides a hook (useVoiceVisualizer) and a component (VoiceVisualizer) to record and display real-time audio visualization. :contentReference[oaicite:1]{index=1}",
+      "Keep one active recording session at a time (wizard or studio) to avoid mic conflicts and user confusion."
+    ]
+  }
+}

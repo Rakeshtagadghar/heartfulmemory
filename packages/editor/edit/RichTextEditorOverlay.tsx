@@ -42,7 +42,12 @@ export function RichTextEditorOverlay({
   className
 }: Props) {
   const committedRef = useRef(false);
+  const onCommitRef = useRef(onCommit);
   const initialDoc = migrateTextNodeContent(nodeContent);
+
+  useEffect(() => {
+    onCommitRef.current = onCommit;
+  }, [onCommit]);
 
   const editor = useEditor(
     {
@@ -64,7 +69,7 @@ export function RichTextEditorOverlay({
           if (ed.isFocused || committedRef.current) return;
           committedRef.current = true;
           const doc = ed.getJSON() as TiptapDoc;
-          onCommit(doc, extractPlainText(doc));
+          onCommitRef.current(doc, extractPlainText(doc));
         });
       }
     },
@@ -94,8 +99,12 @@ export function RichTextEditorOverlay({
         style={{ width: "100%", height: "100%", outline: "none" }}
         className={[
           "[&_.ProseMirror]:outline-none [&_.ProseMirror]:h-full [&_.ProseMirror]:w-full",
+          "[&_.ProseMirror]:whitespace-pre-wrap [&_.ProseMirror]:break-words",
+          "[&_.ProseMirror_p]:m-0 [&_.ProseMirror_h1]:m-0 [&_.ProseMirror_h2]:m-0 [&_.ProseMirror_h3]:m-0",
+          "[&_.ProseMirror_blockquote]:m-0",
           "[&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-4",
           "[&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-4",
+          "[&_.ProseMirror_ul]:my-0 [&_.ProseMirror_ol]:my-0",
           "[&_.ProseMirror_p.is-editor-empty:first-child]:before:pointer-events-none",
           "[&_.ProseMirror_p.is-editor-empty:first-child]:before:float-left",
           "[&_.ProseMirror_p.is-editor-empty:first-child]:before:h-0",

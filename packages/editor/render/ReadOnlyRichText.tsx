@@ -35,7 +35,12 @@ export function ReadOnlyRichText({ contentRich, plainText, className, style }: P
 
   return (
     <div
-      className={className}
+      className={[
+        "h-full whitespace-pre-wrap break-words",
+        "[&_p]:m-0 [&_h1]:m-0 [&_h2]:m-0 [&_h3]:m-0 [&_blockquote]:m-0",
+        "[&_ul]:my-0 [&_ol]:my-0 [&_ul]:pl-5 [&_ol]:pl-5",
+        className ?? ""
+      ].join(" ")}
       style={style}
       // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by tiptapDocToHtml escaping
       dangerouslySetInnerHTML={{ __html: html }}

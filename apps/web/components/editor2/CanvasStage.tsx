@@ -58,7 +58,6 @@ export function CanvasStage({ // NOSONAR
   onRichTextContentChange,
   onPatchSelectedTextStyle,
   onOpenTextFontPanel,
-  onOpenTextColorPanel,
   onDuplicateSelectedTextFrame,
   onDeleteSelectedTextFrame,
   onToggleSelectedFrameLock,
@@ -73,7 +72,10 @@ export function CanvasStage({ // NOSONAR
   onFramePatchPreview,
   onFramePatchCommit,
   onDropMediaOnFrame,
-  onClearSelection
+  onClearSelection,
+  onStartVoiceRecord,
+  isVoiceRecording = false,
+  voiceRecordDisabled = false
 }: {
   page: PageDTO | null;
   frames: FrameDTO[];
@@ -100,7 +102,6 @@ export function CanvasStage({ // NOSONAR
   onRichTextContentChange?: (frameId: string, doc: import("../../../../packages/shared/richtext/tiptapTypes").TiptapDoc, plainText: string) => void;
   onPatchSelectedTextStyle: (patch: Record<string, unknown>) => void;
   onOpenTextFontPanel?: () => void;
-  onOpenTextColorPanel?: () => void;
   onDuplicateSelectedTextFrame: () => void;
   onDeleteSelectedTextFrame: () => void;
   onToggleSelectedFrameLock: () => void;
@@ -122,6 +123,9 @@ export function CanvasStage({ // NOSONAR
   ) => Promise<void>;
   onDropMediaOnFrame?: (frameId: string, payload: DraggedMediaPayload) => void | Promise<void>;
   onClearSelection?: () => void;
+  onStartVoiceRecord?: (frameId: string) => void;
+  isVoiceRecording?: boolean;
+  voiceRecordDisabled?: boolean;
 }) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -166,8 +170,6 @@ export function CanvasStage({ // NOSONAR
     mode: "selection",
     enabled: Boolean(selectedTextFrame && selectedFrameId !== cropModeFrameId && !interaction)
   });
-  const toolbarMaxWidthPx = page ? page.width_px * zoom - 20 : undefined;
-
   useEffect(() => {
     if (!interaction || !page) return;
     const activeInteraction = interaction;
@@ -256,14 +258,22 @@ export function CanvasStage({ // NOSONAR
       const frame = frameMap.get(activeInteraction.frameId);
       setInteraction(null);
       if (!frame) return;
-      const finalPatch: Partial<Pick<FrameDTO, "x" | "y" | "w" | "h">> = {
+      const finalPatch = {
         x: frame.x,
         y: frame.y,
         w: frame.w,
         h: frame.h
       };
 
-      void onFramePatchCommit(activeInteraction.frameId, finalPatch);
+      const EPSILON = 0.01;
+      const unchanged =
+        Math.abs(finalPatch.x - activeInteraction.startFrame.x) < EPSILON &&
+        Math.abs(finalPatch.y - activeInteraction.startFrame.y) < EPSILON &&
+        Math.abs(finalPatch.w - activeInteraction.startFrame.w) < EPSILON &&
+        Math.abs(finalPatch.h - activeInteraction.startFrame.h) < EPSILON;
+      if (unchanged) return;
+
+      Promise.resolve(onFramePatchCommit(activeInteraction.frameId, finalPatch)).catch(() => undefined);
     }
 
     globalThis.addEventListener("pointermove", onPointerMove);
@@ -288,6 +298,14 @@ export function CanvasStage({ // NOSONAR
     editingTextFrameId !== selectedFrame?.id &&
     Boolean(onNodeMenuAction);
 
+  function clearSelectionAfterBlur() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      active.blur();
+    }
+    globalThis.requestAnimationFrame(() => onClearSelection?.());
+  }
+
   return (
     <div ref={stageRef} className={embedded ? "relative bg-[#d7d8dc]" : "relative flex h-full min-h-0 flex-col bg-[#d7d8dc]"}>
       <div
@@ -295,7 +313,7 @@ export function CanvasStage({ // NOSONAR
         className={embedded ? "relative" : "relative min-h-0 flex-1 overflow-auto"}
         onPointerDown={(event) => {
           if (event.target === event.currentTarget) {
-            onClearSelection?.();
+            clearSelectionAfterBlur();
           }
         }}
       >
@@ -359,7 +377,7 @@ export function CanvasStage({ // NOSONAR
                 type="button"
                 aria-label="Page canvas background"
                 className="absolute inset-0 z-0 cursor-default"
-                onPointerDown={() => onClearSelection?.()}
+                onPointerDown={() => clearSelectionAfterBlur()}
               />
               <GuidesOverlay
                 page={page}
@@ -468,17 +486,18 @@ export function CanvasStage({ // NOSONAR
           open={Boolean(selectedTextFrame && !interaction && editingTextFrameId !== selectedTextFrame.id)}
           position={floatingTextToolbar}
           selectionPosition={floatingTextQuickActions}
-          maxWidthPx={toolbarMaxWidthPx}
           style={selectedTextStyle}
           onPatchStyle={onPatchSelectedTextStyle}
           onOpenFontPanel={onOpenTextFontPanel}
-          onOpenColorPanel={onOpenTextColorPanel}
           onDuplicate={onDuplicateSelectedTextFrame}
           onDelete={onDeleteSelectedTextFrame}
           onToggleLock={onToggleSelectedFrameLock}
           locked={Boolean(selectedTextFrame.locked)}
           frameText={typeof selectedTextFrame.content?.text === "string" ? selectedTextFrame.content.text : ""}
           onApplyImprovedText={onApplyImprovedTextToFrame ? (text) => onApplyImprovedTextToFrame(selectedTextFrame.id, text) : undefined}
+          onStartVoiceRecord={onStartVoiceRecord ? () => onStartVoiceRecord(selectedTextFrame.id) : undefined}
+          isVoiceRecording={isVoiceRecording}
+          voiceRecordDisabled={voiceRecordDisabled}
         />
       ) : null}
       {selectedFrame ? (

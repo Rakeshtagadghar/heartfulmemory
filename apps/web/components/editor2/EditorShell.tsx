@@ -56,6 +56,9 @@ import { OrientationToggle } from "../studio/OrientationToggle";
 import { OrientationConfirmModal } from "../studio/OrientationConfirmModal";
 import { applyOrientation, type PageWithFrames } from "../../../../packages/editor/orientation/applyOrientation";
 import { OrientationWarningsPanel, type OrientationWarning } from "../../../../packages/editor/ui/OrientationWarningsPanel";
+import { StudioVoiceOverlay } from "../studio/voice/StudioVoiceOverlay";
+import { acquireVoiceSession, releaseVoiceSession } from "../../lib/voice/voiceSessionLock";
+import type { TiptapDoc } from "../../../../packages/shared/richtext/tiptapTypes";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";
 import { MINI_SIDEBAR_WIDTH_PX, type StudioShellPanelId } from "../studio/shell/miniSidebarConfig";
@@ -356,6 +359,7 @@ export function Editor2Shell({// NOSONAR
   });
   const [orientationPendingTarget, setOrientationPendingTarget] = useState<"portrait" | "landscape" | null>(null);
   const [orientationWarnings, setOrientationWarnings] = useState<OrientationWarning[]>([]);
+  const [studioVoiceFrameId, setStudioVoiceFrameId] = useState<string | null>(null);
   const [selectedFrameDraftPatch, setSelectedFrameDraftPatch] = useState<EditorFramePatch>({});
   const [isPending, startTransition] = useTransition();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1044,6 +1048,24 @@ export function Editor2Shell({// NOSONAR
     showStudioToast({ title: `Switched to ${target === "landscape" ? "Landscape" : "Portrait"}.`, kind: "success" });
   }
 
+  function handleStartStudioVoice(frameId: string) {
+    if (!acquireVoiceSession("studio")) {
+      showStudioToast({ title: "Recording already active in another section.", kind: "error" });
+      return;
+    }
+    setStudioVoiceFrameId(frameId);
+  }
+
+  function handleStudioVoiceAppend(newDoc: TiptapDoc, plainText: string) {
+    if (!studioVoiceFrameId) return;
+    handleRichTextContentChange(studioVoiceFrameId, newDoc, plainText);
+  }
+
+  function handleStudioVoiceClose() {
+    releaseVoiceSession("studio");
+    setStudioVoiceFrameId(null);
+  }
+
   async function handleCommitPageTitle(pageId: string, title: string) {
     const page = pages.find((item) => item.id === pageId);
     if (!page) return;
@@ -1292,6 +1314,11 @@ export function Editor2Shell({// NOSONAR
     setFramesByPageId((current) => mergeFrameIntoMap(current, { ...frame, content: nextContent }));
     if (selectedFrameId === frameId) {
       setSelectedFrameDraftPatch((current) => ({ ...current, content: nextContent }));
+    } else {
+      void persistFramePatch(frame.id, {
+        content: nextContent,
+        expectedVersion: frame.version
+      });
     }
   }
 
@@ -1309,11 +1336,6 @@ export function Editor2Shell({// NOSONAR
 
   function openTextFontPanel() {
     setTextPanelView("fonts");
-    studioShell.openPanel("text", "mouse", true);
-  }
-
-  function openTextColorPanel() {
-    setTextPanelView("colors");
     studioShell.openPanel("text", "mouse", true);
   }
 
@@ -2557,7 +2579,6 @@ export function Editor2Shell({// NOSONAR
         onApplyImprovedTextToFrame={handleApplyImprovedText}
         onPatchSelectedTextStyle={patchSelectedTextStyle}
         onOpenTextFontPanel={selectedTextFrame && options.isActive ? openTextFontPanel : undefined}
-        onOpenTextColorPanel={selectedTextFrame && options.isActive ? openTextColorPanel : undefined}
         onDuplicateSelectedTextFrame={() => void handleDuplicateSelectedTextFrame()}
         onDeleteSelectedTextFrame={() => void handleDeleteSelection()}
         onToggleSelectedFrameLock={() => void handleToggleSelectedFrameLock()}
@@ -2587,6 +2608,9 @@ export function Editor2Shell({// NOSONAR
           void handleDropMediaOnFrame(frameId, payload);
         }}
         onClearSelection={options.isActive ? handleClearSelection : undefined}
+        onStartVoiceRecord={options.isActive ? handleStartStudioVoice : undefined}
+        isVoiceRecording={studioVoiceFrameId !== null}
+        voiceRecordDisabled={Boolean(page.is_locked)}
       />
     );
   }
@@ -3185,6 +3209,30 @@ export function Editor2Shell({// NOSONAR
         warnings={orientationWarnings}
         onDismiss={() => setOrientationWarnings([])}
       />
+      {studioVoiceFrameId && (() => {
+        const voiceFrame = findFrameById(studioVoiceFrameId);
+        if (!voiceFrame) return null;
+        const voiceFrameContent = voiceFrame.content as Record<string, unknown> | null;
+        const plainText = typeof voiceFrameContent?.text === "string" ? voiceFrameContent.text : "";
+        const currentDoc =
+          (voiceFrameContent?.contentRich as TiptapDoc) ??
+          (plainText.trim().length > 0 ? plainTextToTiptapDoc(plainText) : null);
+        return (
+          <StudioVoiceOverlay
+            frameId={studioVoiceFrameId}
+            anchorBounds={{
+              left: voiceFrame.x * zoom + 100,
+              top: voiceFrame.y * zoom + 100,
+              width: voiceFrame.w * zoom,
+              height: voiceFrame.h * zoom
+            }}
+            currentDoc={currentDoc}
+            onTranscriptAppended={handleStudioVoiceAppend}
+            onClose={handleStudioVoiceClose}
+            storybookId={storybook.id}
+          />
+        );
+      })()}
       <StudioToastsViewport />
     </div>
   );

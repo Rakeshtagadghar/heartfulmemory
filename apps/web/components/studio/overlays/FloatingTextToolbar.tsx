@@ -6,6 +6,7 @@ import { cn } from "../../ui/cn";
 import type { TextToolbarStyleState } from "./TextToolbarControls";
 import { TextToolbarControls } from "./TextToolbarControls";
 import { ImprovePreviewModal } from "./ImprovePreviewModal";
+import { TextboxMicButton } from "../voice/TextboxMicButton";
 
 // ─── Improve action types ───────────────────────────────────────────────────
 
@@ -278,37 +279,38 @@ export function FloatingTextToolbar({
   open,
   position,
   selectionPosition,
-  maxWidthPx,
   style,
   onPatchStyle,
   onOpenFontPanel,
-  onOpenColorPanel,
   onDuplicate,
   onDelete,
   onToggleLock,
   locked,
   frameText = "",
-  onApplyImprovedText
+  onApplyImprovedText,
+  onStartVoiceRecord,
+  isVoiceRecording = false,
+  voiceRecordDisabled = false
 }: {
   open: boolean;
   position: { left: number; top: number; visible: boolean };
   selectionPosition?: { left: number; top: number; visible: boolean };
-  maxWidthPx?: number;
   style: TextToolbarStyleState;
   onPatchStyle: (patch: Record<string, unknown>) => void;
   onOpenFontPanel?: () => void;
-  onOpenColorPanel?: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   onToggleLock: () => void;
   locked: boolean;
   frameText?: string;
   onApplyImprovedText?: (text: string) => void;
+  onStartVoiceRecord?: () => void;
+  isVoiceRecording?: boolean;
+  voiceRecordDisabled?: boolean;
 }) {
   const inlineStyle: CSSProperties = {
     left: position.left,
-    top: position.top,
-    maxWidth: maxWidthPx ? `${Math.max(280, Math.min(maxWidthPx, 980))}px` : undefined
+    top: position.top
   };
 
   return (
@@ -321,7 +323,7 @@ export function FloatingTextToolbar({
       aria-hidden={!open}
     >
       <div className="pointer-events-auto">
-        <div className="flex max-w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-1.5 py-1 shadow-md">
+        <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-1.5 py-1 shadow-md">
 
           {/* Improve button (only when handler provided) */}
           {onApplyImprovedText && (
@@ -339,6 +341,17 @@ export function FloatingTextToolbar({
             onPatchStyle={onPatchStyle}
             onOpenFontPanel={onOpenFontPanel}
           />
+
+          {onStartVoiceRecord && (
+            <>
+              <div className="h-5 w-px shrink-0 bg-gray-200 mx-0.5" />
+              <TextboxMicButton
+                disabled={voiceRecordDisabled}
+                onClick={onStartVoiceRecord}
+                isRecording={isVoiceRecording}
+              />
+            </>
+          )}
         </div>
 
         {selectionPosition?.visible ? (

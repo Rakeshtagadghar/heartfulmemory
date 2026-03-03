@@ -41,7 +41,6 @@ export function ExtraQuestionStep({
   const [answerPlainText, setAnswerPlainText] = useState(defaultText ?? "");
   const [answerSource, setAnswerSource] = useState<"text" | "voice">("text");
   const [sttMeta, setSttMeta] = useState<VoiceMeta>(null);
-  const [audioRef, setAudioRef] = useState<string | null>(null);
   const editorRef = useRef<AnswerEditorHandle | null>(null);
 
   const [saving, setSaving] = useState(false);
@@ -168,7 +167,7 @@ export function ExtraQuestionStep({
                   setSource={setAnswerSource}
                   sttMeta={sttMeta}
                   setSttMeta={setSttMeta}
-                  setAudioRef={setAudioRef}
+                  setAudioRef={() => undefined}
                   onSwitchToTyping={() => setMode("type")}
                 />
               ) : null}

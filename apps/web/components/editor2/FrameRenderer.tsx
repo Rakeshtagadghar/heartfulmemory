@@ -7,7 +7,6 @@ import { FrameHandles } from "./FrameHandles";
 import type { ResizeHandle } from "./FrameHandles";
 import { shouldEnterTextEditMode } from "../../../../packages/editor/interaction/textEditController";
 import { normalizeTextNodeStyleV1 } from "../../../../packages/editor/nodes/textNode";
-import { TextRenderer } from "../../../../packages/editor/renderers/TextRenderer";
 import { ShapeRenderer } from "../../../../packages/editor/renderers/ShapeRenderer";
 import { LineRenderer } from "../../../../packages/editor/renderers/LineRenderer";
 import { ElementFrameRenderer } from "../../../../packages/editor/renderers/FrameRenderer";
@@ -157,8 +156,11 @@ export function FrameRenderer({ // NOSONAR
           <RichTextEditorOverlay
             nodeContent={frame.content}
             onCommit={(doc, plainText) => {
-              onRichTextChange?.(doc, plainText);
-              onTextChange?.(plainText);
+              if (onRichTextChange) {
+                onRichTextChange(doc, plainText);
+              } else {
+                onTextChange?.(plainText);
+              }
               onEndTextEdit?.();
             }}
             onDiscard={() => onEndTextEdit?.()}
@@ -166,11 +168,13 @@ export function FrameRenderer({ // NOSONAR
         </div>
       );
     }
-    if (frame.content?.contentRich) {
-      return <ReadOnlyRichText contentRich={frame.content.contentRich} plainText={previewText} />;
-    }
-    if (previewText) {
-      return <TextRenderer text={previewText} style={normalizedTextStyle} />;
+    if (frame.content?.contentRich || previewText) {
+      return (
+        <ReadOnlyRichText
+          contentRich={frame.content?.contentRich}
+          plainText={previewText}
+        />
+      );
     }
     return <span className="text-black/35">Empty text frame</span>;
   }
@@ -247,7 +251,11 @@ export function FrameRenderer({ // NOSONAR
         >
           {renderTextFrameContent()}
           {overflow && !textEditing ? (
-            <div className="absolute inset-x-2 bottom-2 rounded border border-rose-300/40 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-200">
+            <div
+              className="absolute inset-x-2 bottom-2 z-20 rounded border border-rose-200/60 bg-rose-950/85 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-rose-50 shadow-sm"
+              role="status"
+              aria-live="polite"
+            >
               Text overflow
             </div>
           ) : null}
@@ -416,7 +424,7 @@ export function FrameRenderer({ // NOSONAR
           </button>
         ) : null}
         {hasIssueHighlight ? (
-          <div className="absolute bottom-2 left-2 right-2 z-20 rounded-md border border-rose-300/20 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-100">
+          <div className="absolute bottom-2 left-2 right-2 z-20 rounded-md border border-rose-200/60 bg-rose-950/90 px-2 py-1 text-[11px] font-medium text-rose-50 shadow-sm">
             {issueMessages?.[0]}
             {issueMessages && issueMessages.length > 1 ? ` (+${issueMessages.length - 1} more)` : ""}
           </div>

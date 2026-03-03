@@ -3,7 +3,6 @@ import {
     createTocPage,
     resolveInsertIndex,
 } from "../../../../packages/shared/toc/tocPageFactory";
-import type { InsertPosition } from "../../../../packages/shared/toc/tocPageFactory";
 
 const dims = {
     sizePreset: "BOOK_8_5X11",
