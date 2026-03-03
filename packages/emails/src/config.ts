@@ -1,4 +1,4 @@
-const DEFAULT_EMAIL_SITE_URL = "https://memorioso.com";
+const DEFAULT_EMAIL_SITE_URL = "https://memorioso.co.uk";
 
 function normalizeBaseUrl(value: string | undefined) {
   const source = value?.trim() || DEFAULT_EMAIL_SITE_URL;

@@ -4,11 +4,11 @@ import { emailTheme } from "../theme/tokens";
 import { emailDefaultLogoUrl, emailDefaultSupportUrl } from "../config";
 
 const templates = [
-  { id: "auth/VerifyEmail", title: "Auth: Verify Email" },
-  { id: "auth/LoginLinkOrCode", title: "Auth: Login Link or Code" },
-  { id: "auth/ResetPassword", title: "Auth: Reset Password" },
-  { id: "billing/SubscriptionActive", title: "Billing: Subscription Active" },
-  { id: "billing/PaymentFailed", title: "Billing: Payment Failed" }
+  { id: "preview/auth/VerifyEmail", title: "Auth: Verify Email" },
+  { id: "preview/auth/LoginLinkOrCode", title: "Auth: Login Link or Code" },
+  { id: "preview/auth/ResetPassword", title: "Auth: Reset Password" },
+  { id: "preview/billing/SubscriptionActive", title: "Billing: Subscription Active" },
+  { id: "preview/billing/PaymentFailed", title: "Billing: Payment Failed" }
 ] as const;
 
 export default function PreviewGalleryTemplate() {

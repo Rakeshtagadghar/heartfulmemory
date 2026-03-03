@@ -9,6 +9,8 @@
 : Start React Email preview using templates in `packages/emails/src/templates`.
 - `pnpm email:build`
 : Export static HTML files to `packages/emails/dist`.
+- `pnpm email:compat`
+: Export templates and run compatibility safety checks (unsupported CSS patterns, non-HTTPS links, expected width guard).
 - `pnpm --filter @memorioso/emails typecheck`
 : Typecheck email templates and contracts.
 
@@ -22,3 +24,4 @@
 ## CI notes
 - `pnpm lint` and `pnpm typecheck` include this workspace package via turbo.
 - `pnpm email:build` should be run in release validation when email markup changes.
+- `pnpm email:compat` should run in release validation for email-client safety checks.

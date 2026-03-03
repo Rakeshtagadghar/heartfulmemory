@@ -12,6 +12,8 @@
 - `SubscriptionActive`
 - `PaymentFailed`
 - `PreviewGallery`
+- Preview routes are available under `http://localhost:3001/preview/...` (for example: `http://localhost:3001/preview/auth/VerifyEmail`).
+- Index file for sprint deliverables: `packages/emails/preview/index.tsx`.
 
 ## Export static HTML
 - Run: `pnpm email:build`

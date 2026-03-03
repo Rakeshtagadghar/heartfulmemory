@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "email dev --dir ./src/templates",
     "build": "email export --dir ./src/templates --outDir ./dist",
+    "compat": "email export --dir ./src/templates --outDir ./dist && node ./scripts/check-compat.cjs",
     "lint": "echo \"emails lint not configured\"",
     "typecheck": "tsc --noEmit"
   },

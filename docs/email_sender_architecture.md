@@ -17,6 +17,7 @@ Keep template rendering and sending provider separate so Resend can be swapped l
 
 4. `apps/web/lib/email/sender.ts`
 - Provider interface and initial Resend implementation.
+- Enforces consistent display-name sender formatting (`Memorioso <...>`) by default.
 - Stable error codes:
   - `EMAIL_PROVIDER_NOT_CONFIGURED`
   - `EMAIL_PROVIDER_REJECTED`

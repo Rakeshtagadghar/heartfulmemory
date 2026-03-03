@@ -3,6 +3,8 @@
 ## Sender identity
 - Use verified sender domain in Resend.
 - Keep from-address consistent (example: `Memorioso <noreply@memorioso.com>`).
+- Sender layer defaults the display name to `Memorioso` when `RESEND_FROM_EMAIL` is a bare address.
+- Optional override: set `RESEND_FROM_NAME` to customize the display name.
 
 ## Content hygiene
 - Include plain-text fallback for every template.

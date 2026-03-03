@@ -27,10 +27,22 @@ type ResendSendResponse = {
   error?: { message?: string };
 };
 
+const DEFAULT_FROM_NAME = "Memorioso";
+
+export function formatResendFromAddress(rawFrom: string, rawFromName?: string) {
+  const from = rawFrom.trim();
+  if (!from) return "";
+  if (from.includes("<") && from.includes(">")) return from;
+
+  const fromName = (rawFromName || DEFAULT_FROM_NAME).trim() || DEFAULT_FROM_NAME;
+  return `${fromName} <${from}>`;
+}
+
 function getResendConfig() {
   return {
     apiKey: process.env.RESEND_API_KEY || "",
-    from: process.env.RESEND_FROM_EMAIL || ""
+    from: process.env.RESEND_FROM_EMAIL || "",
+    fromName: process.env.RESEND_FROM_NAME || DEFAULT_FROM_NAME
   };
 }
 
@@ -55,6 +67,8 @@ export function createResendSender(): EmailSender {
       }
 
       try {
+        const fromAddress = formatResendFromAddress(config.from, config.fromName);
+
         const response = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
@@ -62,7 +76,7 @@ export function createResendSender(): EmailSender {
             authorization: `Bearer ${config.apiKey}`
           },
           body: JSON.stringify({
-            from: config.from,
+            from: fromAddress,
             to: [input.to],
             subject: input.subject,
             html: input.html,

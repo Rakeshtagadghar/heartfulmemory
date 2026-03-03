@@ -10,6 +10,14 @@ Templates reviewed:
 - Width constrained to 600px.
 - CTA buttons rendered via React Email `<Button>`.
 - Avoided CSS features known to break in Outlook (fixed positioning, complex transforms, custom webfonts-only assumptions).
+- Compatibility safety checks are automated via `pnpm email:compat`.
+
+## Automated check command
+- `pnpm email:compat`
+- Current checks:
+  - Disallow `position:fixed`, CSS gradients, animations, and `@font-face`.
+  - Require a 600px max-width container.
+  - Disallow non-HTTPS links/sources (except localhost in dev).
 
 ## CSS posture
 - Safe defaults: inline styles, block layout, conservative spacing.
