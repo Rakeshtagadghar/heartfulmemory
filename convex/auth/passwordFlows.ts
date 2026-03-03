@@ -1,7 +1,7 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
 
-type FlowPurpose = "password_reset" | "email_verification";
+type FlowPurpose = "password_reset" | "email_verification" | "email_sign_in";
 
 function isExpired(expiresAt: number, now: number) {
   return expiresAt <= now;
@@ -9,7 +9,11 @@ function isExpired(expiresAt: number, now: number) {
 
 export const createFlowToken = mutationGeneric({
   args: {
-    purpose: v.union(v.literal("password_reset"), v.literal("email_verification")),
+    purpose: v.union(
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("email_sign_in")
+    ),
     email: v.string(),
     tokenHash: v.string(),
     expiresAt: v.number(),
@@ -54,7 +58,11 @@ export const createFlowToken = mutationGeneric({
 
 export const consumeFlowToken = mutationGeneric({
   args: {
-    purpose: v.union(v.literal("password_reset"), v.literal("email_verification")),
+    purpose: v.union(
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("email_sign_in")
+    ),
     tokenHash: v.string()
   },
   handler: async (ctx, args) => {
@@ -126,7 +134,11 @@ export const cleanupExpiredFlowTokens = mutationGeneric({
 
 export const getActiveFlowTokenCountByEmail = queryGeneric({
   args: {
-    purpose: v.union(v.literal("password_reset"), v.literal("email_verification")),
+    purpose: v.union(
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("email_sign_in")
+    ),
     email: v.string()
   },
   handler: async (ctx, args) => {

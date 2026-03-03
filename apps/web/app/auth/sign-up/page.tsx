@@ -19,6 +19,8 @@ export default async function SignUpPage({ searchParams }: Props) {
     typeof query.returnTo === "string" ? query.returnTo : undefined,
     "/app/onboarding"
   );
+  const token = typeof query.token === "string" ? query.token : null;
+  const allowGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
   return (
     <AuthPageShell>
@@ -27,6 +29,8 @@ export default async function SignUpPage({ searchParams }: Props) {
           returnTo={returnTo}
           configMissing={query.config === "missing"}
           initialMessage="We will send a secure email link to create your account and continue."
+          initialMagicToken={token}
+          allowGoogle={allowGoogle}
         />
         <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
           <p>
@@ -40,4 +44,3 @@ export default async function SignUpPage({ searchParams }: Props) {
     </AuthPageShell>
   );
 }
-

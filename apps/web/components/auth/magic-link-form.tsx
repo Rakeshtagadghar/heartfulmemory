@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { signIn } from "next-auth/react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -15,6 +15,8 @@ type Props = {
   returnTo: string;
   configMissing?: boolean;
   initialMessage?: string | null;
+  initialMagicToken?: string | null;
+  allowGoogle?: boolean;
 };
 
 function toSafeRedirectTarget(target: string | null | undefined, fallback: string) {
@@ -44,25 +46,73 @@ async function hasActiveSession() {
   }
 }
 
-export function MagicLinkForm({ returnTo, configMissing = false, initialMessage }: Props) {
+export function MagicLinkForm({
+  returnTo,
+  configMissing = false,
+  initialMessage,
+  initialMagicToken,
+  allowGoogle = false
+}: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [pendingMethod, setPendingMethod] = useState<"email" | "password" | "google" | "token" | null>(null);
+  const consumedInitialToken = useRef(false);
 
   useEffect(() => {
     trackAuthViewLogin({ returnTo });
   }, [returnTo]);
+
+  useEffect(() => {
+    if (!initialMagicToken || consumedInitialToken.current) return;
+    consumedInitialToken.current = true;
+
+    const run = async () => {
+      setStatus("sending");
+      setPendingMethod("token");
+      setError(null);
+
+      const result = await signIn("credentials", {
+        magicToken: initialMagicToken,
+        redirect: false,
+        callbackUrl: returnTo
+      });
+
+      if (!result || result.error) {
+        setStatus("error");
+        setPendingMethod(null);
+        setError("This sign-in link is invalid or expired. Please request a new one.");
+        return;
+      }
+
+      trackAuthLoginSuccess({ source: "email_link" });
+      setStatus("sent");
+      setPendingMethod(null);
+      const target = toSafeRedirectTarget(returnTo, "/app");
+      const sessionReady = await hasActiveSession();
+      if (!sessionReady) {
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        await hasActiveSession();
+      }
+      globalThis.location.assign(target);
+    };
+
+    void run();
+  }, [initialMagicToken, returnTo]);
 
   const helperMessage = useMemo(() => {
     if (configMissing) {
       return "Convex/Auth.js environment is not fully configured yet. Login may work in local dev mode only.";
     }
     if (status === "sent") {
+      if (pendingMethod === "email") {
+        return "Check your email for your secure sign-in link.";
+      }
       return "Signed in. Redirecting to your app workspace...";
     }
     return initialMessage;
-  }, [configMissing, initialMessage, status]);
+  }, [configMissing, initialMessage, pendingMethod, status]);
 
   return (
     <Card className="relative overflow-hidden p-6 sm:p-7">
@@ -97,31 +147,64 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
 
             setStatus("sending");
             setError(null);
-            trackAuthMagicLinkRequested({ returnTo, source: "login" });
 
-            const result = await signIn("credentials", {
-              email,
-              password,
-              redirect: false,
-              callbackUrl: returnTo
-            });
+            if (password.trim()) {
+              setPendingMethod("password");
+              const result = await signIn("credentials", {
+                email,
+                password,
+                redirect: false,
+                callbackUrl: returnTo
+              });
 
-            if (!result || result.error) {
-              setStatus("error");
-              setError("Could not sign you in. Please try again.");
+              if (!result || result.error) {
+                setStatus("error");
+                setPendingMethod(null);
+                setError("Could not sign you in. Check your password and try again.");
+                return;
+              }
+
+              trackAuthLoginSuccess({ source: "password_form" });
+              setStatus("sent");
+              setPendingMethod(null);
+              const target = toSafeRedirectTarget(returnTo, "/app");
+              const sessionReady = await hasActiveSession();
+              if (!sessionReady) {
+                await new Promise((resolve) => setTimeout(resolve, 150));
+                await hasActiveSession();
+              }
+              globalThis.location.assign(target);
               return;
             }
 
-            trackAuthLoginSuccess({ source: "login_form" });
-            setStatus("sent");
-            const target = toSafeRedirectTarget(returnTo, "/app");
-            const sessionReady = await hasActiveSession();
-            if (!sessionReady) {
-              // Rare first-login race: cookie write succeeds but session fetch lags briefly.
-              await new Promise((resolve) => setTimeout(resolve, 150));
-              await hasActiveSession();
+            setPendingMethod("email");
+            trackAuthMagicLinkRequested({ returnTo, source: "email_link_request" });
+            const response = await fetch("/api/auth/email/sign-in/request", {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                email: email.trim(),
+                returnTo
+              })
+            });
+
+            const payload = (await response.json().catch(() => ({}))) as {
+              ok?: boolean;
+              message?: string;
+              error?: string;
+            };
+
+            if (!response.ok) {
+              setStatus("error");
+              setPendingMethod(null);
+              setError(payload.error || "Could not send sign-in link. Please try again.");
+              return;
             }
-            globalThis.location.assign(target);
+
+            setStatus("sent");
+            setPendingMethod("email");
           }}
         >
           <label htmlFor="login-email" className="sr-only">
@@ -149,10 +232,37 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
             placeholder="Password (optional)"
             className="h-12 w-full rounded-xl border border-white/15 bg-black/20 px-4 text-white placeholder:text-white/45 outline-none transition focus:border-gold/60"
           />
-          <Button type="submit" size="lg" loading={status === "sending"} className="w-full">
-            Sign in
+          <Button
+            type="submit"
+            size="lg"
+            loading={status === "sending" && (pendingMethod === "email" || pendingMethod === "password")}
+            className="w-full"
+          >
+            {password.trim() ? "Sign in with password" : "Send secure sign-in link"}
           </Button>
         </form>
+
+        {allowGoogle ? (
+          <div className="mt-3">
+            <Button
+              type="button"
+              size="lg"
+              variant="secondary"
+              className="w-full"
+              loading={status === "sending" && pendingMethod === "google"}
+              onClick={() => {
+                setPendingMethod("google");
+                setStatus("sending");
+                setError(null);
+                void signIn("google", {
+                  callbackUrl: returnTo
+                });
+              }}
+            >
+              Continue with Google
+            </Button>
+          </div>
+        ) : null}
 
         {error ? (
           <p role="alert" className="mt-4 text-sm text-[#ffd4cd]">

@@ -1,7 +1,11 @@
 import { POST as requestReset, __authResetRequestTestUtils } from "../../app/api/auth/password/reset/request/route";
 import { POST as verifyReset } from "../../app/api/auth/password/reset/verify/route";
 import { POST as confirmEmailVerify } from "../../app/api/auth/email/verify/confirm/route";
-import { createAuthFlowToken, __authFlowTestUtils } from "../../lib/auth/flowStore";
+import {
+  createAuthFlowToken,
+  consumeAuthFlowToken,
+  __authFlowTestUtils
+} from "../../lib/auth/flowStore";
 import { hashFlowToken } from "../../lib/auth/flowTokens";
 import { clearRateLimitStore } from "../../lib/auth/requestRateLimit";
 
@@ -145,5 +149,22 @@ describe("auth reset and verification flows", () => {
 
     expect(second.status).toBe(400);
     expect(secondBody.ok).toBe(false);
+  });
+
+  it("consumes email sign-in token once", async () => {
+    const rawToken = "token-signin-abc";
+    const tokenHash = hashFlowToken(rawToken);
+    await createAuthFlowToken({
+      purpose: "email_sign_in",
+      email: "user@example.com",
+      tokenHash,
+      expiresAt: Date.now() + 5 * 60 * 1000
+    });
+
+    const first = await consumeAuthFlowToken("email_sign_in", tokenHash);
+    const second = await consumeAuthFlowToken("email_sign_in", tokenHash);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(false);
   });
 });

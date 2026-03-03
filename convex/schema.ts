@@ -3,7 +3,11 @@ import { v } from "convex/values";
 
 export default defineSchema({
   authFlowTokens: defineTable({
-    purpose: v.union(v.literal("password_reset"), v.literal("email_verification")),
+    purpose: v.union(
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("email_sign_in")
+    ),
     email: v.string(),
     authSubject: v.optional(v.string()),
     tokenHash: v.string(),

@@ -19,6 +19,8 @@ export default async function SignInPage({ searchParams }: Props) {
     typeof query.returnTo === "string" ? query.returnTo : undefined,
     "/app"
   );
+  const token = typeof query.token === "string" ? query.token : null;
+  const allowGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
   return (
     <AuthPageShell>
@@ -27,10 +29,14 @@ export default async function SignInPage({ searchParams }: Props) {
           returnTo={returnTo}
           configMissing={query.config === "missing"}
           initialMessage={typeof query.message === "string" ? query.message : null}
+          initialMagicToken={token}
+          allowGoogle={allowGoogle}
         />
         <div className="rounded-xl border border-white/10 bg-black/20 p-4 text-sm text-white/75">
           <p className="font-semibold text-white/85">Other sign-in methods</p>
-          <p className="mt-1">Password and Google sign-in are being enabled in Sprint 36.</p>
+          <p className="mt-1">
+            Use password if you have one, or request a secure email sign-in link.
+          </p>
           <div className="mt-3 flex flex-wrap gap-3">
             <Link href="/auth/reset-password" className="underline underline-offset-2 hover:text-white">
               Forgot password?
@@ -44,4 +50,3 @@ export default async function SignInPage({ searchParams }: Props) {
     </AuthPageShell>
   );
 }
-

@@ -18,6 +18,8 @@ export default async function LoginPage({ searchParams }: Props) {
     typeof query.returnTo === "string" ? query.returnTo : undefined,
     "/app"
   );
+  const token = typeof query.token === "string" ? query.token : null;
+  const allowGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
   let message: string | null = null;
   if (query.loggedOut === "1") message = "You were signed out.";
@@ -29,6 +31,8 @@ export default async function LoginPage({ searchParams }: Props) {
         returnTo={returnTo}
         configMissing={query.config === "missing"}
         initialMessage={message}
+        initialMagicToken={token}
+        allowGoogle={allowGoogle}
       />
     </AuthPageShell>
   );

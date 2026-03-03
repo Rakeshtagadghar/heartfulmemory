@@ -94,3 +94,34 @@ export function buildEmailVerificationTemplate(input: AuthTemplateInput) {
     html
   };
 }
+
+export function buildEmailSignInTemplate(input: AuthTemplateInput) {
+  const appName = getAppName(input.appName);
+  const subject = `${appName}: Your secure sign-in link`;
+  const text = [
+    `${appName} secure sign-in`,
+    "",
+    "Use this secure link to sign in or continue setting up your account.",
+    `Sign-in link: ${input.actionUrl}`,
+    "",
+    "If you did not request this, you can ignore this email."
+  ].join("\n");
+
+  const html = createBaseHtml(
+    "Your secure sign-in link",
+    [
+      "Use the button below to sign in on this device.",
+      "This link expires soon for your security."
+    ],
+    "Sign in securely",
+    input.actionUrl,
+    appName
+  );
+
+  return {
+    to: input.recipientEmail,
+    subject,
+    text,
+    html
+  };
+}

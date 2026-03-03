@@ -1,6 +1,6 @@
 import { anyApi, convexMutation, convexQuery, getConvexUrl } from "../convex/ops";
 
-type AuthFlowPurpose = "password_reset" | "email_verification";
+type AuthFlowPurpose = "password_reset" | "email_verification" | "email_sign_in";
 
 type CreateTokenInput = {
   purpose: AuthFlowPurpose;
