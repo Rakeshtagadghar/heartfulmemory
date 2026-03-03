@@ -1,4 +1,4 @@
-import { Column, Img, Row, Section, Text } from "@react-email/components";
+import { Column, Row, Section, Text } from "@react-email/components";
 import { emailTheme } from "../theme/tokens";
 
 type Props = {
@@ -9,17 +9,6 @@ type Props = {
 export function Header({ appName, logoUrl }: Props) {
   return (
     <Section style={{ marginBottom: "18px" }}>
-      {logoUrl ? (
-        <Section style={{ marginBottom: "12px" }}>
-          <Img
-            src={logoUrl}
-            width="235"
-            height="58"
-            alt={`${appName} logo`}
-            style={{ display: "block", maxWidth: "100%", height: "auto" }}
-          />
-        </Section>
-      ) : null}
       <Row>
         <Column width="52">
           <Section
@@ -29,7 +18,7 @@ export function Header({ appName, logoUrl }: Props) {
               borderRadius: "10px",
               border: `1px solid ${emailTheme.colors.brandMark}`,
               backgroundColor: emailTheme.colors.cardInset,
-              textAlign: "center"
+              textAlign: "center",
             }}
           >
             <Text
@@ -39,7 +28,7 @@ export function Header({ appName, logoUrl }: Props) {
                 lineHeight: "24px",
                 color: emailTheme.colors.heading,
                 fontFamily: emailTheme.typography.displayFamily,
-                fontWeight: 700
+                fontWeight: 700,
               }}
             >
               M
@@ -54,7 +43,7 @@ export function Header({ appName, logoUrl }: Props) {
               fontSize: "28px",
               lineHeight: "1",
               fontFamily: emailTheme.typography.displayFamily,
-              fontWeight: 700
+              fontWeight: 700,
             }}
           >
             {appName}
@@ -65,7 +54,7 @@ export function Header({ appName, logoUrl }: Props) {
               color: emailTheme.colors.muted,
               letterSpacing: "0.13em",
               textTransform: "uppercase",
-              fontSize: "11px"
+              fontSize: "11px",
             }}
           >
             Heirloom Storybooks
