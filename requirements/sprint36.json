@@ -1,0 +1,242 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 36,
+      "title": "Auth v1: Convex Auth (Email + Google OAuth) + Verification + Forgot Password + Branded Emails",
+      "duration": "1.5 weeks",
+      "goal": "Ship a production-ready, free-tier authentication system using Convex Auth: email/password, email OTP/magic link, Google OAuth; email verification (optional), forgot password flow, and branded transactional emails via Resend free tier.",
+      "definitionOfDone": [
+        "Users can sign up/in via Email+Password, Email OTP/Magic Link, and Google OAuth",
+        "Password reset works end-to-end (request reset -> verify -> set new password)",
+        "Email verification supported for password signups (configurable gate)",
+        "All auth emails are branded and sent via Resend free tier",
+        "Auth UI is elder-friendly and covers error states (rate limit, invalid code, expired code)",
+        "User sessions persist correctly and protected routes work",
+        "Security basics: rate limiting, anti-enumeration messaging, webhook/secret handling",
+        "Automated tests cover the critical auth flows"
+      ]
+    },
+    "stackAssumptions": {
+      "backend": "Convex + Convex Auth",
+      "frontend": "Next.js + TypeScript",
+      "email": "Resend free tier",
+      "oauth": "Google OAuth credentials (free)"
+    },
+    "sourceNotes": {
+      "convexAuthCapabilities": "Convex Auth supports OTP/magic links, OAuth (incl. Google), and passwords incl. reset + optional verification.",
+      "citations": [
+        "turn0search0",
+        "turn0search8",
+        "turn0search11",
+        "turn0search12",
+        "turn0search2"
+      ]
+    }
+  },
+  "backlog": [
+    {
+      "id": "S36-T01",
+      "title": "Select Convex Auth methods + configure providers (Password, Email OTP/Magic Link, Google OAuth)",
+      "skill": ["Backend", "Auth"],
+      "priority": "P0",
+      "requirements": {
+        "methods": [
+          "Password (with email verification enabled)",
+          "Email OTP or Magic Link (choose one default, keep the other optional)",
+          "Google OAuth"
+        ],
+        "constraints": [
+          "Use Convex Auth (no paid auth provider)",
+          "Keep UI custom (Convex Auth doesn’t ship UI components)"
+        ],
+        "notes": ["Convex Auth methods supported per docs."]
+      },
+      "acceptanceTests": [
+        "Auth providers configured and runnable locally",
+        "Google OAuth callback completes and creates/links a user"
+      ],
+      "deliverables": [
+        "convex/auth.ts (provider config)",
+        "docs/auth_methods_decision.md"
+      ]
+    },
+    {
+      "id": "S36-T02",
+      "title": "Auth database model (user profile, auth identities, email verification status)",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "tables": [
+          "users (app profile: name, createdAt, plan flags, deletion status placeholders)",
+          "auth identities handled by Convex Auth"
+        ],
+        "fields": [
+          "userId",
+          "primaryEmail",
+          "emailVerifiedAt (nullable)",
+          "authProvidersLinked (google/password/otp)",
+          "createdAt"
+        ],
+        "constraints": [
+          "No sensitive auth secrets stored in your tables",
+          "Profile table must be compatible with retention sprint (deletion fields)"
+        ]
+      },
+      "acceptanceTests": [
+        "User profile auto-created on first login",
+        "emailVerifiedAt set when verification completes"
+      ],
+      "deliverables": ["convex/users.ts", "convex/schema.ts updates"]
+    },
+    {
+      "id": "S36-T03",
+      "title": "Build signup/login UI (email, password, OTP/magic link, Google) — elder-friendly",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "screens": [
+          "/auth/sign-in",
+          "/auth/sign-up",
+          "/auth/verify-email (if using verification)",
+          "/auth/reset-password",
+          "/auth/reset-password/verify"
+        ],
+        "uiRules": [
+          "Single column, big inputs, clear CTAs",
+          "Avoid jargon: 'Send code' / 'Continue' / 'Sign in with Google'",
+          "Anti-enumeration: show same message for unknown email"
+        ],
+        "constraints": [
+          "Do not require magic link if user uses password; allow both"
+        ]
+      },
+      "acceptanceTests": [
+        "All auth screens work on mobile/desktop",
+        "Sign-in persists session and redirects correctly"
+      ],
+      "deliverables": ["app/auth/* pages", "components/auth/*"]
+    },
+    {
+      "id": "S36-T04",
+      "title": "Email sending via Resend free tier + branded templates (verification, OTP/magic link, reset)",
+      "skill": ["Backend", "Email"],
+      "priority": "P0",
+      "requirements": {
+        "provider": "Resend (free tier)",
+        "templates": [
+          "Verify your email",
+          "Your login code (OTP) OR magic link",
+          "Reset your password",
+          "Password changed confirmation (optional)"
+        ],
+        "branding": [
+          "Logo, product name, consistent header/footer",
+          "Plain-text fallback"
+        ],
+        "constraints": [
+          "Respect Resend free tier caps (3,000/mo, 100/day, 1 domain)"
+        ]
+      },
+      "acceptanceTests": [
+        "Emails send successfully in dev/staging",
+        "Links/codes work and are not leaked in logs"
+      ],
+      "deliverables": [
+        "lib/email/resendClient.ts",
+        "emails/templates/*",
+        "docs/email_templates_auth.md"
+      ]
+    },
+    {
+      "id": "S36-T05",
+      "title": "Forgot password flow (request reset -> verify -> set new password) with safety checks",
+      "skill": ["Backend", "Frontend", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "flow": [
+          "User requests reset",
+          "Email contains link/code",
+          "User verifies and sets new password"
+        ],
+        "security": [
+          "Rate limit reset requests per email + IP",
+          "Do not reveal if email exists",
+          "Add tests to ensure reset verification is bound correctly (avoid cross-email misuse)"
+        ],
+        "notes": ["Password reset flows are documented by Convex Auth."]
+      },
+      "acceptanceTests": [
+        "Reset works end-to-end",
+        "Invalid/expired code handled gracefully",
+        "Anti-enumeration messages consistent"
+      ],
+      "deliverables": [
+        "app/auth/reset-password/*",
+        "convex/auth/passwordFlows.ts",
+        "tests/auth/reset_flow.test.ts"
+      ]
+    },
+    {
+      "id": "S36-T06",
+      "title": "Route protection + session handling across app (studio, uploads, billing)",
+      "skill": ["Frontend", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "protectedRoutes": ["/book/*", "/studio/*", "/account/*", "/billing/*"],
+        "behavior": [
+          "Unauthenticated users redirected to sign-in",
+          "After sign-in, redirect back to intended route"
+        ]
+      },
+      "acceptanceTests": [
+        "Protected pages cannot be accessed unauthenticated",
+        "Deep link redirect works after login"
+      ],
+      "deliverables": [
+        "middleware/guards (as applicable)",
+        "lib/auth/requireUser.ts"
+      ]
+    },
+    {
+      "id": "S36-T07",
+      "title": "Auth QA + automated tests (email/password, OTP/magic link, Google OAuth, reset)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "automation": [
+          "Unit tests for email template rendering",
+          "Integration tests for password reset flow",
+          "UI tests for sign-in screen states"
+        ],
+        "manualChecklist": [
+          "Sign up with password -> verify email -> login",
+          "Login with Google",
+          "Login with OTP/magic link",
+          "Forgot password -> reset -> login"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 6 tests added and passing",
+        "Critical flows pass on mobile"
+      ],
+      "deliverables": ["docs/qa_sprint36_auth.md", "tests/auth/*"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S36-T01",
+      "S36-T02",
+      "S36-T04",
+      "S36-T03",
+      "S36-T05",
+      "S36-T06",
+      "S36-T07"
+    ],
+    "notes": [
+      "Convex Auth supports OTP/magic links, OAuth, and passwords (incl. reset and optional email verification).",
+      "Resend free tier limits should be respected to keep costs at zero."
+    ]
+  }
+}

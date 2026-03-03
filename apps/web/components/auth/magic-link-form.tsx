@@ -46,6 +46,7 @@ async function hasActiveSession() {
 
 export function MagicLinkForm({ returnTo, configMissing = false, initialMessage }: Props) {
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -72,7 +73,7 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
           Continue to Memorioso
         </h1>
         <p className="mt-3 text-sm leading-7 text-white/70">
-          Enter your email address to receive a magic link for signing in or creating an account.
+          Enter your email. If you already use a password, enter it below. Otherwise continue with secure email sign-in.
         </p>
 
         {helperMessage ? (
@@ -100,6 +101,7 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
 
             const result = await signIn("credentials", {
               email,
+              password,
               redirect: false,
               callbackUrl: returnTo
             });
@@ -135,8 +137,20 @@ export function MagicLinkForm({ returnTo, configMissing = false, initialMessage 
             placeholder="you@example.com"
             className="h-12 w-full rounded-xl border border-white/15 bg-black/20 px-4 text-white placeholder:text-white/45 outline-none transition focus:border-gold/60"
           />
+          <label htmlFor="login-password" className="sr-only">
+            Password
+          </label>
+          <input
+            id="login-password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Password (optional)"
+            className="h-12 w-full rounded-xl border border-white/15 bg-black/20 px-4 text-white placeholder:text-white/45 outline-none transition focus:border-gold/60"
+          />
           <Button type="submit" size="lg" loading={status === "sending"} className="w-full">
-            Continue to app
+            Sign in
           </Button>
         </form>
 

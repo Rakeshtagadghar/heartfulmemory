@@ -2,9 +2,43 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  authFlowTokens: defineTable({
+    purpose: v.union(v.literal("password_reset"), v.literal("email_verification")),
+    email: v.string(),
+    authSubject: v.optional(v.string()),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.union(v.number(), v.null())),
+    invalidatedReason: v.optional(v.union(v.string(), v.null())),
+    requestIp: v.optional(v.union(v.string(), v.null())),
+    userAgent: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_email_purpose", ["email", "purpose"])
+    .index("by_expiresAt", ["expiresAt"])
+    .index("by_purpose_expiresAt", ["purpose", "expiresAt"]),
   users: defineTable({
     authSubject: v.string(),
     email: v.optional(v.string()),
+    primaryEmail: v.optional(v.string()),
+    passwordHash: v.optional(v.string()),
+    emailVerifiedAt: v.optional(v.union(v.number(), v.null())),
+    authProvidersLinked: v.optional(
+      v.object({
+        google: v.boolean(),
+        password: v.boolean(),
+        otp: v.boolean(),
+        magic_link: v.boolean()
+      })
+    ),
+    deletionStatus: v.optional(
+      v.union(v.literal("active"), v.literal("pending_deletion"), v.literal("deleted"))
+    ),
+    deletionRequestedAt: v.optional(v.union(v.number(), v.null())),
+    purgeAt: v.optional(v.union(v.number(), v.null())),
+    lastActivityAt: v.optional(v.union(v.number(), v.null())),
     display_name: v.optional(v.string()),
     onboarding_completed: v.boolean(),
     onboarding_goal: v.optional(v.string()),
@@ -15,7 +49,9 @@ export default defineSchema({
     updatedAt: v.number()
   })
     .index("by_auth_subject", ["authSubject"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_primary_email", ["primaryEmail"])
+    .index("by_deletion_status", ["deletionStatus"]),
   billingCustomers: defineTable({
     userId: v.string(),
     email: v.optional(v.union(v.string(), v.null())),

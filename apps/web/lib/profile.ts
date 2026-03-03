@@ -24,6 +24,18 @@ export type ProfileRecord = {
   id: string;
   display_name: string | null;
   email: string | null;
+  primary_email?: string | null;
+  email_verified_at?: string | null;
+  auth_providers_linked?: {
+    google: boolean;
+    password: boolean;
+    otp: boolean;
+    magic_link: boolean;
+  };
+  deletion_status?: "active" | "pending_deletion" | "deleted";
+  deletion_requested_at?: string | null;
+  purge_at?: string | null;
+  last_activity_at?: string | null;
   onboarding_completed: boolean;
   onboarding_goal: string | null;
   marketing_consent: boolean | null;
@@ -55,6 +67,18 @@ function fallbackProfile(user: AuthUserLike): ProfileRecord {
     id: user.id,
     display_name: user.name ?? null,
     email: user.email ?? null,
+    primary_email: user.email ?? null,
+    email_verified_at: null,
+    auth_providers_linked: {
+      google: false,
+      password: false,
+      otp: false,
+      magic_link: true
+    },
+    deletion_status: "active",
+    deletion_requested_at: null,
+    purge_at: null,
+    last_activity_at: new Date().toISOString(),
     onboarding_completed: false,
     onboarding_goal: null,
     marketing_consent: null,
@@ -90,7 +114,8 @@ export async function getOrCreateProfileForUser(user: AuthUserLike): Promise<Pro
     email: user.email ?? null,
     displayName: user.name ?? null,
     locale: null,
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
+    authProvider: "magic_link"
   });
 
   if (!result.ok) {

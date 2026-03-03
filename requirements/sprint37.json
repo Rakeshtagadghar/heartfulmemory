@@ -1,0 +1,206 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 37,
+      "title": "Data Retention v1: 90-Day Policy + Account Delete + Scheduled Purge (Convex + R2)",
+      "duration": "1 week",
+      "goal": "Implement a user-safe, compliant data lifecycle: 90-day retention, account delete with undo window, and scheduled purge that removes personal data and media from storage. Provide clear UX and policy documentation.",
+      "definitionOfDone": [
+        "Data retention policy is implemented: purge personal data after 90 days post-deletion (or last activity if you choose)",
+        "Account delete flow exists (soft delete immediately, purge scheduled)",
+        "Undo deletion is available until purge time",
+        "Purge job deletes Convex records and R2 media assets",
+        "User can export/download their data before deletion (optional but recommended)",
+        "Privacy pages updated with retention + deletion policy",
+        "All actions logged for support (no sensitive content in logs)",
+        "Automated tests cover delete/undo/purge behavior"
+      ]
+    },
+    "stackAssumptions": {
+      "backend": "Convex",
+      "storage": "Cloudflare R2",
+      "privacy": "UK GDPR storage limitation + right to erasure concepts"
+    },
+    "sourceNotes": {
+      "retention": "UK GDPR requires retention to be justified and not longer than necessary; right to erasure exists.",
+      "citations": ["turn0search14", "turn0search3"]
+    }
+  },
+  "backlog": [
+    {
+      "id": "S37-T01",
+      "title": "Define retention policy & events (90-day window) + document it in product/legal",
+      "skill": ["Product", "Legal/Privacy"],
+      "priority": "P0",
+      "requirements": {
+        "policy": [
+          "Account deletion triggers a 90-day retention window (undo available)",
+          "After 90 days: purge/anonymize personal data + delete media",
+          "If user requests erasure: handle per policy unless legal basis requires retention"
+        ],
+        "docs": [
+          "Privacy policy section: retention and deletion",
+          "In-app delete account confirmation copy"
+        ]
+      },
+      "acceptanceTests": [
+        "Policy documented clearly and matches actual behavior"
+      ],
+      "deliverables": [
+        "docs/data_retention_policy.md",
+        "app/privacy page updates"
+      ]
+    },
+    {
+      "id": "S37-T02",
+      "title": "Schema changes: deletion status + scheduled purge timestamps (users + storybooks + media)",
+      "skill": ["Convex", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "fields": [
+          "users.deletionStatus ('active'|'pending_deletion'|'deleted')",
+          "users.deletionRequestedAt",
+          "users.purgeAt (timestamp)",
+          "users.lastActivityAt (optional)",
+          "mediaAssets.ownerUserId + deletion markers (optional)"
+        ],
+        "constraints": [
+          "Soft delete should immediately block login/use (or block access to content) depending on your product decision"
+        ]
+      },
+      "acceptanceTests": [
+        "Deletion fields persist and are queryable",
+        "Soft-deleted users are treated correctly by route guards"
+      ],
+      "deliverables": ["convex/schema.ts updates", "convex/users.ts updates"]
+    },
+    {
+      "id": "S37-T03",
+      "title": "Account delete UX (confirm, reason optional, export data reminder) + undo flow",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "screens": [
+          "/account/settings (Delete account section)",
+          "/account/delete-confirm",
+          "/account/delete-pending (undo)"
+        ],
+        "behavior": [
+          "Delete sets deletionStatus=pending_deletion and purgeAt=now+90days",
+          "Show countdown / date for purge",
+          "Undo clears deletion status and restores access"
+        ]
+      },
+      "acceptanceTests": [
+        "Delete marks account pending deletion and user sees pending state",
+        "Undo restores account and content access"
+      ],
+      "deliverables": [
+        "app/account/settings/page.tsx updates",
+        "components/account/DeleteAccountDialog.tsx",
+        "components/account/UndoDeleteCard.tsx"
+      ]
+    },
+    {
+      "id": "S37-T04",
+      "title": "Purge job orchestration (Convex scheduled job) + R2 media deletion",
+      "skill": ["Backend", "Storage"],
+      "priority": "P0",
+      "requirements": {
+        "job": [
+          "Daily scheduled job scans for users where purgeAt <= now",
+          "Deletes/anonymizes: user profile, storybooks, answers, studio docs, billing links (keep minimal non-PII ledger if needed)",
+          "Deletes R2 objects for user uploads (story photos, cached uploads)"
+        ],
+        "constraints": [
+          "Idempotent: running twice does not break",
+          "Audit log record created (non-PII)"
+        ]
+      },
+      "acceptanceTests": [
+        "Purged user data is no longer retrievable",
+        "R2 assets are deleted (or marked and later deleted) reliably"
+      ],
+      "deliverables": [
+        "convex/jobs/purgeDeletedUsers.ts",
+        "lib/storage/r2Delete.ts",
+        "docs/purge_job_design.md"
+      ]
+    },
+    {
+      "id": "S37-T05",
+      "title": "Access control changes: block pending-deletion users and hide content from UI",
+      "skill": ["Frontend", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "If user.pending_deletion: block Studio/Book routes and show pending deletion page with Undo",
+          "API guards enforce same (server-side)"
+        ]
+      },
+      "acceptanceTests": [
+        "Pending deletion users cannot access content pages",
+        "Undo restores access"
+      ],
+      "deliverables": [
+        "lib/auth/requireActiveUser.ts",
+        "middleware/guards updates"
+      ]
+    },
+    {
+      "id": "S37-T06",
+      "title": "Optional: Data export before deletion (download JSON/PDF links)",
+      "skill": ["Backend", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "export": [
+          "Provide 'Download your data' on delete confirm",
+          "Export includes storybooks metadata + answers + list of uploads (not necessarily the media bytes in v1)"
+        ]
+      },
+      "acceptanceTests": [
+        "User can download their data package before deletion"
+      ]
+    },
+    {
+      "id": "S37-T07",
+      "title": "QA + tests (delete, undo, purge scheduling, access blocking)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "automation": [
+          "Unit: computePurgeAt = now + 90days",
+          "Integration: delete sets pending + purgeAt, undo clears",
+          "Integration: purge job removes records and marks user deleted"
+        ],
+        "manualChecklist": [
+          "Delete account -> pending state shown",
+          "Undo -> restored",
+          "Simulate purge time -> data removed"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 5 tests added and passing",
+        "No accidental deletion of active users"
+      ],
+      "deliverables": ["docs/qa_sprint37_retention.md", "tests/retention/*"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S37-T01",
+      "S37-T02",
+      "S37-T03",
+      "S37-T05",
+      "S37-T04",
+      "S37-T07",
+      "S37-T06"
+    ],
+    "notes": [
+      "UK GDPR storage limitation: you decide retention but must justify it and avoid keeping data longer than necessary.",
+      "Right to erasure exists and should be supported via account deletion + purge."
+    ]
+  }
+}

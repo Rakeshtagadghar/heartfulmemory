@@ -2,6 +2,8 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import type { NextAuthOptions } from "next-auth";
 import { isValidEmail, normalizeEmail } from "../validation/email";
 import { logError } from "../server-log";
+import { verifyPassword } from "./passwordHash";
+import { anyApi, convexQuery, getConvexUrl } from "../convex/ops";
 
 function getDisplayNameFromEmail(email: string) {
   const [localPart] = email.split("@");
@@ -28,6 +30,29 @@ function metadataHasDecryptFailure(metadata: unknown) {
   }
 }
 
+type AuthUserLookup = {
+  userId: string;
+  email: string | null;
+  displayName: string | null;
+  passwordHash: string | null;
+  emailVerifiedAt: number | null;
+};
+
+async function lookupAuthUserByEmail(email: string): Promise<AuthUserLookup | null> {
+  if (!getConvexUrl()) return null;
+
+  const result = await convexQuery<AuthUserLookup | null>(anyApi.users.getUserByEmailForAuth, {
+    email
+  });
+
+  if (!result.ok) {
+    logError("auth_lookup_user_failed", result.error);
+    return null;
+  }
+
+  return result.data;
+}
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: "jwt" },
   pages: {
@@ -38,13 +63,49 @@ export const authOptions: NextAuthOptions = {
       id: "credentials",
       name: "Email",
       credentials: {
-        email: { label: "Email", type: "email" }
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
         const email = normalizeEmail(credentials?.email || "");
         if (!isValidEmail(email)) return null;
 
-        // Developer-friendly local auth fallback for Sprint 3.5 migration.
+        const password =
+          typeof credentials?.password === "string" ? credentials.password : "";
+        const user = await lookupAuthUserByEmail(email);
+
+        if (user?.passwordHash) {
+          if (!password) return null;
+          const validPassword = verifyPassword(password, user.passwordHash);
+          if (!validPassword) return null;
+
+          return {
+            id: user.userId,
+            email: user.email ?? email,
+            name: user.displayName ?? getDisplayNameFromEmail(email)
+          };
+        }
+
+        if (password) {
+          // Password provided for an account without password credentials.
+          return null;
+        }
+
+        if (user) {
+          return {
+            id: user.userId,
+            email: user.email ?? email,
+            name: user.displayName ?? getDisplayNameFromEmail(email)
+          };
+        }
+
+        const allowPasswordlessFallback =
+          process.env.AUTH_ALLOW_PASSWORDLESS_DEV === "1" || process.env.NODE_ENV !== "production";
+        if (!allowPasswordlessFallback) {
+          return null;
+        }
+
+        // Developer-friendly local auth fallback for migration environments.
         return {
           id: `user:${email}`,
           email,
