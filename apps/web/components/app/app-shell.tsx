@@ -10,6 +10,9 @@ import { trackAuthLogout } from "../../lib/analytics/events_auth";
 import { clearAnalyticsUserContext, setAnalyticsUserContext } from "../../lib/analytics/client";
 import { MemoriosoLogo } from "../memorioso-logo";
 import { PlanStatusBanner } from "../billing/PlanStatusBanner";
+import { AlphaBadge } from "../alpha/AlphaBadge";
+import { AlphaBanner } from "../alpha/AlphaBanner";
+import { AlphaInfoModal } from "../alpha/AlphaInfoModal";
 
 function getDisplayLabel(profile: ProfileRecord | null, email: string | null | undefined, suppressFallback: boolean) {
   return profile?.display_name || email || (suppressFallback ? "" : "Member");
@@ -51,6 +54,7 @@ export function AppShell({
   const templatesActive = (pathname?.startsWith("/create/template") ?? false) || (pathname?.startsWith("/app/templates") ?? false);
   const onboardingActive = pathname?.startsWith("/app/onboarding") ?? false;
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [alphaInfoOpen, setAlphaInfoOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const avatarLabel = displayName || "Member";
   const avatarInitials = initialsFromLabel(avatarLabel);
@@ -102,6 +106,7 @@ export function AppShell({
                   <Link href="/app" className={navLinkClass(dashboardActive)}>Dashboard</Link>
                   <Link href="/create/template" className={navLinkClass(templatesActive)}>Templates</Link>
                   <Link href="/app/onboarding" className={navLinkClass(onboardingActive)}>Onboarding</Link>
+                  <AlphaBadge onLearnMore={() => setAlphaInfoOpen(true)} />
                   <div className="hidden lg:block">
                     <PlanStatusBanner compact />
                   </div>
@@ -152,6 +157,17 @@ export function AppShell({
                     <button
                       type="button"
                       role="menuitem"
+                      className="flex h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setAlphaInfoOpen(true);
+                      }}
+                    >
+                      {`What does "Early Alpha" mean?`}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
                       className="mt-1 cursor-pointer flex h-10 w-full items-center rounded-xl px-3 text-left text-sm text-rose-100 hover:bg-rose-500/10"
                       onClick={() => {
                         setUserMenuOpen(false);
@@ -177,8 +193,10 @@ export function AppShell({
             : "mx-auto w-full max-w-7xl px-4 py-6 sm:px-6"
         }
       >
+        {isLayoutStudio ? null : <AlphaBanner onLearnMore={() => setAlphaInfoOpen(true)} />}
         <main className={isLayoutStudio ? "h-full w-full p-0" : ""}>{children}</main>
       </div>
+      <AlphaInfoModal open={alphaInfoOpen} onClose={() => setAlphaInfoOpen(false)} />
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { captureConvexError, withConvexSpan } from "./observability/sentry";
 
 type PageDto = {
   id: string;
+  title?: string;
   order_index: number;
   width_px: number;
   height_px: number;
@@ -311,6 +312,20 @@ function readAnswerText(row: ChapterAnswerDto) {
   return "";
 }
 
+function resolveChapterHeaderPageTitle(
+  pageSpec: ChapterPageSpec,
+  slotText: Record<string, string | undefined>
+) {
+  const titleSlot = pageSpec.slots.find(
+    (slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title"
+  );
+  if (!titleSlot?.slotId) return null;
+  const text = slotText[titleSlot.slotId];
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export const populateChapter = action({
   args: {
     viewerSubject: v.optional(v.string()),
@@ -513,6 +528,20 @@ export const populateChapter = action({
         const pageId = pageIds[pageIndex];
         const page = (pages as PageDto[]).find((row) => row.id === pageId);
         if (!page) continue;
+
+        const chapterHeaderTitle = resolveChapterHeaderPageTitle(
+          pageSpec,
+          textMapping.slotText as Record<string, string | undefined>
+        );
+        if (chapterHeaderTitle && page.title !== chapterHeaderTitle) {
+          await ctx.runMutation(api.pages.update, {
+            viewerSubject: viewer.subject,
+            pageId: pageId as any,
+            patch: { title: chapterHeaderTitle }
+          });
+          page.title = chapterHeaderTitle;
+        }
+
         const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
         const expectedStableKeys = new Set(
           pageSpec.slots.map((slot: any) => stableNodeKey((chapter as any).chapterKey, pageSpec.pageTemplateId, slot.slotId))

@@ -1,12 +1,26 @@
 import { faqs, pricingPlans } from "../../content/landingContent";
-
-function getSiteUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-}
+import { getSiteUrl, SEO_SITE_NAME } from "../../lib/seo/constants";
 
 export function StructuredData() {
   const siteUrl = getSiteUrl();
   const proPlan = pricingPlans.find((plan) => plan.id === "pro");
+
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: SEO_SITE_NAME,
+    url: siteUrl,
+    logo: `${siteUrl}/icon.svg`,
+    description:
+      "Memorioso helps families record, write, and preserve stories as beautiful keepsake storybooks."
+  };
+
+  const webSiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SEO_SITE_NAME,
+    url: siteUrl
+  };
 
   const productJsonLd = {
     "@context": "https://schema.org",
@@ -14,7 +28,7 @@ export function StructuredData() {
     name: "Memorioso Digital Storybook",
     brand: {
       "@type": "Brand",
-      name: "Memorioso"
+      name: SEO_SITE_NAME
     },
     description:
       "Record or write family stories, organize chapters with photos, and export a premium PDF keepsake.",
@@ -46,6 +60,14 @@ export function StructuredData() {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteJsonLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }}

@@ -5,7 +5,21 @@ import { siteNavLinks } from "../../content/siteNavLinks";
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Memorioso",
-  description: "How Memorioso collects, uses, and protects your information."
+  description: "How Memorioso collects, uses, and protects your information.",
+  alternates: { canonical: "/privacy" },
+  openGraph: {
+    title: "Privacy Policy | Memorioso",
+    description: "How Memorioso collects, uses, and protects your information.",
+    type: "website",
+    url: "/privacy",
+    images: ["/opengraph-image"]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Privacy Policy | Memorioso",
+    description: "How Memorioso collects, uses, and protects your information.",
+    images: ["/twitter-image"]
+  }
 };
 
 export default function PrivacyPage() {

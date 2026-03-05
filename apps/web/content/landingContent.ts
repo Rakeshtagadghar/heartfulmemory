@@ -1,5 +1,6 @@
 import brandJson from "../../../docs/brand.json";
 import type { MarketingPageConfig } from "./landing.schema";
+import { alphaMessaging } from "./alphaMessaging";
 
 export type HowItWorksStep = { title: string; desc: string };
 export type FeatureItem = { icon: string; title: string; desc: string };
@@ -32,10 +33,11 @@ export const landingSeo = {
 } as const;
 
 export const heroCopy = {
-  badge: brand.name,
+  badge: alphaMessaging.alphaBadge,
   headline: "Turn family memories into a royal heirloom storybook.",
   subheadline:
     "Record or write stories. Get guided prompts. Edit chapters. Start free, then upgrade to Pro export when ready.",
+  notice: alphaMessaging.alphaBlurbShort,
   socialProof:
     "Inspired by modern memoir services that preserve stories with prompts, recordings, and keepsake books."
 } as const;
@@ -139,6 +141,14 @@ export const pricingPlans: readonly PricingPlan[] = [
 
 export const faqs: readonly FaqItem[] = [
   {
+    q: alphaMessaging.alphaFaqQuestion,
+    a: alphaMessaging.alphaFaqAnswer
+  },
+  {
+    q: alphaMessaging.sandboxFaqQuestion,
+    a: alphaMessaging.sandboxFaqAnswer
+  },
+  {
     q: "Why do I need Pro to export?",
     a: "PDF export is part of Pro. The Free plan is for writing, editing, and preparing your storybook before export."
   },
@@ -180,6 +190,11 @@ export const landingPageConfig: MarketingPageConfig = {
         badge: heroCopy.badge,
         headline: heroCopy.headline,
         subheadline: heroCopy.subheadline,
+        notice: heroCopy.notice,
+        noticeLink: {
+          label: "Learn more",
+          href: "#faq"
+        },
         bullets: heroBullets,
         socialProof: heroCopy.socialProof,
         ctas: [
@@ -280,7 +295,7 @@ export const landingPageConfig: MarketingPageConfig = {
           badge: index === 1 ? "Most popular" : undefined
         })),
         note:
-          "Pro includes up to 100 PDF exports per month and hardcopy-ready output."
+          "Pro includes up to 100 PDF exports per month and hardcopy-ready output. During Early Alpha, checkout runs in sandbox/test mode and no real money is taken."
       }
     },
     {

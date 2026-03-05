@@ -1,0 +1,246 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 41,
+      "title": "Early Alpha UX v1: Alpha Messaging + Stripe Sandbox Disclaimer (Bold) + Landing Page Alpha Notice",
+      "duration": "1 week",
+      "goal": "Make it unmistakably clear that Memorioso is in Early Alpha and that payments are running in Stripe Test Mode (sandbox) — no real money is taken. Show consistent alpha messaging across app + landing page, and enhance Upgrade modal with a friendly test card helper.",
+      "definitionOfDone": [
+        "Landing page clearly shows 'Early Alpha' status (badge + short explanation) with a FAQ entry",
+        "App shows an Early Alpha indicator (badge/banner) with consistent messaging and a 'What does this mean?' link",
+        "Upgrade modal includes bold, large text stating: 'Sandbox / Test Mode — No real money will be taken'",
+        "Upgrade modal includes friendly test card guidance (test card number, future date, any CVC/postcode) and links to Stripe testing docs",
+        "Billing endpoints are guarded to ensure test-mode keys are used (BILLING_MODE=test) and UI messaging matches",
+        "Users can dismiss non-critical banners (optional), but Upgrade modal disclaimer is always visible",
+        "Copy is elder-friendly and avoids jargon",
+        "QA + tests ensure alpha/sandbox warnings show in test mode and do not show in live mode (future flip)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex + Next.js route handlers for Stripe",
+      "billing": "Stripe Checkout in test mode (sandbox)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S41-T01",
+      "title": "Define Alpha messaging policy + placement map (app + landing) and single-source copy",
+      "skill": ["Product", "UX", "Copy"],
+      "priority": "P0",
+      "requirements": {
+        "copy": {
+          "alphaBadge": "Early Alpha",
+          "alphaBlurbShort": "Early Alpha — features may change. Your feedback helps us improve.",
+          "alphaInfoTitle": "What does Early Alpha mean?",
+          "alphaInfoBody": [
+            "Some features are still being refined.",
+            "You might see rough edges or changes.",
+            "Your feedback is valuable and helps shape the product."
+          ]
+        },
+        "placements": [
+          "Landing: hero badge + short blurb",
+          "Landing: pricing section note (optional)",
+          "Landing: FAQ entry 'Is this product in alpha?'",
+          "App: header badge (always visible)",
+          "App: optional dismissible banner on dashboard/studio entry",
+          "App: settings/about alpha section"
+        ],
+        "constraints": [
+          "Consistent tone everywhere",
+          "Avoid fear-inducing language",
+          "Honest about sandbox billing"
+        ]
+      },
+      "acceptanceTests": [
+        "Single copy file exists and is used by both landing and app UI",
+        "Placements are documented and implemented"
+      ],
+      "deliverables": [
+        "content/alphaMessaging.ts",
+        "docs/alpha_messaging_policy.md"
+      ]
+    },
+    {
+      "id": "S41-T02",
+      "title": "Landing page update: Early Alpha badge + short notice + FAQ entry",
+      "skill": ["Frontend", "Copywriting"],
+      "priority": "P0",
+      "requirements": {
+        "hero": [
+          "Add a visible 'Early Alpha' pill/badge near the hero headline",
+          "Add one short line under hero: alphaBlurbShort",
+          "Optional: add link 'Learn more' that scrolls to FAQ or opens a modal"
+        ],
+        "faq": [
+          {
+            "q": "Is Memorioso in Early Alpha?",
+            "a": "Yes — we’re in Early Alpha. Some features may change as we learn from early users. Your feedback helps us improve."
+          },
+          {
+            "q": "Are payments real?",
+            "a": "During alpha, payments run in sandbox/test mode — no real money is taken."
+          }
+        ],
+        "constraints": [
+          "Do not overwhelm the page; keep it subtle but visible",
+          "No layout shift from added elements"
+        ]
+      },
+      "acceptanceTests": [
+        "Landing clearly displays Early Alpha status above the fold",
+        "FAQ includes alpha + sandbox answers",
+        "No CLS regressions"
+      ],
+      "deliverables": [
+        "components/landing/Hero.tsx updated",
+        "components/landing/FAQ.tsx updated",
+        "content/landingContent.ts updated"
+      ]
+    },
+    {
+      "id": "S41-T03",
+      "title": "Add Early Alpha UI components in app (badge + banner + info modal) with preference storage",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "components": [
+          "AlphaBadge (compact pill in header)",
+          "AlphaBanner (optional dismissible banner)",
+          "AlphaInfoModal (explains alpha + feedback link)"
+        ],
+        "behavior": [
+          "Banner can be dismissed for 30 days (localStorage) or per-user (optional)",
+          "Badge is always visible"
+        ],
+        "constraints": [
+          "Does not clutter Studio editing",
+          "Elder-friendly sizing/contrast"
+        ]
+      },
+      "acceptanceTests": [
+        "Badge visible on all app pages",
+        "Banner dismissal persists",
+        "Info modal opens and renders correctly"
+      ],
+      "deliverables": [
+        "components/alpha/AlphaBadge.tsx",
+        "components/alpha/AlphaBanner.tsx",
+        "components/alpha/AlphaInfoModal.tsx"
+      ]
+    },
+    {
+      "id": "S41-T04",
+      "title": "Upgrade modal: bold sandbox/test-mode disclaimer + friendly test card helper",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "disclaimerCopy": [
+          "SANDBOX / TEST MODE",
+          "No real money will be taken.",
+          "Use a Stripe test card to complete checkout."
+        ],
+        "visualRules": [
+          "Large + bold headline inside Upgrade modal",
+          "Placed above price + CTA",
+          "Always visible when BILLING_MODE=test"
+        ],
+        "testCardGuidance": {
+          "cardNumber": "4242 4242 4242 4242",
+          "expiryExample": "12/34 (any future date)",
+          "cvc": "Any 3 digits",
+          "postcode": "Any"
+        },
+        "constraints": [
+          "Do not encourage using real card details",
+          "Hide entirely when BILLING_MODE=live (future)"
+        ]
+      },
+      "acceptanceTests": [
+        "Disclaimer + test card helper appear in Upgrade modal in test mode",
+        "They do not appear in live mode config"
+      ],
+      "deliverables": [
+        "components/billing/SandboxNotice.tsx",
+        "components/billing/TestCardHelper.tsx",
+        "components/billing/UpgradeModal.tsx updated"
+      ]
+    },
+    {
+      "id": "S41-T05",
+      "title": "Backend guardrails: enforce BILLING_MODE=test consistency (keys/priceIds/webhooks) + expose safe mode flag",
+      "skill": ["Backend", "Platform", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "guards": [
+          "BILLING_MODE=test must use STRIPE_SECRET_KEY_TEST + test price IDs",
+          "Webhook verifies using STRIPE_WEBHOOK_SECRET_TEST",
+          "Expose billingModeIsTest boolean to client"
+        ],
+        "constraints": [
+          "Fail closed on mismatch",
+          "No accidental live charging"
+        ]
+      },
+      "acceptanceTests": [
+        "Mismatch prevents checkout session creation",
+        "UI sandbox messaging follows backend mode flag"
+      ],
+      "deliverables": [
+        "lib/config/billingMode.ts hardened",
+        "app/api/billing/checkout/route.ts updated",
+        "app/api/stripe/webhook/route.ts updated"
+      ]
+    },
+    {
+      "id": "S41-T06",
+      "title": "QA + automated tests: landing alpha notice + upgrade sandbox visibility rules",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Landing shows Early Alpha badge and FAQ entries",
+          "Upgrade modal shows bold sandbox disclaimer in test mode",
+          "Test card helper shows 4242… guidance",
+          "Switch BILLING_MODE=live (simulated) hides sandbox messaging"
+        ],
+        "automation": [
+          "UI: landing hero includes alpha badge text",
+          "UI: upgrade modal sandbox notice renders only when billingModeIsTest=true",
+          "Unit: billing mode guard rejects mismatched config"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 4 tests added and passing",
+        "No sandbox copy leaks into live mode config"
+      ],
+      "deliverables": [
+        "tests/ui/landingAlphaBadge.test.tsx",
+        "tests/ui/sandboxNoticeVisibility.test.tsx",
+        "tests/billing/billingModeGuard.test.ts",
+        "docs/qa_sprint41_alpha_sandbox_landing.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S41-T01",
+      "S41-T02",
+      "S41-T05",
+      "S41-T03",
+      "S41-T04",
+      "S41-T06"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 0,
+      "buffer_days": 1.5
+    },
+    "notes": [
+      "Keep alpha messaging subtle but visible on the landing hero; keep sandbox payment disclaimer very prominent inside the Upgrade modal."
+    ]
+  }
+}

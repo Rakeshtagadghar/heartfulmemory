@@ -6,7 +6,21 @@ import { siteNavLinks } from "../../content/siteNavLinks";
 
 export const metadata: Metadata = {
   title: "Contact | Memorioso",
-  description: "Contact Memorioso support for account, billing, and privacy requests."
+  description: "Contact Memorioso support for account, billing, and privacy requests.",
+  alternates: { canonical: "/contact" },
+  openGraph: {
+    title: "Contact | Memorioso",
+    description: "Contact Memorioso support for account, billing, and privacy requests.",
+    type: "website",
+    url: "/contact",
+    images: ["/opengraph-image"]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Contact | Memorioso",
+    description: "Contact Memorioso support for account, billing, and privacy requests.",
+    images: ["/twitter-image"]
+  }
 };
 
 export default function ContactPage() {

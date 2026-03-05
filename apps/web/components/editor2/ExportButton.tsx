@@ -5,6 +5,7 @@ import type { ExportValidationIssue } from "../../../../packages/rules-engine/sr
 import type { StorybookExportSettingsV1 } from "../../../../packages/shared-schema/storybookSettings.types";
 import { UpgradeModal } from "../billing/UpgradeModal";
 import { useEntitlements } from "../../lib/billing/useEntitlements";
+import { usePlanStatus } from "../../lib/billing/usePlanStatus";
 import { trackStudioExportClickAllowed, trackStudioExportClickBlocked } from "../../lib/analytics/studioExportEvents";
 import { ExportModal } from "./ExportModal";
 import { ExportButtonCrown } from "../studio/ExportButtonCrown";
@@ -32,6 +33,7 @@ export function ExportButton({
   const [openExportModal, setOpenExportModal] = useState(false);
   const [openUpgradeModal, setOpenUpgradeModal] = useState(false);
   const { entitlements, loading, error } = useEntitlements();
+  const planStatus = usePlanStatus({ pollIntervalMs: 0 });
   const canExportDigital = entitlements?.canExportDigital ?? Boolean(error);
   const isPremiumLocked = !canExportDigital;
   const planId = entitlements?.planId ?? "free";
@@ -61,7 +63,11 @@ export function ExportButton({
         onIssueNavigate={onIssueNavigate}
         onIssuesUpdate={onIssuesUpdate}
       />
-      <UpgradeModal open={openUpgradeModal} onClose={() => setOpenUpgradeModal(false)} />
+      <UpgradeModal
+        open={openUpgradeModal}
+        onClose={() => setOpenUpgradeModal(false)}
+        billingModeIsTest={planStatus.data?.billingModeIsTest ?? null}
+      />
     </>
   );
 }

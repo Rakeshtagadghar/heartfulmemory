@@ -1,0 +1,297 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 42,
+      "title": "SEO v1: Full Public-Site SEO (Metadata + OpenGraph + Sitemap + robots.txt + llms.txt + Schema)",
+      "duration": "1 week",
+      "goal": "Make Memorioso a strong SEO performer by adding complete metadata across all public pages, generating sitemap + robots.txt + llms.txt, and adding structured data where appropriate (Organization, WebSite, FAQPage). Ensure indexability is correct and no private/app routes are crawled.",
+      "definitionOfDone": [
+        "Every public page has correct title/description/canonical/OG/Twitter metadata",
+        "Sitemap is generated and includes only public routes (with lastmod)",
+        "robots.txt exists, references sitemap, and blocks private/app routes",
+        "llms.txt exists at root and lists key public pages + description for LLM ingestion",
+        "Structured data (JSON-LD) added where relevant (Organization/WebSite + FAQPage on landing)",
+        "Noindex applied to non-public routes (auth, studio, account, book editor)",
+        "SEO smoke checks pass (meta visible in view-source, sitemap reachable, robots reachable)",
+        "Performance basics considered (no heavy scripts on public pages, no CLS regressions)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js (App Router) + TypeScript",
+      "hosting": "Vercel",
+      "publicPages": [
+        "/",
+        "/pricing (if exists)",
+        "/templates (if exists)",
+        "/tech-stack (Sprint 29)",
+        "/privacy",
+        "/terms",
+        "/contact"
+      ],
+      "privatePages": [
+        "/auth/*",
+        "/account/*",
+        "/book/*",
+        "/studio/*",
+        "/billing/*"
+      ]
+    },
+    "sourceNotes": {
+      "robots": "Google explains robots.txt purpose and limitations; it's used to manage crawler traffic and is not a security mechanism.",
+      "sitemaps": "Google recommends sitemap best practices and describes size limits and sitemap index patterns.",
+      "faqSchema": "Google documents FAQPage structured data and guidelines.",
+      "llmsTxt": "llms.txt is a proposed standard to help LLMs find site content; llmstxt.org describes the proposal and format."
+    }
+  },
+  "backlog": [
+    {
+      "id": "S42-T01",
+      "title": "Inventory public vs private routes and define SEO policy (index/noindex, canonical rules)",
+      "skill": ["Product", "SEO", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "outputs": [
+          "A route inventory table: public vs private",
+          "Index policy: which pages get indexed; which pages get noindex"
+        ],
+        "rules": [
+          "All /auth, /account, /book, /studio, /billing are noindex",
+          "Only marketing/public pages are indexable",
+          "Each indexable page must define canonical URL"
+        ],
+        "constraints": [
+          "robots.txt should not be used as security (private content must still be protected by auth)"
+        ]
+      },
+      "acceptanceTests": [
+        "Route inventory exists and is referenced by sitemap/robots generation",
+        "Noindex policy is implemented consistently"
+      ],
+      "deliverables": ["docs/seo_route_inventory.md", "lib/seo/routes.ts"]
+    },
+    {
+      "id": "S42-T02",
+      "title": "Create SEO helpers (metadata factory + canonical builder + OG defaults)",
+      "skill": ["Frontend", "SEO"],
+      "priority": "P0",
+      "requirements": {
+        "helpers": [
+          "buildMetadata({title, description, path, ogImage})",
+          "canonicalUrl(path)",
+          "defaultOpenGraph()",
+          "defaultTwitterCard()"
+        ],
+        "defaults": ["siteName", "brand description", "OG image fallback"],
+        "constraints": [
+          "No duplicated titles across key pages",
+          "Description length sane (~150-160 chars target)"
+        ]
+      },
+      "acceptanceTests": [
+        "All public pages can import and reuse metadata helpers",
+        "Canonical URLs are consistent and correct"
+      ],
+      "deliverables": ["lib/seo/metadata.ts", "lib/seo/constants.ts"]
+    },
+    {
+      "id": "S42-T03",
+      "title": "Add/verify metadata on every public page (title, description, canonical, OG/Twitter)",
+      "skill": ["Frontend", "SEO"],
+      "priority": "P0",
+      "requirements": {
+        "pages": [
+          "Landing (/)",
+          "Pricing (/pricing) if present",
+          "Tech Stack (/tech-stack)",
+          "Privacy (/privacy)",
+          "Terms (/terms)",
+          "Contact (/contact)",
+          "Any other public marketing pages"
+        ],
+        "metadata": [
+          "title",
+          "description",
+          "alternates.canonical",
+          "openGraph (title, description, url, images)",
+          "twitter (card, title, description, images)"
+        ],
+        "constraints": [
+          "Avoid misleading claims (especially alpha/sandbox messaging)",
+          "OG image must exist and be reachable"
+        ]
+      },
+      "acceptanceTests": [
+        "Each public page has unique, relevant metadata",
+        "Meta tags appear in view-source"
+      ],
+      "deliverables": [
+        "app/**/page.tsx metadata updates",
+        "docs/seo_metadata_map.md"
+      ]
+    },
+    {
+      "id": "S42-T04",
+      "title": "Generate sitemap.xml for public routes only (with lastmod)",
+      "skill": ["Frontend", "SEO"],
+      "priority": "P0",
+      "requirements": {
+        "implementation": [
+          "Next.js App Router sitemap route (app/sitemap.ts)",
+          "Include only indexable public routes from lib/seo/routes.ts",
+          "Add lastModified timestamps where possible"
+        ],
+        "constraints": [
+          "Do not include private routes",
+          "Respect sitemap limits (50k URLs / 50MB) if you later add lots of pages"
+        ]
+      },
+      "acceptanceTests": [
+        "/sitemap.xml is reachable",
+        "Sitemap contains only public URLs",
+        "Sitemap URLs match canonical URLs"
+      ],
+      "deliverables": ["app/sitemap.ts", "docs/sitemap_rules.md"]
+    },
+    {
+      "id": "S42-T05",
+      "title": "Create robots.txt (allow public, block private) + reference sitemap",
+      "skill": ["Frontend", "SEO"],
+      "priority": "P0",
+      "requirements": {
+        "implementation": [
+          "Next.js App Router robots route (app/robots.ts)",
+          "Disallow private path prefixes: /auth/, /account/, /book/, /studio/, /billing/",
+          "Allow public assets needed for rendering"
+        ],
+        "mustInclude": ["Sitemap: <site>/sitemap.xml"],
+        "constraints": [
+          "Robots is not security; private routes still need auth",
+          "Avoid blocking CSS/JS needed for rendering public pages"
+        ]
+      },
+      "acceptanceTests": [
+        "/robots.txt is reachable",
+        "It references sitemap.xml",
+        "Private routes are disallowed"
+      ],
+      "deliverables": ["app/robots.ts", "docs/robots_policy.md"]
+    },
+    {
+      "id": "S42-T06",
+      "title": "Add llms.txt at site root (LLM-friendly index of key pages)",
+      "skill": ["SEO", "Content", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "format": [
+          "Follow llms.txt proposal: short site description + list of key URLs",
+          "Include: /, /pricing, /tech-stack, /privacy, /terms, /contact, and any docs/help pages"
+        ],
+        "constraints": [
+          "Only include public pages",
+          "Keep it concise and maintained from a single config list"
+        ]
+      },
+      "acceptanceTests": [
+        "/llms.txt is reachable at the root",
+        "It lists only public URLs and describes the site accurately"
+      ],
+      "deliverables": [
+        "app/llms.txt/route.ts (or public/llms.txt)",
+        "docs/llms_txt_contents.md"
+      ]
+    },
+    {
+      "id": "S42-T07",
+      "title": "Structured data (JSON-LD): Organization + WebSite + FAQPage (landing)",
+      "skill": ["SEO", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "schemas": [
+          "Organization (brand basics)",
+          "WebSite (site name + url)",
+          "FAQPage for landing FAQ section (only if it’s real FAQ content users see)"
+        ],
+        "constraints": [
+          "Use JSON-LD (recommended by Google)",
+          "Only add FAQPage if the page contains the FAQs (visible content)"
+        ]
+      },
+      "acceptanceTests": [
+        "Structured data is present in view-source",
+        "FAQPage markup matches visible FAQ items"
+      ],
+      "deliverables": [
+        "components/seo/StructuredData.tsx",
+        "components/seo/FAQSchema.tsx",
+        "docs/structured_data_map.md"
+      ]
+    },
+    {
+      "id": "S42-T08",
+      "title": "Noindex enforcement for non-public routes (auth/app pages)",
+      "skill": ["Frontend", "SEO"],
+      "priority": "P0",
+      "requirements": {
+        "approach": [
+          "Add robots meta 'noindex, nofollow' to auth/account/studio/book/billing routes",
+          "Optionally add X-Robots-Tag header for extra protection (route handler/middleware)"
+        ],
+        "constraints": ["Do not accidentally noindex public marketing pages"]
+      },
+      "acceptanceTests": [
+        "Private routes contain noindex tags",
+        "Public routes remain indexable"
+      ],
+      "deliverables": [
+        "lib/seo/noindex.ts",
+        "app/auth/layout.tsx metadata (robots noindex)",
+        "app/studio/layout.tsx metadata (robots noindex)"
+      ]
+    },
+    {
+      "id": "S42-T09",
+      "title": "SEO quality checklist + tooling docs (Search Console readiness)",
+      "skill": ["SEO", "QA"],
+      "priority": "P1",
+      "requirements": {
+        "checklist": [
+          "Verify canonical URLs",
+          "Verify sitemap/robots reachable",
+          "Verify OG/Twitter previews",
+          "Check noindex where intended",
+          "Ensure page titles/descriptions unique",
+          "Add favicon/app icons if missing"
+        ],
+        "optional": ["Prepare Google Search Console verification instructions"]
+      },
+      "acceptanceTests": ["SEO checklist doc exists and is runnable by you"],
+      "deliverables": ["docs/seo_release_checklist.md"]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S42-T01",
+      "S42-T02",
+      "S42-T03",
+      "S42-T04",
+      "S42-T05",
+      "S42-T06",
+      "S42-T07",
+      "S42-T08",
+      "S42-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Robots.txt is primarily for crawl management and isn’t a security mechanism. https://developers.google.com/search/docs/crawling-indexing/robots/intro",
+      "Google documents sitemap best practices and limits. https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap",
+      "FAQPage structured data should match visible FAQ content. https://developers.google.com/search/docs/appearance/structured-data/faqpage",
+      "llms.txt is an emerging convention; llmstxt.org describes the proposal and format. https://llmstxt.org/"
+    ]
+  }
+}

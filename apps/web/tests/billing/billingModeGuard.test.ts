@@ -29,6 +29,7 @@ describe("billing mode runtime guard", () => {
     const config = getBillingRuntimeConfig();
 
     expect(config.mode).toBe("test");
+    expect(config.billingModeIsTest).toBe(true);
     expect(config.errors).toHaveLength(0);
     expect(config.stripeSecretKey).toBe("sk_test_123");
   });
@@ -53,5 +54,18 @@ describe("billing mode runtime guard", () => {
     const config = getBillingRuntimeConfig();
 
     expect(config.errors.some((error) => error.includes("test key"))).toBe(true);
+  });
+
+  it("defaults unknown BILLING_MODE to test", () => {
+    process.env.BILLING_MODE = "staging";
+    process.env.STRIPE_SECRET_KEY_TEST = "sk_test_123";
+    process.env.STRIPE_WEBHOOK_SECRET_TEST = "whsec_test_123";
+    process.env.STRIPE_PRICE_ID_PRO_TEST = "price_test_123";
+
+    const config = getBillingRuntimeConfig();
+
+    expect(config.mode).toBe("test");
+    expect(config.billingModeIsTest).toBe(true);
+    expect(config.errors).toHaveLength(0);
   });
 });

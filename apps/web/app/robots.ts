@@ -1,12 +1,15 @@
 import type { MetadataRoute } from "next";
-
-const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+import { getSiteUrl } from "../lib/seo/constants";
+import { PRIVATE_ROUTE_PREFIXES } from "../lib/seo/routes";
 
 export default function robots(): MetadataRoute.Robots {
+  const siteUrl = getSiteUrl();
+
   return {
     rules: {
       userAgent: "*",
-      allow: "/"
+      allow: "/",
+      disallow: [...PRIVATE_ROUTE_PREFIXES]
     },
     sitemap: `${siteUrl}/sitemap.xml`
   };

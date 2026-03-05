@@ -4,8 +4,22 @@ import { MarketingLayout } from "../../components/marketing/MarketingLayout";
 import { siteNavLinks } from "../../content/siteNavLinks";
 
 export const metadata: Metadata = {
-  title: "Terms | Memorioso",
-  description: "Terms for using Memorioso."
+  title: "Terms of Use | Memorioso",
+  description: "Terms for using Memorioso.",
+  alternates: { canonical: "/terms" },
+  openGraph: {
+    title: "Terms of Use | Memorioso",
+    description: "Terms for using Memorioso.",
+    type: "website",
+    url: "/terms",
+    images: ["/opengraph-image"]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Terms of Use | Memorioso",
+    description: "Terms for using Memorioso.",
+    images: ["/twitter-image"]
+  }
 };
 
 export default function TermsPage() {

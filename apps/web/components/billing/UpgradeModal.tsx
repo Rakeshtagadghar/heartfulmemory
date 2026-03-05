@@ -5,23 +5,30 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { trackCheckoutRedirected, trackPaywallShown, trackPaywallUpgradeClick } from "../../lib/analytics/billingEvents";
 import { startCheckout } from "../../lib/billing/startCheckout";
+import { usePlanStatus } from "../../lib/billing/usePlanStatus";
 import { Button } from "../ui/button";
 import { PlanBenefits } from "./PlanBenefits";
+import { SandboxNotice } from "./SandboxNotice";
+import { TestCardHelper } from "./TestCardHelper";
 
 type UpgradeCadence = "monthly";
 
 export function UpgradeModal({
   open,
   onClose,
-  source = "studio_export"
+  source = "studio_export",
+  billingModeIsTest = null
 }: {
   open: boolean;
   onClose: () => void;
   source?: "studio_export";
+  billingModeIsTest?: boolean | null;
 }) {
   const cadence: UpgradeCadence = "monthly";
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const planStatus = usePlanStatus({ enabled: open, pollIntervalMs: 0 });
+  const resolvedBillingModeIsTest = billingModeIsTest ?? planStatus.data?.billingModeIsTest ?? false;
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +82,14 @@ export function UpgradeModal({
       <div className="w-full max-w-xl rounded-2xl border border-gold/40 bg-[#0b1320] p-6 shadow-[0_28px_80px_rgba(0,0,0,0.55)]">
         <p className="text-xs uppercase tracking-[0.16em] text-gold/80">Memorioso Pro</p>
         <h3 className="mt-2 text-2xl font-semibold text-parchment">Upgrade to Export</h3>
+
+        {resolvedBillingModeIsTest ? (
+          <>
+            <SandboxNotice />
+            <TestCardHelper />
+          </>
+        ) : null}
+
         <p className="mt-3 text-sm leading-6 text-white/75">
           Unlock Pro export at GBP 30/month with 100 PDF exports each month.
         </p>

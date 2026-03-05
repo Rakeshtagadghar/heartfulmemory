@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type PlanStatusResponse = {
   billingMode: "test" | "live";
+  billingModeIsTest: boolean;
   entitlements: {
     planId: "free" | "pro";
     subscriptionStatus: "none" | "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";
@@ -141,4 +142,3 @@ export function usePlanStatus(options?: UsePlanStatusOptions) {
     refresh
   };
 }
-

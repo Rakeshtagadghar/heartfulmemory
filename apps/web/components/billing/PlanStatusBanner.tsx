@@ -70,6 +70,7 @@ export function PlanStatusBanner({ compact = false }: { compact?: boolean }) {
         open={upgradeOpen}
         onClose={() => setUpgradeOpen(false)}
         source="studio_export"
+        billingModeIsTest={data.billingModeIsTest}
       />
     </>
   );

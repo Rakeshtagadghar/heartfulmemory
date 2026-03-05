@@ -13,6 +13,11 @@ export type HeroSplitBlock = {
     badge?: string;
     headline: string;
     subheadline?: string;
+    notice?: string;
+    noticeLink?: {
+      label: string;
+      href: string;
+    };
     bullets?: readonly string[];
     ctas?: CTAConfig[];
     socialProof?: string;

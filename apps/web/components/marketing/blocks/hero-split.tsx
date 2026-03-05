@@ -36,6 +36,22 @@ export function HeroSplit({ block }: { block: HeroSplitBlock }) {
               </p>
             ) : null}
 
+            {content.notice ? (
+              <p className="mt-3 max-w-xl text-sm leading-7 text-gold/95">
+                <span>{content.notice}</span>
+                {content.noticeLink ? (
+                  <TrackedLink
+                    href={content.noticeLink.href}
+                    eventName="cta_click"
+                    eventProps={{ cta_id: "alpha_notice_learn_more", placement: "hero" }}
+                    className="ml-2 font-semibold text-parchment underline decoration-gold/70 underline-offset-4 hover:text-gold"
+                  >
+                    {content.noticeLink.label}
+                  </TrackedLink>
+                ) : null}
+              </p>
+            ) : null}
+
             {content.bullets?.length ? (
               <ul className="mt-7 grid gap-3 sm:grid-cols-2">
                 {content.bullets.map((item) => (

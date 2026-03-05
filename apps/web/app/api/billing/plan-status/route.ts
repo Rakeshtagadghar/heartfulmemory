@@ -8,7 +8,8 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const user = await requireAuthenticatedUser("/app");
-  const billingMode = getBillingRuntimeConfig().mode;
+  const billingRuntime = getBillingRuntimeConfig();
+  const billingMode = billingRuntime.mode;
   const result = await convexQuery<{
     entitlements: {
       planId: "free" | "pro";
@@ -52,6 +53,7 @@ export async function GET() {
     ok: true,
     data: {
       billingMode,
+      billingModeIsTest: billingRuntime.billingModeIsTest,
       entitlements: result.data.entitlements,
       subscription: result.data.subscription,
       usage: result.data.usage ?? null,

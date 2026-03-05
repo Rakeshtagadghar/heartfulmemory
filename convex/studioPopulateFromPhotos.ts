@@ -10,7 +10,7 @@ import { getTemplateQuestionsForChapter } from "./templates";
 import { captureConvexError, withConvexSpan } from "./observability/sentry";
 
 // Reuse types from studioPopulate
-type PageDto = { id: string; order_index: number; width_px: number; height_px: number };
+type PageDto = { id: string; title?: string; order_index: number; width_px: number; height_px: number };
 type FrameDto = {
   id: string;
   page_id: string;
@@ -73,6 +73,20 @@ function readAnswerText(row: ChapterAnswerDto) {
     }
   }
   return "";
+}
+
+function resolveChapterHeaderPageTitle(
+  pageSpec: ChapterPageSpec,
+  slotText: Record<string, string | undefined>
+) {
+  const titleSlot = pageSpec.slots.find(
+    (slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title"
+  );
+  if (!titleSlot?.slotId) return null;
+  const text = slotText[titleSlot.slotId];
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ChapterPageSpec[] {
@@ -250,6 +264,16 @@ export const populateFromPhotos = action({
           const pageId = pageIds[pageIndex];
           const page = (pages as PageDto[]).find((p) => p.id === pageId);
           if (!page) continue;
+
+          const chapterHeaderTitle = resolveChapterHeaderPageTitle(pageSpec, textSlotMap);
+          if (chapterHeaderTitle && page.title !== chapterHeaderTitle) {
+            await ctx.runMutation(api.pages.update, {
+              viewerSubject: viewer.subject,
+              pageId: pageId as any,
+              patch: { title: chapterHeaderTitle }
+            });
+            page.title = chapterHeaderTitle;
+          }
 
           const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
           const expectedStableKeys = new Set(pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId)));

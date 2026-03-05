@@ -68,6 +68,16 @@ export async function POST(request: Request) {
   const stripeFactory = getStripeClientForBilling();
   const webhookSecret = getStripeWebhookSecretForBilling();
   if (!stripeFactory.ok || !webhookSecret) {
+    captureAppWarning("Billing webhook blocked due to billing mode config mismatch", {
+      runtime: "server",
+      flow: "billing_webhook",
+      feature: "billing",
+      code: "BILLING_MODE_CONFIG_INVALID",
+      extra: {
+        billingMode: stripeFactory.billing.mode,
+        billingErrors: stripeFactory.billing.errors
+      }
+    });
     return NextResponse.json({ ok: false, error: "Stripe webhook is not configured." }, { status: 500 });
   }
   const stripe = stripeFactory.stripe;

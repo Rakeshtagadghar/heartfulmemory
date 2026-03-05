@@ -17,9 +17,10 @@ type CheckoutBody = {
 
 export async function POST(request: Request) {
   const stripeFactory = getStripeClientForBilling();
+  const billingModeIsTest = stripeFactory.billing.billingModeIsTest;
   if (!stripeFactory.ok) {
     return NextResponse.json(
-      { ok: false, error: stripeFactory.error },
+      { ok: false, error: stripeFactory.error, billingModeIsTest },
       { status: 500 }
     );
   }
@@ -46,12 +47,13 @@ export async function POST(request: Request) {
       flow: "billing_checkout",
       feature: "billing",
       code: "PRICE_NOT_ALLOWED",
-      extra: {
-        userId: user.id,
-        priceId,
-        cadence
-      }
-    });
+        extra: {
+          userId: user.id,
+          priceId,
+          cadence,
+          billingMode: stripeFactory.billing.mode
+        }
+      });
     return NextResponse.json({ ok: false, error: "Selected price is not allowed." }, { status: 400 });
   }
 
@@ -144,7 +146,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      checkoutUrl: checkoutSession.url
+      checkoutUrl: checkoutSession.url,
+      billingModeIsTest
     });
   } catch (error) {
     captureAppError(error, {

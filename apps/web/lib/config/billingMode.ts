@@ -2,6 +2,7 @@ export type BillingMode = "test" | "live";
 
 export type BillingRuntimeConfig = {
   mode: BillingMode;
+  billingModeIsTest: boolean;
   stripeSecretKey: string | null;
   stripeWebhookSecret: string | null;
   stripePriceIdProTest: string | null;
@@ -70,6 +71,7 @@ export function getBillingRuntimeConfig(): BillingRuntimeConfig {
 
   return {
     mode,
+    billingModeIsTest: mode === "test",
     stripeSecretKey: mode === "test" ? stripeSecretKeyTest : stripeSecretKeyLive,
     stripeWebhookSecret: mode === "test" ? stripeWebhookSecretTest : stripeWebhookSecretLive,
     stripePriceIdProTest,
@@ -80,4 +82,3 @@ export function getBillingRuntimeConfig(): BillingRuntimeConfig {
     errors
   };
 }
-
