@@ -5,42 +5,75 @@ import { track } from "./client";
 type Props = Record<string, string | number | boolean | null | undefined>;
 
 export function trackCreateEntryView(props?: Props) {
-  track("create_entry_view", props);
+  track("cta_click", {
+    cta_id: "create_entry_view",
+    placement:
+      typeof props?.source === "string" && props.source.trim().length > 0
+        ? props.source
+        : "create_entry"
+  });
 }
 
 export function trackTemplateSelectView(props?: Props) {
-  track("template_select_view", props);
+  track("cta_click", {
+    cta_id: "template_select_view",
+    placement:
+      typeof props?.source === "string" && props.source.trim().length > 0
+        ? props.source
+        : "template_gallery"
+  });
 }
 
 export function trackTemplateSelectChoose(templateId: string) {
-  track("template_select_choose", { templateId });
+  track("cta_click", {
+    cta_id: "template_select_choose",
+    placement: "template_gallery",
+    template_id: templateId
+  });
 }
 
 export function trackCreateFreeformChoose() {
-  track("create_freeform_choose");
+  track("cta_click", {
+    cta_id: "create_freeform_choose",
+    placement: "create_entry"
+  });
 }
 
 export function trackChaptersView(storybookId: string) {
-  track("chapters_view", { storybookId });
+  track("storybook_open", { storybook_id: storybookId });
 }
 
 export function trackChapterStart(chapterKey: string) {
-  track("chapter_start", { chapterKey });
+  track("storybook_step_view", { step_id: chapterKey, chapter_id: chapterKey });
 }
 
 export function trackWizardStepNext(questionId: string) {
-  track("wizard_step_next", { questionId });
+  track("storybook_step_complete", {
+    step_id: questionId,
+    question_id: questionId,
+    action: "next"
+  });
 }
 
 export function trackWizardStepSkip(questionId: string) {
-  track("wizard_step_skip", { questionId });
+  track("storybook_step_complete", {
+    step_id: questionId,
+    question_id: questionId,
+    action: "skip"
+  });
 }
 
 export function trackChapterComplete(chapterKey: string) {
-  track("chapter_complete", { chapterKey });
+  track("storybook_step_complete", {
+    step_id: chapterKey,
+    chapter_id: chapterKey,
+    action: "chapter_complete"
+  });
 }
 
 export function trackOpenStudioFromChapter(chapterKey: string) {
-  track("open_studio_from_chapter", { chapterKey });
+  track("studio_enter", {
+    entry_point: "chapter_flow",
+    chapter_key: chapterKey
+  });
 }
-

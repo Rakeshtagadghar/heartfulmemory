@@ -22,5 +22,9 @@
     "@commitlint/config-conventional": "^20.4.2",
     "convex": "^1.32.0",
     "turbo": "^2.8.10"
+  },
+  "dependencies": {
+    "docx": "^9.6.0",
+    "pptxgenjs": "^4.0.1"
   }
 }

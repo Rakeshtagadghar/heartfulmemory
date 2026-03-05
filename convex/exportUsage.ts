@@ -36,6 +36,16 @@ export async function getPdfExportUsageForPeriod(ctx: Ctx, userId: string, perio
   return row?.countPdfExports ?? 0;
 }
 
+/** Sprint 39: unified counter across all export types (pdf/docx/pptx) */
+export async function getUnifiedExportUsageForPeriod(ctx: Ctx, userId: string, periodStart: number) {
+  const row = await ctx.db
+    .query("exportUsage")
+    .withIndex("by_userId_periodStart", (q: any) => q.eq("userId", userId).eq("periodStart", periodStart))
+    .first();
+  // Use unified counter if present, else fall back to PDF counter for backward compatibility
+  return (row as any)?.countExports ?? row?.countPdfExports ?? 0;
+}
+
 export const getRemainingForViewer = queryGeneric({
   args: {
     viewerSubject: v.optional(v.string())
@@ -95,6 +105,46 @@ export const incrementUsageForViewer = mutationGeneric({
       countPdfExports: incrementBy,
       updatedAt: now
     });
+    return { used: incrementBy, periodStart: quota.periodStart, periodEnd: quota.periodEnd };
+  }
+});
+
+/** Sprint 39: unified increment for any export type (pdf/docx/pptx) */
+export const incrementUnifiedUsageForViewer = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    incrementBy: v.optional(v.number())
+  },
+  handler: async (ctx, args) => {
+    const viewer = await requireUser(ctx, args.viewerSubject);
+    const incrementBy = Math.max(1, Math.floor(args.incrementBy ?? 1));
+    const quota = await resolveQuotaPeriodForUser(ctx, viewer.subject);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("exportUsage")
+      .withIndex("by_userId_periodStart", (q: any) => q.eq("userId", viewer.subject).eq("periodStart", quota.periodStart))
+      .first();
+
+    if (existing) {
+      const currentUnified = (existing as any).countExports ?? existing.countPdfExports ?? 0;
+      const nextCount = Math.max(0, currentUnified + incrementBy);
+      await ctx.db.patch(existing._id, {
+        countExports: nextCount,
+        countPdfExports: Math.max(0, existing.countPdfExports + incrementBy),
+        periodEnd: quota.periodEnd,
+        updatedAt: now
+      } as any);
+      return { used: nextCount, periodStart: quota.periodStart, periodEnd: quota.periodEnd };
+    }
+
+    await ctx.db.insert("exportUsage", {
+      userId: viewer.subject,
+      periodStart: quota.periodStart,
+      periodEnd: quota.periodEnd,
+      countPdfExports: incrementBy,
+      countExports: incrementBy,
+      updatedAt: now
+    } as any);
     return { used: incrementBy, periodStart: quota.periodStart, periodEnd: quota.periodEnd };
   }
 });

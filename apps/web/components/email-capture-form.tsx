@@ -45,7 +45,11 @@ export function EmailCaptureForm() {
         throw new Error(result.error || "Could not join the waitlist.");
       }
 
-      track("email_capture_submit", { section: "email_capture" });
+      track("generate_lead", {
+        lead_type: "waitlist",
+        form_id: "email_capture",
+        cta_id: "join_waitlist"
+      });
       setStatus("success");
     } catch (submissionError) {
       setStatus("error");

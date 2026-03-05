@@ -1,0 +1,788 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "specType": "SPRINT_TASKS_JSON",
+    "sprintName": "Sprint 40 - Analytics Coverage Expansion (GA4 + Sentry aligned)",
+    "goal": "Extend existing GA4 basics (Sprint 1) and Sentry instrumentation (Sprint 24) to track all major user journeys shipped/planned across Sprint 1–39: acquisition → onboarding/auth → studio/editor → storybook creation → exports (PDF/DOCX/PPT) → billing → emails → reliability/perf. Deliver usable funnels, drop-off reasons, and operational correlation via session_id.",
+    "nonGoals": [
+      "Not building a CRM inside GA4",
+      "No PII (email/phone/name) in GA4 events",
+      "No re-architecture of Sentry; reuse Sprint 24 patterns"
+    ],
+    "principles": [
+      "Event naming is canonical and typed (no ad-hoc event strings)",
+      "Every critical step has: start, success, fail/cancel signals",
+      "Every error/failure event has a matching Sentry breadcrumb/tag with session_id",
+      "Consent-respecting analytics (do not fire before consent where required)"
+    ]
+  },
+  "assumptions": {
+    "existingWork": {
+      "ga4": "Basic GA4 integration exists from Sprint 1 (page_view + some events).",
+      "sentry": "Sentry error logging & traces exist from Sprint 24 with release/version tagging."
+    },
+    "platform": "Next.js + React web app",
+    "exports": [
+      "PDF is implemented or in-progress",
+      "DOCX and PPT export were planned in later sprints (38/39)"
+    ]
+  },
+  "deliverables": [
+    "Canonical GA4 event taxonomy covering Sprint 1–39 features",
+    "Typed analytics wrapper + lint enforcement",
+    "Funnel exploration templates for key journeys",
+    "Sentry ↔ GA4 correlation via session_id and breadcrumb mirroring",
+    "Dashboards/reports aligned to GA4 Business objectives: Generate leads / Drive sales / Marketing funnels"
+  ],
+  "epics": [
+    {
+      "id": "EPIC_ANALYTICS_AUDIT_001",
+      "title": "Audit & Coverage Map for Sprint 1–39 Features",
+      "description": "Create a tracking coverage matrix from all shipped/planned features across sprints and map them to GA4 events, funnels, and error reasons.",
+      "stories": [
+        {
+          "id": "STORY_AUDIT_001",
+          "title": "Create Feature→Journey→Event coverage matrix",
+          "tasks": [
+            {
+              "id": "TASK_AUDIT_001",
+              "title": "Inventory feature areas (Sprint 1–39) into a Coverage Matrix",
+              "details": [
+                "Feature areas to include: Landing/SEO, Auth (email/google), Onboarding, Studio entry, Storybook creation, Guided templates, Canva-lite editor, Layout→PDF renderer, Export (PDF), Export (DOCX/PPT), Payments/Billing gating, Emails (magic link/OTP/app notifications), 2FA, Error logging/observability, Performance (editor/render), Sharing/Invite relatives, Table of contents/reflow/orientation, Asset uploads/storage."
+              ],
+              "outputs": [
+                "docs/analytics/coverage-matrix.md",
+                "docs/analytics/coverage-matrix.json"
+              ],
+              "acceptanceCriteria": [
+                "Every feature area has at least one measurable goal metric (conversion or engagement).",
+                "Every goal metric lists required GA4 events + parameters + funnel step mapping."
+              ],
+              "skills": ["Product Analytics", "GA4", "Documentation"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_AUDIT_002",
+              "title": "Define top funnels + activation definitions",
+              "details": [
+                "Define canonical funnels: Acquisition (landing→signup), Activation (signup/login→first storybook created), Completion (storybook→export), Monetization (pricing→checkout→purchase), Reliability (export fails, api fails, editor crash).",
+                "Define 'Activation' single source of truth event (e.g., storybook_first_completed OR storybook_create + step_complete threshold)."
+              ],
+              "acceptanceCriteria": [
+                "At least 4 funnels are explicitly defined with step events and success criteria.",
+                "Activation event definition is unambiguous and implementable."
+              ],
+              "skills": ["Product Analytics", "GA4"],
+              "priority": "P0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_TAXONOMY_WRAPPERS_002",
+      "title": "Canonical GA4 Taxonomy + Typed Instrumentation Layer",
+      "description": "Build a strict analytics layer to ensure consistent event naming/params and easy adoption across the codebase.",
+      "stories": [
+        {
+          "id": "STORY_TAX_001",
+          "title": "Create canonical event spec aligned to objectives and funnels",
+          "tasks": [
+            {
+              "id": "TASK_TAX_001",
+              "title": "Create GA4 event taxonomy (v1) for Sprint 1–39 coverage",
+              "outputs": [
+                "docs/analytics/ga4-event-spec.md",
+                "docs/analytics/ga4-event-spec.json"
+              ],
+              "details": [
+                "Use recommended GA4 names where applicable: sign_up, login, generate_lead, begin_checkout, purchase.",
+                "Define custom events for editor/storybook/export lifecycle.",
+                "Define required common params and per-event params.",
+                "Explicitly forbid PII fields."
+              ],
+              "acceptanceCriteria": [
+                "Spec lists: event_name, when_fired, required_params, optional_params, sample_payload, owner.",
+                "Spec includes PII guardrails and examples of allowed IDs (lead_id, user_id as non-PII)."
+              ],
+              "skills": ["GA4", "Documentation"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_TAX_002",
+              "title": "Implement typed analytics wrapper (client + server safe)",
+              "outputs": [
+                "src/lib/analytics/index.ts",
+                "src/lib/analytics/events.ts",
+                "src/lib/analytics/context.ts"
+              ],
+              "details": [
+                "analytics.track(eventName, params) with runtime validation in dev.",
+                "analyticsContext() attaches: app_env, release, route, page_type, session_id, user_id (non-PII), workspace_id/project_id (if applicable).",
+                "Support SSR-safe no-op and client-only sending.",
+                "Support feature flags to disable noisy events."
+              ],
+              "acceptanceCriteria": [
+                "No direct gtag() calls remain outside analytics wrapper (except bootstrapping).",
+                "In GA4 DebugView, events include release + session_id + page_type.",
+                "Wrapper enforces required params at compile time (TypeScript)."
+              ],
+              "skills": ["TypeScript", "Next.js", "GA4"],
+              "priority": "P0",
+              "dependencies": ["TASK_TAX_001"]
+            },
+            {
+              "id": "TASK_TAX_003",
+              "title": "Add lint rule / CI check to prevent untyped analytics calls",
+              "details": [
+                "ESLint rule or grep-based CI check disallowing 'gtag(' and 'window.dataLayer.push(' outside analytics module."
+              ],
+              "acceptanceCriteria": [
+                "PR fails if direct analytics calls are introduced outside approved modules."
+              ],
+              "skills": ["Tooling", "CI/CD", "TypeScript"],
+              "priority": "P1",
+              "dependencies": ["TASK_TAX_002"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_FUNNEL_EVENTS_003",
+      "title": "Marketing Funnels + Generate Leads Tracking",
+      "description": "Instrument acquisition/onboarding flows and build GA4 funnels to measure drop-offs.",
+      "stories": [
+        {
+          "id": "STORY_FUNNEL_ACQ_001",
+          "title": "Acquisition funnel (Landing → Signup → Login → Studio)",
+          "tasks": [
+            {
+              "id": "TASK_ACQ_001",
+              "title": "Instrument landing CTAs and intent signals",
+              "details": [
+                "Track CTA clicks: cta_click with cta_id, placement, page_type, variant_id.",
+                "Track pricing page interactions: pricing_view, pricing_plan_select."
+              ],
+              "acceptanceCriteria": [
+                "CTA performance can be broken down by landing page + variant_id.",
+                "Pricing plan selection rate is measurable by traffic source."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_ACQ_002",
+              "title": "Instrument signup lifecycle",
+              "details": [
+                "Events: sign_up_start, sign_up (method=email/google), sign_up_fail (reason).",
+                "Track auth provider selection and cancellations."
+              ],
+              "acceptanceCriteria": [
+                "Funnel step 'sign_up_start → sign_up' is measurable with drop-off reasons.",
+                "sign_up includes method param consistently."
+              ],
+              "skills": ["NextAuth/Auth", "Frontend", "GA4"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_ACQ_003",
+              "title": "Instrument login lifecycle",
+              "details": [
+                "Events: login_start, login (method), login_fail (reason).",
+                "If you have 'set password' flow: set_password_view, set_password_success, set_password_fail."
+              ],
+              "acceptanceCriteria": [
+                "Login conversion measurable by method and device.",
+                "Password setup funnel measurable independently."
+              ],
+              "skills": ["Auth", "Frontend", "GA4"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_ACQ_004",
+              "title": "Instrument studio entry (activation gateway)",
+              "details": [
+                "Events: studio_view, studio_enter, onboarding_step_complete (if applicable)."
+              ],
+              "acceptanceCriteria": [
+                "You can measure signup→studio_enter conversion rate.",
+                "You can break down by traffic source and method."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P0"
+            }
+          ]
+        },
+        {
+          "id": "STORY_LEADS_002",
+          "title": "Lead capture (waitlist/contact/demo) + remarketing audiences",
+          "tasks": [
+            {
+              "id": "TASK_LEADS_001",
+              "title": "Instrument lead forms",
+              "details": [
+                "Event: generate_lead on successful submission with lead_type, form_id, cta_id, page_type.",
+                "Add lead_form_view, lead_form_start, lead_form_error (optional)."
+              ],
+              "acceptanceCriteria": [
+                "Lead conversion rate by Landing page and Source/Medium is visible.",
+                "No PII is sent to GA4; lead_id is allowed if non-PII."
+              ],
+              "skills": ["Frontend", "GA4", "Privacy"],
+              "priority": "P1"
+            },
+            {
+              "id": "TASK_LEADS_002",
+              "title": "Define GA4 audiences for retargeting (optional)",
+              "details": [
+                "Audiences: visited pricing but no signup, signup but no studio_enter, storybook_create but no export_complete, export_start but no export_complete."
+              ],
+              "acceptanceCriteria": [
+                "Audiences defined in GA4 (documented steps) and measurable sizes."
+              ],
+              "skills": ["GA4", "Growth"],
+              "priority": "P2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_PRODUCT_USAGE_004",
+      "title": "Studio / Storybook / Editor Tracking (Sprint 6–10 style features)",
+      "description": "Track core product usage, guided template interactions, and editor engagement so you know what drives completion.",
+      "stories": [
+        {
+          "id": "STORY_STORYBOOK_001",
+          "title": "Storybook lifecycle + guided templates",
+          "tasks": [
+            {
+              "id": "TASK_SB_001",
+              "title": "Instrument storybook CRUD",
+              "details": [
+                "Events: storybook_create, storybook_open, storybook_save, storybook_delete.",
+                "Params: storybook_id (hashed/short), template_id, entry_point (studio/cta)."
+              ],
+              "acceptanceCriteria": [
+                "You can compute activation as storybook_create per user cohort.",
+                "Template performance measurable."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_SB_002",
+              "title": "Instrument guided steps / TOC interactions",
+              "details": [
+                "Events: storybook_step_view, storybook_step_complete(step_id), toc_open, toc_navigate(section_id).",
+                "Track orientation/reflow usage: reader_mode_change (orientation, reflow_enabled)."
+              ],
+              "acceptanceCriteria": [
+                "Drop-off can be attributed to specific step_id.",
+                "TOC usage correlates with completion measurable."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P1"
+            }
+          ]
+        },
+        {
+          "id": "STORY_EDITOR_002",
+          "title": "Canva-lite editor interactions + asset usage",
+          "tasks": [
+            {
+              "id": "TASK_ED_001",
+              "title": "Instrument editor session + key interactions",
+              "details": [
+                "Events: editor_open, editor_close, editor_action(action_type), editor_undo, editor_redo.",
+                "action_type examples: add_text, edit_text, add_image, crop_image, move_element, resize_element, change_template."
+              ],
+              "acceptanceCriteria": [
+                "Editor engagement metrics available: avg actions/session, actions breakdown.",
+                "Editor usage can be segmented by template_id and device."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P1"
+            },
+            {
+              "id": "TASK_ED_002",
+              "title": "Instrument uploads/assets pipeline",
+              "details": [
+                "Events: asset_upload_start, asset_upload_success, asset_upload_fail(reason), asset_delete.",
+                "Params: asset_type, size_bucket, provider (r2/s3)."
+              ],
+              "acceptanceCriteria": [
+                "Upload success rate and failure reasons measurable."
+              ],
+              "skills": ["Frontend", "Storage", "GA4"],
+              "priority": "P1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_EXPORTS_005",
+      "title": "Export Tracking (PDF + planned DOCX/PPT) + Reliability Signals",
+      "description": "Measure export conversion and diagnose failures/timeouts, aligned with renderer work.",
+      "stories": [
+        {
+          "id": "STORY_EXPORT_PDF_001",
+          "title": "PDF export funnel",
+          "tasks": [
+            {
+              "id": "TASK_PDF_001",
+              "title": "Instrument PDF export lifecycle",
+              "details": [
+                "Events: export_start(export_type=pdf), export_progress(stage, pct_bucket), export_complete, export_failed(reason, stage).",
+                "Params: storybook_pages_bucket, image_count_bucket, render_mode (client/server)."
+              ],
+              "acceptanceCriteria": [
+                "You can measure storybook_open → export_start → export_complete.",
+                "Failure reasons split by stage (layout, render, upload, download)."
+              ],
+              "skills": ["Frontend", "Backend", "GA4"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_PDF_002",
+              "title": "Align export failures with Sentry breadcrumbs + tags",
+              "details": [
+                "On export_failed, create a Sentry breadcrumb with same payload and tag session_id, export_type, stage."
+              ],
+              "acceptanceCriteria": [
+                "Given a Sentry issue, you can identify impacted export stage and correlate to GA4 via session_id."
+              ],
+              "skills": ["Sentry", "Frontend"],
+              "priority": "P0",
+              "dependencies": ["TASK_PDF_001"]
+            }
+          ]
+        },
+        {
+          "id": "STORY_EXPORT_DOCX_PPT_002",
+          "title": "DOCX + PPT export tracking scaffolding (feature-flagged)",
+          "tasks": [
+            {
+              "id": "TASK_DOCX_001",
+              "title": "Add export lifecycle events for DOCX and PPT (behind feature flags)",
+              "details": [
+                "Reuse same event names with export_type=docx|ppt.",
+                "Track mapping option: content_model vs page_to_slide (ppt)."
+              ],
+              "acceptanceCriteria": [
+                "When flags enabled, events fire with export_type correctly.",
+                "No events fire when feature disabled."
+              ],
+              "skills": ["Frontend", "Feature Flags", "GA4"],
+              "priority": "P1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_MONETIZATION_006",
+      "title": "Billing / Paywall / Purchase Journey (if present in Sprint 27–39)",
+      "description": "Track when users hit paywalls, start checkout, and purchase; connect monetization drop-offs to UX issues.",
+      "stories": [
+        {
+          "id": "STORY_PAYWALL_001",
+          "title": "Paywall exposure + upgrade intent",
+          "tasks": [
+            {
+              "id": "TASK_PAY_001",
+              "title": "Instrument paywall view and upgrade clicks",
+              "details": [
+                "Events: paywall_view(reason, feature), upgrade_click(plan_id), billing_portal_open.",
+                "Params: gating_feature (export/pdf/docx/ppt), quota_remaining_bucket."
+              ],
+              "acceptanceCriteria": [
+                "You can see which paywalls convert and which cause churn.",
+                "You can break down by feature gate type."
+              ],
+              "skills": ["Frontend", "GA4"],
+              "priority": "P2"
+            }
+          ]
+        },
+        {
+          "id": "STORY_CHECKOUT_002",
+          "title": "Checkout + purchase (Stripe or provider)",
+          "tasks": [
+            {
+              "id": "TASK_PAY_002",
+              "title": "Instrument checkout lifecycle with GA4 recommended ecommerce events",
+              "details": [
+                "Events: begin_checkout, add_payment_info, purchase.",
+                "Include item list for plans as items[] payload."
+              ],
+              "acceptanceCriteria": [
+                "Drive sales reports in GA4 populate when provider is enabled."
+              ],
+              "skills": ["Payments", "GA4", "Backend"],
+              "priority": "P2"
+            },
+            {
+              "id": "TASK_PAY_003",
+              "title": "Instrument payment failures + correlate with Sentry",
+              "details": [
+                "Event: payment_failed(reason, provider, step). Add matching Sentry breadcrumb."
+              ],
+              "acceptanceCriteria": [
+                "Payment failures are measurable and debuggable via Sentry."
+              ],
+              "skills": ["Payments", "Sentry", "Frontend"],
+              "priority": "P2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_EMAILS_AUTHOPS_007",
+      "title": "Email + Auth Operations Tracking (Magic link/OTP, templates, delivery)",
+      "description": "Track email auth success/failure and template flows without storing PII in GA4; use Sentry for technical diagnostics.",
+      "stories": [
+        {
+          "id": "STORY_EMAIL_001",
+          "title": "Auth email send + verify funnel (non-PII)",
+          "tasks": [
+            {
+              "id": "TASK_EMAIL_001",
+              "title": "Instrument auth email events",
+              "details": [
+                "Events: auth_email_send_start, auth_email_send_success, auth_email_send_fail(reason, provider).",
+                "Events: magic_link_open, magic_link_verify_success, magic_link_verify_fail(reason)."
+              ],
+              "acceptanceCriteria": [
+                "You can measure email auth conversion rates and failure reasons without PII."
+              ],
+              "skills": ["Auth", "Email", "GA4"],
+              "priority": "P2"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_OBSERVABILITY_008",
+      "title": "Drop-off Diagnostics: GA4 Failure Events + Sentry Correlation",
+      "description": "Make 'was it our issue?' answerable by logging friction signals and correlating sessions.",
+      "stories": [
+        {
+          "id": "STORY_ERRORS_001",
+          "title": "Unified error taxonomy + emission",
+          "tasks": [
+            {
+              "id": "TASK_ERR_001",
+              "title": "Define error_code taxonomy for analytics",
+              "outputs": ["docs/analytics/error-taxonomy.json"],
+              "details": [
+                "Group codes: AUTH_*, EXPORT_*, UPLOAD_*, API_*, EDITOR_*, BILLING_*.",
+                "Map to user-facing messages and Sentry fingerprints."
+              ],
+              "acceptanceCriteria": [
+                "Every 'fail' event uses error_code from taxonomy.",
+                "Sentry fingerprints map 1:many to error_code where appropriate."
+              ],
+              "skills": ["Sentry", "Engineering"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_ERR_002",
+              "title": "Emit api_error/form_error/export_failed consistently",
+              "details": [
+                "Hook fetch/Axios interceptor to emit api_error with endpoint_key, status_code, error_code.",
+                "Hook form validation to emit form_error with form_id, field_key, error_type."
+              ],
+              "acceptanceCriteria": [
+                "Top API failures are measurable with endpoint_key breakdown.",
+                "Form drop-off is attributable to field-level friction."
+              ],
+              "skills": ["Frontend", "GA4", "Sentry"],
+              "priority": "P0",
+              "dependencies": ["TASK_ERR_001"]
+            },
+            {
+              "id": "TASK_ERR_003",
+              "title": "Sentry correlation: session_id, user_id tags + breadcrumb mirroring",
+              "details": [
+                "Ensure session_id exists early in app lifecycle and is added to Sentry scope.",
+                "Mirror critical GA4 failure events as Sentry breadcrumbs (category=analytics)."
+              ],
+              "acceptanceCriteria": [
+                "Any export_failed/api_error event yields a breadcrumb in Sentry with same session_id."
+              ],
+              "skills": ["Sentry", "Frontend"],
+              "priority": "P0"
+            }
+          ]
+        },
+        {
+          "id": "STORY_PERF_002",
+          "title": "Performance signals for editor + export renderer",
+          "tasks": [
+            {
+              "id": "TASK_PERF_001",
+              "title": "Capture key timing metrics (no PII) for editor and export",
+              "details": [
+                "Events: perf_editor_boot(ms_bucket), perf_export_total(ms_bucket), perf_export_stage(stage, ms_bucket).",
+                "Sentry: ensure performance traces include transaction names for editor and export routes."
+              ],
+              "acceptanceCriteria": [
+                "You can compare export completion rate vs export_total latency buckets.",
+                "Sentry Performance shows transactions for editor/export paths."
+              ],
+              "skills": ["Performance", "Sentry", "Frontend"],
+              "priority": "P1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_GA4_REPORTING_009",
+      "title": "GA4 Explorations + Business Objectives Reporting Pack",
+      "description": "Make the data actionable in GA4 with saved explorations and documented report paths.",
+      "stories": [
+        {
+          "id": "STORY_REPORTS_001",
+          "title": "Saved funnel explorations and breakdown templates",
+          "tasks": [
+            {
+              "id": "TASK_REP_001",
+              "title": "Create and document core funnels in GA4 Explore",
+              "details": [
+                "Funnels: Acquisition, Activation, Completion (Export), Monetization (if enabled).",
+                "Breakdowns: device_category, browser, method, traffic_source, page_type, template_id.",
+                "Segments: sessions with api_error vs without; sessions with export_failed vs without."
+              ],
+              "acceptanceCriteria": [
+                "At least 3 saved exploration definitions exist and are reproducible via documented steps.",
+                "Each funnel has 2+ useful breakdowns that highlight drop-offs."
+              ],
+              "skills": ["GA4", "Analytics"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_REP_002",
+              "title": "Business objectives alignment checklist (Generate leads / Drive sales / Marketing funnels)",
+              "details": [
+                "Document which events power each objective report and where to find them in GA4 UI.",
+                "Ensure key events are set and appear in standard reports."
+              ],
+              "acceptanceCriteria": [
+                "A new team member can navigate to the right report for each objective and interpret the KPIs."
+              ],
+              "skills": ["GA4", "Documentation"],
+              "priority": "P1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EPIC_QA_PRIVACY_010",
+      "title": "QA, DebugView, and Privacy Guardrails",
+      "description": "Ensure tracking is correct, consented, and safe.",
+      "stories": [
+        {
+          "id": "STORY_QA_001",
+          "title": "End-to-end verification",
+          "tasks": [
+            {
+              "id": "TASK_QA_001",
+              "title": "Create analytics QA checklist and test runs",
+              "outputs": ["docs/analytics/qa-checklist.md"],
+              "details": [
+                "Happy path: landing→signup→login→storybook_create→export_complete.",
+                "Failure paths: login_fail, api_error, export_failed, upload_fail.",
+                "Verify in GA4 DebugView and Sentry breadcrumbs."
+              ],
+              "acceptanceCriteria": [
+                "QA checklist covers all critical steps and failure events.",
+                "At least 1 recorded test session proves GA4 + Sentry correlation via session_id."
+              ],
+              "skills": ["QA", "GA4", "Sentry"],
+              "priority": "P0"
+            },
+            {
+              "id": "TASK_PRIV_001",
+              "title": "Privacy review: ensure no PII leakage into GA4",
+              "details": [
+                "Scan analytics payloads; blocklist fields like email, name, address, free-text story content.",
+                "Add runtime sanitizer that drops suspicious keys in development (warn) and production (drop)."
+              ],
+              "acceptanceCriteria": [
+                "Automated test or runtime guard prevents PII keys from being sent.",
+                "Docs clearly list forbidden payload fields."
+              ],
+              "skills": ["Security/Privacy", "Frontend"],
+              "priority": "P0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "canonicalEventTaxonomy": {
+    "commonParams": [
+      "session_id",
+      "release",
+      "route",
+      "page_type",
+      "device_category",
+      "user_id",
+      "method",
+      "traffic_source",
+      "variant_id"
+    ],
+    "events": [
+      {
+        "name": "cta_click",
+        "objective": "Generate leads / Marketing funnels",
+        "requiredParams": ["cta_id", "placement", "page_type"],
+        "optionalParams": ["variant_id"]
+      },
+      {
+        "name": "sign_up_start",
+        "objective": "Generate leads / Marketing funnels",
+        "requiredParams": ["method"],
+        "optionalParams": ["reason"]
+      },
+      {
+        "name": "sign_up",
+        "objective": "Generate leads / Marketing funnels",
+        "requiredParams": ["method"],
+        "optionalParams": ["entry_point"]
+      },
+      {
+        "name": "login_start",
+        "objective": "Marketing funnels",
+        "requiredParams": ["method"]
+      },
+      {
+        "name": "login",
+        "objective": "Marketing funnels",
+        "requiredParams": ["method"]
+      },
+      {
+        "name": "storybook_create",
+        "objective": "Marketing funnels",
+        "requiredParams": ["template_id"],
+        "optionalParams": ["entry_point"]
+      },
+      {
+        "name": "storybook_step_complete",
+        "objective": "Marketing funnels",
+        "requiredParams": ["step_id"],
+        "optionalParams": ["template_id"]
+      },
+      {
+        "name": "export_start",
+        "objective": "Drive sales / Marketing funnels",
+        "requiredParams": ["export_type"],
+        "optionalParams": ["pages_bucket", "render_mode"]
+      },
+      {
+        "name": "export_complete",
+        "objective": "Drive sales / Marketing funnels",
+        "requiredParams": ["export_type"],
+        "optionalParams": ["pages_bucket", "render_mode", "duration_ms_bucket"]
+      },
+      {
+        "name": "export_failed",
+        "objective": "Marketing funnels / Reliability",
+        "requiredParams": ["export_type", "error_code", "stage"],
+        "optionalParams": ["status_code"]
+      },
+      {
+        "name": "api_error",
+        "objective": "Reliability",
+        "requiredParams": ["endpoint_key", "status_code", "error_code"]
+      },
+      {
+        "name": "form_error",
+        "objective": "Generate leads / Reliability",
+        "requiredParams": ["form_id", "field_key", "error_type"]
+      },
+      {
+        "name": "generate_lead",
+        "objective": "Generate leads",
+        "requiredParams": ["lead_type", "form_id"],
+        "optionalParams": ["cta_id"]
+      },
+      {
+        "name": "paywall_view",
+        "objective": "Drive sales",
+        "requiredParams": ["feature", "reason"],
+        "optionalParams": ["plan_id"]
+      },
+      {
+        "name": "begin_checkout",
+        "objective": "Drive sales",
+        "requiredParams": ["plan_id"]
+      },
+      {
+        "name": "purchase",
+        "objective": "Drive sales",
+        "requiredParams": ["transaction_id", "plan_id", "value", "currency"]
+      }
+    ]
+  },
+  "funnelsToBuildInGA4Explore": [
+    {
+      "name": "Acquisition",
+      "steps": [
+        "page_view(page_type=landing)",
+        "sign_up_start",
+        "sign_up",
+        "login",
+        "studio_enter"
+      ],
+      "breakdowns": [
+        "device_category",
+        "method",
+        "traffic_source",
+        "variant_id"
+      ]
+    },
+    {
+      "name": "Activation",
+      "steps": [
+        "sign_up",
+        "login",
+        "storybook_create",
+        "storybook_step_complete(step_id=review_or_finish)"
+      ],
+      "breakdowns": ["template_id", "device_category", "traffic_source"]
+    },
+    {
+      "name": "Completion (Export)",
+      "steps": [
+        "storybook_open",
+        "export_start(export_type=pdf)",
+        "export_complete(export_type=pdf)"
+      ],
+      "breakdowns": ["pages_bucket", "render_mode", "device_category"]
+    },
+    {
+      "name": "Monetization (if enabled)",
+      "steps": [
+        "pricing_view",
+        "pricing_plan_select",
+        "begin_checkout",
+        "purchase"
+      ],
+      "breakdowns": ["traffic_source", "device_category", "plan_id"]
+    }
+  ],
+  "definitionOfDone": [
+    "All P0 tasks completed and verified in GA4 DebugView + Sentry",
+    "At least 3 saved funnel explorations documented",
+    "session_id correlation works: GA4 failure event ↔ Sentry breadcrumb/tag",
+    "No PII in analytics payloads (guardrail implemented and validated)"
+  ]
+}

@@ -14,6 +14,8 @@ import type {
 import {
   requestExportPreflight,
   requestPdfExport,
+  requestDocxExport,
+  requestPptxExport,
   triggerBlobDownload,
 } from "../../lib/export/client";
 import { updateLayoutStorybookSettingsAction } from "../../lib/actions/editor2";
@@ -124,6 +126,10 @@ export function ExportModal({
   const [billingActionHint, setBillingActionHint] =
     useState<BillingActionHint>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [docxStatus, setDocxStatus] = useState<"idle" | "generating" | "done" | "failed">("idle");
+  const [pptxStatus, setPptxStatus] = useState<"idle" | "generating" | "done" | "failed">("idle");
+  const [docxError, setDocxError] = useState<string | null>(null);
+  const [pptxError, setPptxError] = useState<string | null>(null);
 
   const activeTargets = useMemo(() => targetsFor(selection), [selection]);
   const isBusy = Object.values(runState).some(
@@ -346,6 +352,43 @@ export function ExportModal({
     }
   }
 
+  async function handleDocxExport() {
+    setDocxStatus("generating");
+    setDocxError(null);
+    setGlobalError(null);
+    setBillingActionHint(null);
+    const result = await requestDocxExport({ storybookId });
+    if (!result.ok) {
+      setDocxStatus("failed");
+      setDocxError(result.error.message);
+      setGlobalError(result.error.message);
+      setBillingActionHint(resolveBillingActionHint(result.error));
+      return;
+    }
+    triggerBlobDownload(result.blob, result.meta.filename);
+    setDocxStatus("done");
+  }
+
+  async function handlePptxExport() {
+    setPptxStatus("generating");
+    setPptxError(null);
+    setGlobalError(null);
+    setBillingActionHint(null);
+    const result = await requestPptxExport({ storybookId });
+    if (!result.ok) {
+      setPptxStatus("failed");
+      setPptxError(result.error.message);
+      setGlobalError(result.error.message);
+      setBillingActionHint(resolveBillingActionHint(result.error));
+      return;
+    }
+    triggerBlobDownload(result.blob, result.meta.filename);
+    setPptxStatus("done");
+  }
+
+  const isDocxBusy = docxStatus === "generating";
+  const isPptxBusy = pptxStatus === "generating";
+
   const visiblePreflights = Object.fromEntries(
     activeTargets.flatMap((target) =>
       preflightByTarget[target] ? [[target, preflightByTarget[target]]] : [],
@@ -380,10 +423,10 @@ export function ExportModal({
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-xs uppercase tracking-[0.16em] text-white/45">
-                Export PDF
+                Export
               </p>
               <h3 className="mt-1 text-lg font-semibold text-parchment">
-                Digital + Hardcopy Export
+                PDF, Word &amp; PowerPoint
               </h3>
             </div>
             <Button type="button" size="sm" variant="ghost" onClick={onClose}>
@@ -561,6 +604,41 @@ export function ExportModal({
                     Preview PDF
                   </Button>
                 </div>
+
+                <section className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                  <p className="mb-2 text-sm font-semibold text-white/85">
+                    Document Exports
+                  </p>
+                  <p className="mb-3 text-xs text-white/55">
+                    Download your storybook as an editable Word document or PowerPoint presentation.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={isDocxBusy}
+                      disabled={isPptxBusy}
+                      onClick={() => void handleDocxExport()}
+                    >
+                      {docxStatus === "done" ? "Downloaded DOCX" : "Download DOCX"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={isPptxBusy}
+                      disabled={isDocxBusy}
+                      onClick={() => void handlePptxExport()}
+                    >
+                      {pptxStatus === "done" ? "Downloaded PPTX" : "Download PPTX"}
+                    </Button>
+                  </div>
+                  {docxError ? (
+                    <p className="mt-2 text-xs text-rose-300">{docxError}</p>
+                  ) : null}
+                  {pptxError ? (
+                    <p className="mt-2 text-xs text-rose-300">{pptxError}</p>
+                  ) : null}
+                </section>
 
                 {globalError ? (
                   <div className="rounded-lg border border-rose-300/20 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">

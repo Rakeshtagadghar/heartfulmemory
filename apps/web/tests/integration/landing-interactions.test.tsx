@@ -27,7 +27,7 @@ describe("landing interactions", () => {
     const submitEvent = handler.mock.calls.find(
       (args) =>
         (args[0] as CustomEvent<{ event: string }>).detail.event ===
-        "email_capture_submit"
+        "generate_lead"
     )?.[0];
     expect(submitEvent).toBeDefined();
 
@@ -65,11 +65,13 @@ describe("landing interactions", () => {
         (
           args[0] as CustomEvent<{
             event: string;
-            props: { question: string };
+            props: { cta_id: string; placement: string; variant_id: string };
           }>
-        ).detail.event === "faq_expand"
+        ).detail.event === "cta_click"
     )?.[0];
-    expect(faqEvent?.detail.props.question).toBe("Question B");
+    expect(faqEvent?.detail.props.cta_id).toBe("faq_expand");
+    expect(faqEvent?.detail.props.placement).toBe("landing_faq");
+    expect(faqEvent?.detail.props.variant_id).toBe("faq_q_2");
 
     window.removeEventListener("analytics:event", handler as EventListener);
   });

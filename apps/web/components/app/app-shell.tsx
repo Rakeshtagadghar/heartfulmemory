@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { signOut } from "next-auth/react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { ProfileRecord } from "../../lib/profile";
 import { trackAuthLogout } from "../../lib/analytics/events_auth";
+import { clearAnalyticsUserContext, setAnalyticsUserContext } from "../../lib/analytics/client";
 import { MemoriosoLogo } from "../memorioso-logo";
 import { PlanStatusBanner } from "../billing/PlanStatusBanner";
 
@@ -42,7 +43,9 @@ export function AppShell({
   suppressDisplayNameFallback?: boolean;
 }) {
   const pathname = usePathname();
-  const isLayoutStudio = pathname?.includes("/layout") ?? false;
+  const selectedSegments = useSelectedLayoutSegments();
+  const isLayoutStudio =
+    selectedSegments[0] === "storybooks" && selectedSegments.at(-1) === "layout";
   const displayName = getDisplayLabel(profile, email, suppressDisplayNameFallback);
   const dashboardActive = pathname === "/app";
   const templatesActive = (pathname?.startsWith("/create/template") ?? false) || (pathname?.startsWith("/app/templates") ?? false);
@@ -51,6 +54,14 @@ export function AppShell({
   const userMenuRef = useRef<HTMLDivElement | null>(null);
   const avatarLabel = displayName || "Member";
   const avatarInitials = initialsFromLabel(avatarLabel);
+  const analyticsUserId = profile?.id ?? null;
+
+  useEffect(() => {
+    setAnalyticsUserContext({ userId: analyticsUserId });
+    return () => {
+      clearAnalyticsUserContext();
+    };
+  }, [analyticsUserId]);
 
   useEffect(() => {
     if (!userMenuOpen) return;

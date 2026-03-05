@@ -7,9 +7,15 @@ const templates = [
   { id: "preview/auth/VerifyEmail", title: "Auth: Verify Email" },
   { id: "preview/auth/LoginLinkOrCode", title: "Auth: Login Link or Code" },
   { id: "preview/auth/ResetPassword", title: "Auth: Reset Password" },
-  { id: "preview/auth/PasswordSetSuccess", title: "Auth: Password Set Success" },
-  { id: "preview/billing/SubscriptionActive", title: "Billing: Subscription Active" },
-  { id: "preview/billing/PaymentFailed", title: "Billing: Payment Failed" }
+  {
+    id: "preview/auth/PasswordSetSuccess",
+    title: "Auth: Password Set Success",
+  },
+  {
+    id: "preview/billing/SubscriptionActive",
+    title: "Billing: Subscription Active",
+  },
+  { id: "preview/billing/PaymentFailed", title: "Billing: Payment Failed" },
 ] as const;
 
 export default function PreviewGalleryTemplate() {
@@ -23,14 +29,24 @@ export default function PreviewGalleryTemplate() {
       <Section>
         <SectionTitle>Email Preview Gallery</SectionTitle>
         <Text
-          style={{ margin: "0 0 12px", fontSize: emailTheme.typography.bodySize, color: emailTheme.colors.text }}
+          style={{
+            margin: "0 0 12px",
+            fontSize: emailTheme.typography.bodySize,
+            color: emailTheme.colors.text,
+          }}
         >
           Use this as a quick index while iterating on template look and copy.
         </Text>
         {templates.map((template) => (
-          <Text key={template.id} style={{ margin: "0 0 10px", fontSize: "14px" }}>
+          <Text
+            key={template.id}
+            style={{ margin: "0 0 10px", fontSize: "14px" }}
+          >
             - {template.title} ({" "}
-            <Link href={`http://localhost:3001/${template.id}`} style={{ color: emailTheme.colors.link }}>
+            <Link
+              href={`http://localhost:3001/${template.id}`}
+              style={{ color: emailTheme.colors.link }}
+            >
               {template.id}
             </Link>
             )

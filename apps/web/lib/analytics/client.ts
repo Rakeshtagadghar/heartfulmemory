@@ -1,58 +1,98 @@
 "use client";
 
-export type AnalyticsProps = Record<
-  string,
-  string | number | boolean | null | undefined
->;
+import { getAnalyticsContext, isAnalyticsTrackingAllowed } from "./context";
+import {
+  getMissingCanonicalParams,
+  isCanonicalAnalyticsEventName,
+  type AnalyticsProps,
+  type CanonicalAnalyticsEventMap,
+  type CanonicalAnalyticsEventName,
+} from "./events";
+import { sanitizeAnalyticsProps } from "./sanitize";
 
 type AnalyticsEventDetail = {
   event: string;
   props: AnalyticsProps;
 };
 
-function getDefaultProps(): AnalyticsProps {
-  if (typeof window === "undefined") return {};
-
-  const url = new URL(window.location.href);
-  const utmSource = url.searchParams.get("utm_source");
-  const utmCampaign = url.searchParams.get("utm_campaign");
-  const utmMedium = url.searchParams.get("utm_medium");
-
-  return {
-    referrer: document.referrer || undefined,
-    utm_source: utmSource || undefined,
-    utm_campaign: utmCampaign || undefined,
-    utm_medium: utmMedium || undefined
-  };
-}
-
 function emitDevEvent(detail: AnalyticsEventDetail) {
   window.dispatchEvent(
-    new CustomEvent<AnalyticsEventDetail>("analytics:event", { detail })
+    new CustomEvent<AnalyticsEventDetail>("analytics:event", { detail }),
   );
 }
 
 function emitGa4(event: string, props: AnalyticsProps) {
   if (typeof window === "undefined") return;
   const measurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
-  const gtag = (window as Window & {
-    gtag?: (...args: unknown[]) => void;
-  }).gtag;
+  const gtag = (
+    window as Window & {
+      gtag?: (...args: unknown[]) => void;
+    }
+  ).gtag;
 
   if (!measurementId || typeof gtag !== "function") return;
   gtag("event", event, props);
 }
 
-export function track(event: string, props?: AnalyticsProps) {
-  if (typeof window === "undefined") return;
+function isDisabledByFeatureFlag(event: string) {
+  const raw = process.env.NEXT_PUBLIC_ANALYTICS_DISABLED_EVENTS;
+  if (!raw) return false;
+  const disabled = new Set(
+    raw
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
+  return disabled.has(event);
+}
 
-  const payload = { ...getDefaultProps(), ...(props ?? {}) };
+export function track<E extends CanonicalAnalyticsEventName>(
+  event: E,
+  props: CanonicalAnalyticsEventMap[E],
+): void;
+export function track(event: string, props?: AnalyticsProps): void;
+export function track(event: string, props?: AnalyticsProps): void {
+  if (typeof window === "undefined") return;
+  if (!isAnalyticsTrackingAllowed()) return;
+  if (isDisabledByFeatureFlag(event)) return;
+
+  const payloadWithContext = {
+    ...getAnalyticsContext(),
+    ...(props ?? {}),
+  };
+  const { props: payload, redactedKeys } =
+    sanitizeAnalyticsProps(payloadWithContext);
+
+  if (isCanonicalAnalyticsEventName(event)) {
+    const missing = getMissingCanonicalParams(event, payload);
+    if (missing.length > 0) {
+      if (process.env.NODE_ENV !== "production") {
+        console.warn(
+          `[analytics] missing required params for ${event}: ${missing.join(", ")}`,
+        );
+      }
+      return;
+    }
+  } else if (process.env.NODE_ENV !== "production") {
+    console.warn(`[analytics] legacy event name in use: ${event}`);
+  }
 
   emitDevEvent({ event, props: payload });
   emitGa4(event, payload);
 
   if (process.env.NODE_ENV !== "production") {
+    if (redactedKeys.length > 0) {
+      console.warn(
+        `[analytics] redacted fields for ${event}: ${redactedKeys.join(", ")}`,
+      );
+    }
     console.info("[analytics]", event, payload);
   }
 }
 
+export {
+  type CanonicalAnalyticsEventName,
+  type CanonicalAnalyticsEventMap,
+  type AnalyticsProps,
+} from "./events";
+export { clearAnalyticsUserContext, setAnalyticsUserContext } from "./context";

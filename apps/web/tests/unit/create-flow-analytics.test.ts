@@ -37,16 +37,16 @@ describe("createFlow analytics helpers", () => {
     trackOpenStudioFromChapter("ch_origins");
 
     expect(trackMock.mock.calls).toEqual([
-      ["create_entry_view", undefined],
-      ["template_select_view", undefined],
-      ["template_select_choose", { templateId: "tpl_childhood_roots_v2" }],
-      ["create_freeform_choose"],
-      ["chapters_view", { storybookId: "sb_1" }],
-      ["chapter_start", { chapterKey: "ch_origins" }],
-      ["wizard_step_next", { questionId: "q1" }],
-      ["wizard_step_skip", { questionId: "q2" }],
-      ["chapter_complete", { chapterKey: "ch_origins" }],
-      ["open_studio_from_chapter", { chapterKey: "ch_origins" }]
+      ["cta_click", { cta_id: "create_entry_view", placement: "create_entry" }],
+      ["cta_click", { cta_id: "template_select_view", placement: "template_gallery" }],
+      ["cta_click", { cta_id: "template_select_choose", placement: "template_gallery", template_id: "tpl_childhood_roots_v2" }],
+      ["cta_click", { cta_id: "create_freeform_choose", placement: "create_entry" }],
+      ["storybook_open", { storybook_id: "sb_1" }],
+      ["storybook_step_view", { step_id: "ch_origins", chapter_id: "ch_origins" }],
+      ["storybook_step_complete", { step_id: "q1", question_id: "q1", action: "next" }],
+      ["storybook_step_complete", { step_id: "q2", question_id: "q2", action: "skip" }],
+      ["storybook_step_complete", { step_id: "ch_origins", chapter_id: "ch_origins", action: "chapter_complete" }],
+      ["studio_enter", { entry_point: "chapter_flow", chapter_key: "ch_origins" }]
     ]);
   });
 });

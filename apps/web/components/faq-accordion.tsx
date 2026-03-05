@@ -31,7 +31,11 @@ export function FaqAccordion({ items }: { items: Item[] }) {
                   const next = isOpen ? null : index;
                   setOpenIndex(next);
                   if (!isOpen) {
-                    track("faq_expand", { question: item.q });
+                    track("cta_click", {
+                      cta_id: "faq_expand",
+                      placement: "landing_faq",
+                      variant_id: `faq_q_${index + 1}`
+                    });
                   }
                 }}
               >

@@ -1,0 +1,355 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 39,
+      "title": "Export v2 (Production): DOCX (Content Model) + PPTX (Page → Slide) + Unified Export Quota",
+      "duration": "2 weeks",
+      "goal": "Ship production-grade DOCX and PPTX exports using free-tier tooling and your existing data model: DOCX is generated from the story content model (editable text-first), and PPTX is generated from Studio pages (page → slide, editable). Reuse the existing overall export quota (no per-type quotas). Store artifacts in R2 and provide reliable downloads.",
+      "definitionOfDone": [
+        "DOCX export produces an editable document: title page, chapter headings, paragraphs, images inline with captions/credits",
+        "PPTX export produces an editable slide deck: each Studio page maps to a slide with positioned text/images/shapes where possible",
+        "Export pipeline is idempotent and resilient: job states, retries, and clear user errors",
+        "Exports are stored as artifacts (R2) and downloadable with signed URLs",
+        "Unified monthly export quota applies across PDF/DOCX/PPTX (one counter)",
+        "Hidden pages are excluded by default (consistent with PDF policy)",
+        "Orientation is respected for PPTX slide sizes (portrait/landscape)",
+        "Automated tests cover mapping correctness and artifact generation without regressions"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex actions/mutations + existing export orchestrator",
+      "storage": "Cloudflare R2 for export artifacts",
+      "docxTooling": "Node-based DOCX generation library (open source; no paid service)",
+      "pptxTooling": "PptxGenJS (open source; no paid service)",
+      "renderInputs": {
+        "docx": "Story content model (chapters + answers + rich text plain extraction)",
+        "pptx": "Studio doc model (pages + nodes with x/y/w/h + text/images)"
+      },
+      "quota": "Existing unified quota from billing sprint (one counter for all export types)"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S39-T01",
+      "title": "Finalize export architecture v2: types, job states, artifact storage, unified quota integration",
+      "skill": ["Architecture", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "exportTypes": ["pdf", "docx", "pptx"],
+        "jobModel": {
+          "table": "exportJobs",
+          "fields": [
+            "id",
+            "userId",
+            "storybookId",
+            "type (pdf|docx|pptx)",
+            "status (queued|running|done|error)",
+            "artifactId (nullable)",
+            "errorCode (nullable)",
+            "createdAt",
+            "updatedAt"
+          ],
+          "indexes": ["by_userId", "by_storybookId"]
+        },
+        "artifactModel": {
+          "table": "exportArtifacts",
+          "fields": [
+            "id",
+            "userId",
+            "storybookId",
+            "type",
+            "filename",
+            "r2Key",
+            "mimeType",
+            "sizeBytes",
+            "createdAt"
+          ],
+          "indexes": ["by_userId", "by_storybookId"]
+        },
+        "quota": [
+          "Reuse existing unified monthly export counter (increment for any type)",
+          "Check quota before job enqueue",
+          "Increment only on successful export completion (consistent with your policy)"
+        ],
+        "constraints": [
+          "No per-export-type quotas",
+          "All exports must be server-generated (no client-side generation)"
+        ]
+      },
+      "acceptanceTests": [
+        "Jobs can be created for pdf/docx/pptx",
+        "Quota check blocks when exceeded, regardless of type",
+        "Artifact records link correctly to jobs"
+      ],
+      "deliverables": [
+        "convex/schema.ts updates (exportJobs/exportArtifacts)",
+        "docs/export_architecture_v2.md"
+      ]
+    },
+    {
+      "id": "S39-T02",
+      "title": "DOCX export mapping spec (content model → Word structure)",
+      "skill": ["Product", "Docs"],
+      "priority": "P0",
+      "requirements": {
+        "mapping": [
+          "Cover/title page: story title, subtitle, author name (optional), date",
+          "TOC: optional (v1 simple headings, or omit)",
+          "Each chapter: Heading 1 with chapter title",
+          "Body: paragraphs derived from ordered answers (or chapter compiled text)",
+          "Images: inline with max width (fit within margins), caption below",
+          "Credits: optional final section listing photo credits"
+        ],
+        "richText": [
+          "Use derived plain text for v1 (keeps DOCX stable).",
+          "If Tiptap is present, optionally support basic marks later; v1 can be plain text for reliability."
+        ],
+        "constraints": [
+          "Editable-first: do not attempt pixel-perfect layout",
+          "Page size follows story preset (portrait/landscape optional later for DOCX; v1 use standard A4/Letter)"
+        ]
+      },
+      "acceptanceTests": [
+        "Spec covers all required sections and edge cases (missing images, empty chapters)",
+        "Ordering is deterministic"
+      ],
+      "deliverables": [
+        "docs/docx_export_mapping_v1.md",
+        "docs/docx_style_guide_v1.md"
+      ]
+    },
+    {
+      "id": "S39-T03",
+      "title": "Implement DOCX generator (server-side) using OSS library + embed images from R2",
+      "skill": ["Backend", "Node", "Document Generation"],
+      "priority": "P0",
+      "requirements": {
+        "implementation": [
+          "Create generateDocx(storybookId) -> Buffer",
+          "Fetch story content model (chapters, answers, titles)",
+          "Fetch selected storybookPhotos (max 20) and map into chapters (simple v1: spread across chapters)",
+          "Embed images by downloading from R2 (server) and inserting into DOCX",
+          "Apply consistent styles: headings, body font, spacing, margins"
+        ],
+        "constraints": [
+          "No paid conversion services",
+          "Do not hotlink external image URLs",
+          "Guard against huge memory usage (stream images where possible)"
+        ]
+      },
+      "acceptanceTests": [
+        "DOCX opens in Word/Google Docs with correct structure",
+        "Images appear and are not broken",
+        "Output is editable"
+      ],
+      "deliverables": [
+        "lib/exports/docx/generateDocx.ts",
+        "lib/exports/docx/styles.ts",
+        "docs/docx_known_limitations.md"
+      ]
+    },
+    {
+      "id": "S39-T04",
+      "title": "PPTX export mapping spec (Studio pages → slides; editable shapes)",
+      "skill": ["Product", "Rendering"],
+      "priority": "P0",
+      "requirements": {
+        "mapping": [
+          "Each Studio page becomes one slide",
+          "Page size respects orientation preset (portrait/landscape)",
+          "Text nodes become ppt text boxes at x/y/w/h",
+          "Image nodes/frames become slide images at x/y/w/h with crop/cover behavior",
+          "Basic shapes (rect, line) mapped where possible; complex effects ignored in v1"
+        ],
+        "pageFiltering": [
+          "Exclude hidden pages by default (match PDF policy)",
+          "Locked pages export normally"
+        ],
+        "constraints": [
+          "Editable-first: use real PPT text boxes and images, not slide screenshots",
+          "Text measurement differences expected; prefer conservative text box sizing"
+        ]
+      },
+      "acceptanceTests": [
+        "Spec clearly maps common Studio node types",
+        "Landscape export generates wide slides"
+      ],
+      "deliverables": [
+        "docs/pptx_export_mapping_v1.md",
+        "docs/pptx_slide_sizes.md"
+      ]
+    },
+    {
+      "id": "S39-T05",
+      "title": "Implement PPTX generator using PptxGenJS (server-side) with coordinate transforms",
+      "skill": ["Backend", "Rendering", "Node"],
+      "priority": "P0",
+      "requirements": {
+        "implementation": [
+          "Create generatePptx(storybookId) -> Buffer",
+          "Load Studio doc model (pages + nodes), filter hidden pages",
+          "Convert editor coordinates to PPT points (scaling based on page preset)",
+          "Add text boxes with style (font, size, color) as available",
+          "Add images by fetching from R2 (or cached urls) and inserting at positions; handle crop mode v1 as 'cover center'",
+          "Set slide layout size based on orientation preset"
+        ],
+        "constraints": [
+          "No paid services",
+          "No rasterizing pages to images (except as fallback for unsupported nodes, optional P1)",
+          "Keep memory bounded (process slide-by-slide)"
+        ]
+      },
+      "acceptanceTests": [
+        "PPTX opens in PowerPoint/Google Slides",
+        "Slides are editable (text selectable, images movable)",
+        "Orientation is correct"
+      ],
+      "deliverables": [
+        "lib/exports/pptx/generatePptx.ts",
+        "lib/exports/pptx/coordinateMap.ts",
+        "lib/exports/pptx/nodeMappers.ts",
+        "docs/pptx_known_limitations.md"
+      ]
+    },
+    {
+      "id": "S39-T06",
+      "title": "Export orchestration: enqueue jobs, run generators, upload artifacts to R2, return download links",
+      "skill": ["Convex", "Backend Orchestration"],
+      "priority": "P0",
+      "requirements": {
+        "actions": [
+          "exports.requestExport(type, storybookId)",
+          "exports.getJob(jobId)",
+          "exports.getArtifacts(storybookId)"
+        ],
+        "steps": [
+          "Check auth + entitlement + unified quota",
+          "Create export job status=queued",
+          "Run generator in action (or scheduled job if long-running)",
+          "Upload Buffer to R2 -> create artifact record",
+          "Mark job done and increment quota usage"
+        ],
+        "constraints": [
+          "Idempotent: if same job reruns, it should not create duplicate artifacts (use filename+hash or jobId-based keys)",
+          "Errors set job.status=error with stable errorCode"
+        ]
+      },
+      "acceptanceTests": [
+        "User can request DOCX and PPTX and receive downloadable artifacts",
+        "Quota increments only on successful completion",
+        "Failures are recoverable via retry"
+      ],
+      "deliverables": [
+        "convex/exports.ts",
+        "lib/storage/r2Upload.ts (reuse/extend)",
+        "docs/export_jobs_lifecycle.md"
+      ]
+    },
+    {
+      "id": "S39-T07",
+      "title": "Studio export UI: add DOCX and PPTX to Export menu + artifacts list/history",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "ui": [
+          "Export menu includes: PDF, DOCX, PPTX",
+          "Show progress while job running",
+          "On completion: download button",
+          "Artifacts history panel: last N exports with type/date"
+        ],
+        "constraints": [
+          "Elder-friendly: simple labels and icons",
+          "If quota exceeded: show upgrade modal (existing Stripe flow)"
+        ]
+      },
+      "acceptanceTests": [
+        "Export DOCX/PPTX can be initiated and shows progress",
+        "Downloads work and history lists artifacts"
+      ],
+      "deliverables": [
+        "components/studio/ExportMenu.tsx updated",
+        "components/exports/ExportHistoryPanel.tsx",
+        "lib/exports/useExportJobs.ts"
+      ]
+    },
+    {
+      "id": "S39-T08",
+      "title": "Quality & compatibility: test on Word/Google Docs and PowerPoint/Google Slides + fix common issues",
+      "skill": ["QA", "Document Rendering"],
+      "priority": "P0",
+      "requirements": {
+        "manualMatrix": [
+          "DOCX: Microsoft Word desktop, Word online, Google Docs import",
+          "PPTX: Microsoft PowerPoint desktop, PowerPoint online, Google Slides import"
+        ],
+        "qualityChecks": [
+          "No missing images",
+          "Text readable and not clipped excessively",
+          "Slide sizes correct for orientation",
+          "Hidden pages not exported"
+        ]
+      },
+      "acceptanceTests": [
+        "DOCX and PPTX open in at least 2 major viewers each without corruption",
+        "Known limitations documented"
+      ],
+      "deliverables": [
+        "docs/qa_sprint39_exports_docx_pptx.md",
+        "docs/export_viewer_matrix.md"
+      ]
+    },
+    {
+      "id": "S39-T09",
+      "title": "Automated tests: mapping + artifact generation + quota integration",
+      "skill": ["Testing", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "tests": [
+          "Unit: DOCX mapping order (chapters/answers) deterministic",
+          "Unit: PPTX coordinate mapping for portrait/landscape",
+          "Integration: export job lifecycle creates artifact and increments unified quota",
+          "Integration: hidden pages filtered from PPTX"
+        ],
+        "constraints": [
+          "Do not store large binary fixtures in repo; generate small sample docs in tests"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 6 tests added and passing",
+        "No regressions to existing PDF export"
+      ],
+      "deliverables": [
+        "tests/exports/docxMapping.test.ts",
+        "tests/exports/pptxCoordinates.test.ts",
+        "tests/exports/jobLifecycle.integration.test.ts",
+        "docs/tests_exports_notes.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S39-T01",
+      "S39-T02",
+      "S39-T04",
+      "S39-T03",
+      "S39-T05",
+      "S39-T06",
+      "S39-T07",
+      "S39-T08",
+      "S39-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 9,
+      "P1_total_days": 0,
+      "buffer_days": 1
+    },
+    "notes": [
+      "DOCX is generated from the content model for maximum editability and robustness (not pixel-perfect).",
+      "PPTX is generated from Studio pages (page → slide) to support presentations with editable elements.",
+      "All tooling is open-source / self-hosted generation (no paid conversion services), aligning with a free-tier requirement."
+    ]
+  }
+}

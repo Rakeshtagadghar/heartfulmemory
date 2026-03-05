@@ -101,6 +101,8 @@ export default defineSchema({
     periodStart: v.number(),
     periodEnd: v.number(),
     countPdfExports: v.number(),
+    // Sprint 39: unified counter across all export types (pdf/docx/pptx)
+    countExports: v.optional(v.number()),
     updatedAt: v.number()
   }).index("by_userId_periodStart", ["userId", "periodStart"]),
   waitlist: defineTable({
@@ -652,7 +654,12 @@ export default defineSchema({
   exports: defineTable({
     storybookId: v.id("storybooks"),
     ownerId: v.string(),
-    exportTarget: v.union(v.literal("DIGITAL_PDF"), v.literal("HARDCOPY_PRINT_PDF")),
+    exportTarget: v.union(
+      v.literal("DIGITAL_PDF"),
+      v.literal("HARDCOPY_PRINT_PDF"),
+      v.literal("DOCX"),
+      v.literal("PPTX")
+    ),
     exportHash: v.string(),
     status: v.union(v.literal("SUCCESS"), v.literal("FAILED")),
     pageCount: v.number(),
@@ -666,6 +673,41 @@ export default defineSchema({
     .index("by_storybookId_createdAt", ["storybookId", "createdAt"])
     .index("by_ownerId_createdAt", ["ownerId", "createdAt"])
     .index("by_storybookId_exportHash", ["storybookId", "exportHash"]),
+  // Sprint 39: export jobs (queued/running/done/error lifecycle)
+  exportJobs: defineTable({
+    userId: v.string(),
+    storybookId: v.id("storybooks"),
+    type: v.union(v.literal("pdf"), v.literal("docx"), v.literal("pptx")),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("done"),
+      v.literal("error")
+    ),
+    artifactId: v.optional(v.union(v.id("exportArtifacts"), v.null())),
+    errorCode: v.optional(v.union(v.string(), v.null())),
+    errorMessage: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_storybookId", ["storybookId"])
+    .index("by_storybookId_createdAt", ["storybookId", "createdAt"]),
+  // Sprint 39: export artifacts (R2 stored files)
+  exportArtifacts: defineTable({
+    userId: v.string(),
+    storybookId: v.id("storybooks"),
+    jobId: v.id("exportJobs"),
+    type: v.union(v.literal("pdf"), v.literal("docx"), v.literal("pptx")),
+    filename: v.string(),
+    r2Key: v.string(),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    createdAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_storybookId", ["storybookId"])
+    .index("by_jobId", ["jobId"]),
   collaborators: defineTable({
     storybookId: v.id("storybooks"),
     invitedEmail: v.optional(v.string()),

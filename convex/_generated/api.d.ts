@@ -29,6 +29,7 @@ import type * as chapterNarratives from "../chapterNarratives.js";
 import type * as chapterStudioState from "../chapterStudioState.js";
 import type * as chapters from "../chapters.js";
 import type * as env from "../env.js";
+import type * as exportJobs from "../exportJobs.js";
 import type * as exportUsage from "../exportUsage.js";
 import type * as exports from "../exports.js";
 import type * as frames from "../frames.js";
@@ -83,6 +84,7 @@ declare const fullApi: ApiFromModules<{
   chapterStudioState: typeof chapterStudioState;
   chapters: typeof chapters;
   env: typeof env;
+  exportJobs: typeof exportJobs;
   exportUsage: typeof exportUsage;
   exports: typeof exports;
   frames: typeof frames;

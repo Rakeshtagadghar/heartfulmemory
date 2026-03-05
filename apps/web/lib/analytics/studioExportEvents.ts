@@ -6,7 +6,9 @@ export function trackStudioExportClickBlocked(input: {
   source: "studio_export";
   planId: "free" | "pro";
 }) {
-  track("export_click_blocked", {
+  track("paywall_view", {
+    feature: "export",
+    reason: "plan_gate",
     source: input.source,
     plan_id: input.planId
   });
@@ -16,8 +18,10 @@ export function trackStudioExportClickAllowed(input: {
   source: "studio_export";
   planId: "free" | "pro";
 }) {
-  track("export_click_allowed", {
+  track("cta_click", {
+    cta_id: "export_open",
+    placement: input.source,
     source: input.source,
-    plan_id: input.planId
+    variant_id: input.planId
   });
 }

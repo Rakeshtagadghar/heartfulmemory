@@ -1,2 +1,9 @@
 "use client";
-export { track } from "../lib/analytics/client";
+export {
+  track,
+  setAnalyticsUserContext,
+  clearAnalyticsUserContext,
+  type AnalyticsProps,
+  type CanonicalAnalyticsEventMap,
+  type CanonicalAnalyticsEventName
+} from "../lib/analytics/client";

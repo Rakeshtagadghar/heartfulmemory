@@ -140,6 +140,86 @@ export async function requestExportPreflight(
   }
 }
 
+export type DocxExportMeta = {
+  jobId: string;
+  artifactId: string;
+  filename: string;
+  chapterCount: number;
+  imageCount: number;
+  sizeBytes: number;
+  runtimeMs: number;
+};
+
+export type PptxExportMeta = {
+  jobId: string;
+  artifactId: string;
+  filename: string;
+  slideCount: number;
+  warningsCount: number;
+  sizeBytes: number;
+  runtimeMs: number;
+};
+
+export async function requestDocxExport(
+  input: { storybookId: string }
+): Promise<{ ok: true; blob: Blob; meta: DocxExportMeta } | { ok: false; error: ExportRequestError }> {
+  const response = await fetch("/api/export/docx", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    try {
+      const body = await response.json() as { error?: string; code?: string; details?: unknown };
+      return { ok: false, error: { message: body.error ?? "DOCX export failed.", code: body.code, details: body.details } };
+    } catch {
+      return { ok: false, error: { message: "DOCX export failed." } };
+    }
+  }
+
+  const blob = await response.blob();
+  const headerMeta = response.headers.get("x-export-meta");
+  if (!headerMeta) return { ok: false, error: { message: "Missing export metadata." } };
+
+  try {
+    const meta = JSON.parse(headerMeta) as DocxExportMeta;
+    return { ok: true, blob, meta };
+  } catch {
+    return { ok: false, error: { message: "Invalid export metadata." } };
+  }
+}
+
+export async function requestPptxExport(
+  input: { storybookId: string }
+): Promise<{ ok: true; blob: Blob; meta: PptxExportMeta } | { ok: false; error: ExportRequestError }> {
+  const response = await fetch("/api/export/pptx", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    try {
+      const body = await response.json() as { error?: string; code?: string; details?: unknown };
+      return { ok: false, error: { message: body.error ?? "PPTX export failed.", code: body.code, details: body.details } };
+    } catch {
+      return { ok: false, error: { message: "PPTX export failed." } };
+    }
+  }
+
+  const blob = await response.blob();
+  const headerMeta = response.headers.get("x-export-meta");
+  if (!headerMeta) return { ok: false, error: { message: "Missing export metadata." } };
+
+  try {
+    const meta = JSON.parse(headerMeta) as PptxExportMeta;
+    return { ok: true, blob, meta };
+  } catch {
+    return { ok: false, error: { message: "Invalid export metadata." } };
+  }
+}
+
 export function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
