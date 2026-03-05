@@ -23,6 +23,7 @@ import {
 import { captureAppError, captureAppWarning } from "../../../../../../lib/observability/capture";
 import { withSentrySpan } from "../../../../../../lib/observability/spans";
 import { evaluateExportAccess } from "../../../../../../lib/billing/guards";
+import { shouldBlockForMissingPassword } from "../../../../lib/auth/passwordSecurityGuard";
 
 export const runtime = "nodejs";
 
@@ -470,6 +471,21 @@ export async function POST(request: Request) { // NOSONAR
   }
 
   const user = await requireExportAccess(parsed.storybookId);
+  const passwordGate = await shouldBlockForMissingPassword(user.id, "/api/export/pdf");
+  if (passwordGate.blocked) {
+    const returnTo = `/app/storybooks/${parsed.storybookId}/layout`;
+    return jsonExportError({
+      status: 403,
+      code: "EXPORT_FORBIDDEN",
+      message: "Set a password to secure your account before exporting.",
+      traceId,
+      details: {
+        reason: "PASSWORD_REQUIRED",
+        setPasswordUrl: `/account/set-password?returnTo=${encodeURIComponent(returnTo)}`
+      }
+    });
+  }
+
   if (!parsed.validateOnly && isBillingGuardEnabled()) {
     const entitlements = await convexQuery<{
       entitlements: {

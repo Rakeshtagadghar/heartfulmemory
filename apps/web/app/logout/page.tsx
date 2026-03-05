@@ -5,7 +5,7 @@ import { signOut } from "next-auth/react";
 
 export default function LogoutPage() {
   useEffect(() => {
-    void signOut({ callbackUrl: "/login?loggedOut=1" });
+    void signOut({ callbackUrl: "/auth/sign-in?loggedOut=1" });
   }, []);
 
   return (

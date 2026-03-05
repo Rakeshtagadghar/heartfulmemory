@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { cn } from "../ui/cn";
+import { ContinueWithGoogleButton } from "./ContinueWithGoogleButton";
 import {
   trackAuthLoginSuccess,
   trackAuthMagicLinkRequested,
   trackAuthViewLogin
 } from "../../lib/analytics/events_auth";
+import { buildGoogleChooserPath, buildPostLoginPath } from "../../lib/auth/googleOAuthParams";
 
 type Props = {
   returnTo: string;
@@ -90,7 +93,7 @@ export function MagicLinkForm({
       trackAuthLoginSuccess({ source: "email_link" });
       setStatus("sent");
       setPendingMethod(null);
-      const target = toSafeRedirectTarget(returnTo, "/app");
+      const target = buildPostLoginPath(toSafeRedirectTarget(returnTo, "/app"));
       const sessionReady = await hasActiveSession();
       if (!sessionReady) {
         await new Promise((resolve) => setTimeout(resolve, 150));
@@ -168,7 +171,7 @@ export function MagicLinkForm({
               trackAuthLoginSuccess({ source: "password_form" });
               setStatus("sent");
               setPendingMethod(null);
-              const target = toSafeRedirectTarget(returnTo, "/app");
+              const target = buildPostLoginPath(toSafeRedirectTarget(returnTo, "/app"));
               const sessionReady = await hasActiveSession();
               if (!sessionReady) {
                 await new Promise((resolve) => setTimeout(resolve, 150));
@@ -276,6 +279,14 @@ export function MagicLinkForm({
               )}
             </button>
           </div>
+          <div className="flex justify-end">
+            <Link href="/auth/reset-password" className="text-xs text-white/70 underline underline-offset-2 hover:text-white">
+              Set or forgot password?
+            </Link>
+          </div>
+          <p className="text-xs text-white/55">
+            First time setting a password after email sign-in? Use this link and choose a new password.
+          </p>
           <Button
             type="submit"
             size="lg"
@@ -288,23 +299,15 @@ export function MagicLinkForm({
 
         {allowGoogle ? (
           <div className="mt-3">
-            <Button
-              type="button"
-              size="lg"
-              variant="secondary"
-              className="w-full"
+            <ContinueWithGoogleButton
               loading={status === "sending" && pendingMethod === "google"}
               onClick={() => {
                 setPendingMethod("google");
                 setStatus("sending");
                 setError(null);
-                void signIn("google", {
-                  callbackUrl: returnTo
-                });
+                globalThis.location.assign(buildGoogleChooserPath(toSafeRedirectTarget(returnTo, "/app")));
               }}
-            >
-              Continue with Google
-            </Button>
+            />
           </div>
         ) : null}
 

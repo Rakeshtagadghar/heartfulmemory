@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as account_setPassword from "../account/setPassword.js";
 import type * as ai_answersNarrate from "../ai/answersNarrate.js";
 import type * as ai_chapterNarratives from "../ai/chapterNarratives.js";
 import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
@@ -15,6 +16,7 @@ import type * as ai_rateLimit from "../ai/rateLimit.js";
 import type * as ai_textImprove from "../ai/textImprove.js";
 import type * as assets from "../assets.js";
 import type * as auth from "../auth.js";
+import type * as authHooks from "../authHooks.js";
 import type * as auth_passwordFlows from "../auth/passwordFlows.js";
 import type * as authz from "../authz.js";
 import type * as billing from "../billing.js";
@@ -60,6 +62,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "account/setPassword": typeof account_setPassword;
   "ai/answersNarrate": typeof ai_answersNarrate;
   "ai/chapterNarratives": typeof ai_chapterNarratives;
   "ai/entitiesExtractor": typeof ai_entitiesExtractor;
@@ -67,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   "ai/textImprove": typeof ai_textImprove;
   assets: typeof assets;
   auth: typeof auth;
+  authHooks: typeof authHooks;
   "auth/passwordFlows": typeof auth_passwordFlows;
   authz: typeof authz;
   billing: typeof billing;

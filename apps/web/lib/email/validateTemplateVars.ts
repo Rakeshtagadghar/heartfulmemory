@@ -16,7 +16,7 @@ export type TemplateValidationResult =
     };
 
 function isAuthTemplateId(templateId: string): templateId is AuthTemplateId {
-  return ["verify_email", "login_code_or_magic_link", "reset_password"].includes(templateId);
+  return ["verify_email", "login_code_or_magic_link", "reset_password", "password_set_success"].includes(templateId);
 }
 
 function isBillingTemplateId(templateId: string): templateId is BillingTemplateId {

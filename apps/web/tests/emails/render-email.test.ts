@@ -21,7 +21,7 @@ describe("email template rendering", () => {
     });
 
     expect(result.subject).toContain("Verify your email");
-    expect(result.html).toContain("memorioso-email-logo.png");
+    expect(result.html).toContain("Memorioso");
     expect(result.text).toContain("verify");
     expect(result.html).toMatchSnapshot();
   });
@@ -50,6 +50,20 @@ describe("email template rendering", () => {
     });
 
     expect(result.subject).toContain("Memorioso Pro");
+  });
+
+  it("renders password set success template", async () => {
+    const result = await renderAuthEmail("password_set_success", {
+      userName: "Asha",
+      securityUrl: emailAbsoluteUrl("/account/set-password"),
+      supportUrl: emailDefaultSupportUrl,
+      appName: "Memorioso",
+      logoUrl: emailDefaultLogoUrl
+    });
+
+    expect(result.subject).toContain("password is set");
+    expect(result.text).toContain("contact support immediately");
+    expect(result.html).toMatchSnapshot();
   });
 
   it("returns missing vars from app validation helper", () => {

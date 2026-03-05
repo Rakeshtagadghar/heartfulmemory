@@ -4,9 +4,12 @@ import type { NextAuthOptions } from "next-auth";
 import { isValidEmail, normalizeEmail } from "../validation/email";
 import { logError } from "../server-log";
 import { verifyPassword } from "./passwordHash";
-import { anyApi, convexQuery, getConvexUrl } from "../convex/ops";
+import { anyApi, convexMutation, convexQuery, getConvexUrl } from "../convex/ops";
 import { consumeAuthFlowToken } from "./flowStore";
 import { hashFlowToken } from "./flowTokens";
+import { googleAuthorizationParams } from "./googleOAuthParams";
+
+type AuthProvider = "google" | "password" | "otp" | "magic_link";
 
 function getDisplayNameFromEmail(email: string) {
   const [localPart] = email.split("@");
@@ -39,6 +42,7 @@ type AuthUserLookup = {
   displayName: string | null;
   passwordHash: string | null;
   emailVerifiedAt: number | null;
+  hasPassword: boolean;
 };
 
 async function lookupAuthUserByEmail(email: string): Promise<AuthUserLookup | null> {
@@ -63,7 +67,10 @@ function getGoogleProvider() {
 
   return GoogleProvider({
     clientId,
-    clientSecret
+    clientSecret,
+    authorization: {
+      params: googleAuthorizationParams
+    }
   });
 }
 
@@ -71,6 +78,30 @@ async function getLinkedSessionSubject(email: string, fallbackUserId: string) {
   const normalizedEmail = normalizeEmail(email);
   const existing = await lookupAuthUserByEmail(normalizedEmail);
   return existing?.userId || fallbackUserId;
+}
+
+async function syncPostLoginProfile(args: {
+  userId: string;
+  email: string | null;
+  displayName: string | null;
+  authProvider: AuthProvider;
+  hasPassword: boolean;
+  emailVerified: boolean;
+}) {
+  if (!getConvexUrl()) return;
+
+  const response = await convexMutation<{ ok: boolean }>(anyApi.authHooks.syncPostLogin, {
+    userId: args.userId,
+    email: args.email,
+    displayName: args.displayName,
+    authProvider: args.authProvider,
+    hasPassword: args.hasPassword,
+    emailVerified: args.emailVerified
+  });
+
+  if (!response.ok || !response.data.ok) {
+    logError("auth_sync_post_login_failed", response.ok ? response.data : response.error);
+  }
 }
 
 const providers = [
@@ -96,14 +127,18 @@ const providers = [
           return {
             id: linkedUser.userId,
             email: linkedUser.email ?? signInEmail,
-            name: linkedUser.displayName ?? getDisplayNameFromEmail(signInEmail)
+            name: linkedUser.displayName ?? getDisplayNameFromEmail(signInEmail),
+            authProvider: "magic_link" as const,
+            hasPassword: linkedUser.hasPassword
           };
         }
 
         return {
           id: `user:${signInEmail}`,
           email: signInEmail,
-          name: getDisplayNameFromEmail(signInEmail)
+          name: getDisplayNameFromEmail(signInEmail),
+          authProvider: "magic_link" as const,
+          hasPassword: false
         };
       }
 
@@ -121,7 +156,9 @@ const providers = [
         return {
           id: user.userId,
           email: user.email ?? email,
-          name: user.displayName ?? getDisplayNameFromEmail(email)
+          name: user.displayName ?? getDisplayNameFromEmail(email),
+          authProvider: "password" as const,
+          hasPassword: true
         };
       }
 
@@ -137,7 +174,9 @@ const providers = [
         return {
           id: user.userId,
           email: user.email ?? email,
-          name: user.displayName ?? getDisplayNameFromEmail(email)
+          name: user.displayName ?? getDisplayNameFromEmail(email),
+          authProvider: "magic_link" as const,
+          hasPassword: user.hasPassword
         };
       }
 
@@ -149,7 +188,9 @@ const providers = [
       return {
         id: `user:${email}`,
         email,
-        name: getDisplayNameFromEmail(email)
+        name: getDisplayNameFromEmail(email),
+        authProvider: "magic_link" as const,
+        hasPassword: false
       };
     }
   })
@@ -167,12 +208,50 @@ export const authOptions: NextAuthOptions = {
   },
   providers,
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      const email = typeof user.email === "string" ? normalizeEmail(user.email) : null;
+      const resolvedUserId = email ? await getLinkedSessionSubject(email, user.id) : user.id;
+      const providerFromAccount = account?.provider === "google" ? "google" : null;
+      const providerFromUser =
+        user.authProvider === "google" ||
+        user.authProvider === "password" ||
+        user.authProvider === "otp" ||
+        user.authProvider === "magic_link"
+          ? user.authProvider
+          : null;
+      const authProvider = providerFromAccount || providerFromUser || "magic_link";
+      const hasPassword =
+        typeof user.hasPassword === "boolean" ? user.hasPassword : authProvider === "password";
+
+      user.id = resolvedUserId;
+      user.authProvider = authProvider;
+      user.hasPassword = hasPassword;
+
+      await syncPostLoginProfile({
+        userId: resolvedUserId,
+        email,
+        displayName: typeof user.name === "string" ? user.name : null,
+        authProvider,
+        hasPassword,
+        emailVerified: authProvider === "google" || authProvider === "password"
+      });
+
+      return true;
+    },
+    async jwt({ token, user, account }) {
       if (user) {
         const email = typeof user.email === "string" ? user.email : "";
         token.sub = email ? await getLinkedSessionSubject(email, user.id) : user.id;
         token.email = user.email;
         token.name = user.name;
+
+        const providerFromAccount = account?.provider === "google" ? "google" : undefined;
+        token.authProvider = providerFromAccount || user.authProvider || token.authProvider;
+        if (typeof user.hasPassword === "boolean") {
+          token.hasPassword = user.hasPassword;
+        } else if (token.authProvider === "password") {
+          token.hasPassword = true;
+        }
       }
       return token;
     },
@@ -181,6 +260,17 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub || session.user.id;
         session.user.email = token.email || session.user.email;
         session.user.name = token.name || session.user.name;
+        if (
+          token.authProvider === "google" ||
+          token.authProvider === "password" ||
+          token.authProvider === "otp" ||
+          token.authProvider === "magic_link"
+        ) {
+          session.user.authProvider = token.authProvider;
+        }
+        if (typeof token.hasPassword === "boolean") {
+          session.user.hasPassword = token.hasPassword;
+        }
       }
       return session;
     }

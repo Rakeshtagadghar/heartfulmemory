@@ -1,5 +1,6 @@
 import type {
   LoginLinkOrCodeVars,
+  PasswordSetSuccessVars,
   ResetPasswordVars,
   VerifyEmailVars
 } from "../../contracts/auth";
@@ -53,6 +54,18 @@ export function resetPasswordPlainText(vars: ResetPasswordVars) {
     `This link expires in ${vars.expiryMinutes} minutes.`,
     "",
     "If you did not request this, you can ignore this email.",
+    `Support: ${vars.supportUrl}`
+  ].join("\n");
+}
+
+export function passwordSetSuccessPlainText(vars: PasswordSetSuccessVars) {
+  return [
+    getGreeting(vars.userName),
+    "",
+    "Your Memorioso password has been set successfully.",
+    `Review account security: ${vars.securityUrl}`,
+    "",
+    "If you did not do this, contact support immediately.",
     `Support: ${vars.supportUrl}`
   ].join("\n");
 }

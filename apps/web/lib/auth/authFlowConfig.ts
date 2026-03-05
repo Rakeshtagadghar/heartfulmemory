@@ -27,5 +27,9 @@ export const AUTH_RATE_LIMITS = {
   },
   tokenConsume: {
     byIp: { windowMs: 5 * 60 * 1000, max: 20 }
+  },
+  setPasswordAttempt: {
+    byIp: { windowMs: 10 * 60 * 1000, max: 10 },
+    byUser: { windowMs: 10 * 60 * 1000, max: 6 }
   }
 } as const;

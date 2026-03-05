@@ -9,6 +9,13 @@ type AuthTemplateInput = {
   actionUrl: string;
 };
 
+type PasswordSetSuccessInput = {
+  appName?: string;
+  recipientEmail: string;
+  securityUrl: string;
+  userName?: string;
+};
+
 const AUTH_EXPIRY_MINUTES = {
   verifyEmail: 24 * 60,
   signInLink: 20,
@@ -84,7 +91,7 @@ function createFallbackEmail(
 }
 
 async function renderOrFallback(args: {
-  templateId: "verify_email" | "login_code_or_magic_link" | "reset_password";
+  templateId: "verify_email" | "login_code_or_magic_link" | "reset_password" | "password_set_success";
   vars:
     | {
         userName?: string;
@@ -107,6 +114,13 @@ async function renderOrFallback(args: {
         userName?: string;
         resetUrl: string;
         expiryMinutes: number;
+        supportUrl: string;
+        appName?: string;
+        logoUrl?: string;
+      }
+    | {
+        userName?: string;
+        securityUrl: string;
         supportUrl: string;
         appName?: string;
         logoUrl?: string;
@@ -215,6 +229,31 @@ export async function buildEmailSignInTemplate(input: AuthTemplateInput) {
     fallbackLine1: "Use this secure link to sign in.",
     fallbackLine2: "This link expires shortly for your security.",
     fallbackActionUrl: input.actionUrl,
+  });
+
+  return {
+    to: input.recipientEmail,
+    subject: rendered.subject,
+    text: rendered.text,
+    html: rendered.html,
+  };
+}
+
+export async function buildPasswordSetSuccessTemplate(input: PasswordSetSuccessInput) {
+  const appName = getAppName(input.appName);
+  const rendered = await renderOrFallback({
+    templateId: "password_set_success",
+    vars: {
+      appName,
+      userName: input.userName,
+      securityUrl: input.securityUrl,
+      supportUrl: getSupportUrl(),
+      logoUrl: getLogoUrl(),
+    },
+    fallbackSubject: `${appName}: Your password is set`,
+    fallbackLine1: "Your password has been set successfully.",
+    fallbackLine2: "If this was not you, contact support immediately.",
+    fallbackActionUrl: input.securityUrl,
   });
 
   return {

@@ -31,7 +31,7 @@ export async function requireAuthenticatedUser(pathname = "/app") {
 
   if (!user?.id) {
     const params = new URLSearchParams({ returnTo: pathname });
-    redirect(`/login?${params.toString()}`);
+    redirect(`/auth/sign-in?${params.toString()}`);
   }
 
   return user;

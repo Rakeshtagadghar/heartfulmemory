@@ -22,13 +22,18 @@ export default async function SignInPage({ searchParams }: Props) {
   const token = typeof query.token === "string" ? query.token : null;
   const allowGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
 
+  let message: string | null = null;
+  if (query.loggedOut === "1") message = "You were signed out.";
+  if (query.error === "CredentialsSignin") message = "Could not sign you in. Please try again.";
+  if (typeof query.message === "string") message = query.message;
+
   return (
     <AuthPageShell>
       <div className="space-y-4">
         <MagicLinkForm
           returnTo={returnTo}
           configMissing={query.config === "missing"}
-          initialMessage={typeof query.message === "string" ? query.message : null}
+          initialMessage={message}
           initialMagicToken={token}
           allowGoogle={allowGoogle}
         />

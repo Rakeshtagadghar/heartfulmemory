@@ -17,6 +17,17 @@ const EMPTY_PROVIDER_FLAGS: ProviderFlags = {
   magic_link: false
 };
 
+function deriveHasPassword(input: {
+  hasPassword?: boolean | null;
+  passwordHash?: string | null;
+  authProvidersLinked?: unknown;
+}) {
+  if (typeof input.hasPassword === "boolean") return input.hasPassword;
+  if (typeof input.passwordHash === "string" && input.passwordHash.length > 0) return true;
+  const providers = normalizeProviderFlags(input.authProvidersLinked);
+  return providers.password;
+}
+
 function normalizeProviderFlags(value: unknown): ProviderFlags {
   if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_PROVIDER_FLAGS;
   const source = value as Record<string, unknown>;
@@ -41,6 +52,8 @@ function toProfileRecord(userId: string, user: {
   display_name?: string;
   email?: string;
   primaryEmail?: string;
+  passwordHash?: string;
+  hasPassword?: boolean;
   emailVerifiedAt?: number | null;
   authProvidersLinked?: ProviderFlags;
   deletionStatus?: "active" | "pending_deletion" | "deleted";
@@ -58,6 +71,7 @@ function toProfileRecord(userId: string, user: {
     id: userId,
     display_name: user.display_name ?? null,
     email: user.email ?? null,
+    has_password: deriveHasPassword(user),
     primary_email: user.primaryEmail ?? user.email ?? null,
     email_verified_at:
       typeof user.emailVerifiedAt === "number" ? new Date(user.emailVerifiedAt).toISOString() : null,
@@ -114,7 +128,8 @@ export const getUserByEmail = queryGeneric({
       email: user.primaryEmail ?? user.email ?? null,
       displayName: user.display_name ?? null,
       emailVerifiedAt: user.emailVerifiedAt ?? null,
-      authProvidersLinked: normalizeProviderFlags(user.authProvidersLinked)
+      authProvidersLinked: normalizeProviderFlags(user.authProvidersLinked),
+      hasPassword: deriveHasPassword(user)
     };
   }
 });
@@ -142,7 +157,8 @@ export const getUserByEmailForAuth = queryGeneric({
       email: user.primaryEmail ?? user.email ?? null,
       displayName: user.display_name ?? null,
       passwordHash: user.passwordHash ?? null,
-      emailVerifiedAt: user.emailVerifiedAt ?? null
+      emailVerifiedAt: user.emailVerifiedAt ?? null,
+      hasPassword: deriveHasPassword(user)
     };
   }
 });
@@ -157,7 +173,8 @@ export const upsertCurrentUser = mutationGeneric({
     authProvider: v.optional(
       v.union(v.literal("google"), v.literal("password"), v.literal("otp"), v.literal("magic_link"))
     ),
-    emailVerified: v.optional(v.boolean())
+    emailVerified: v.optional(v.boolean()),
+    hasPassword: v.optional(v.boolean())
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -168,6 +185,11 @@ export const upsertCurrentUser = mutationGeneric({
 
     if (existing) {
       const linkedProviders = withLinkedProvider(existing.authProvidersLinked, args.authProvider);
+      const nextHasPassword =
+        deriveHasPassword(existing) ||
+        Boolean(args.hasPassword) ||
+        linkedProviders.password ||
+        args.authProvider === "password";
       const shouldSetVerifiedAt =
         Boolean(args.emailVerified) && typeof existing.emailVerifiedAt !== "number";
       await ctx.db.patch(existing._id, {
@@ -175,6 +197,7 @@ export const upsertCurrentUser = mutationGeneric({
         primaryEmail: args.email ?? existing.primaryEmail ?? existing.email,
         display_name: args.displayName ?? existing.display_name,
         authProvidersLinked: linkedProviders,
+        hasPassword: nextHasPassword,
         emailVerifiedAt: shouldSetVerifiedAt ? now : existing.emailVerifiedAt ?? null,
         deletionStatus: existing.deletionStatus ?? "active",
         deletionRequestedAt: existing.deletionRequestedAt ?? null,
@@ -186,10 +209,13 @@ export const upsertCurrentUser = mutationGeneric({
       });
     } else {
       const linkedProviders = withLinkedProvider(null, args.authProvider);
+      const nextHasPassword =
+        Boolean(args.hasPassword) || linkedProviders.password || args.authProvider === "password";
       await ctx.db.insert("users", {
         authSubject: args.userId,
         email: args.email ?? undefined,
         primaryEmail: args.email ?? undefined,
+        hasPassword: nextHasPassword,
         emailVerifiedAt: args.emailVerified ? now : null,
         authProvidersLinked: linkedProviders,
         deletionStatus: "active",
@@ -285,7 +311,7 @@ export const markEmailVerified = mutationGeneric({
 
     await ctx.db.patch(existing._id, {
       emailVerifiedAt: now,
-      authProvidersLinked: withLinkedProvider(existing.authProvidersLinked, "password"),
+      hasPassword: deriveHasPassword(existing),
       lastActivityAt: now,
       updatedAt: now
     });
@@ -317,7 +343,7 @@ export const markEmailVerifiedByEmail = mutationGeneric({
 
     await ctx.db.patch(existing._id, {
       emailVerifiedAt: now,
-      authProvidersLinked: withLinkedProvider(existing.authProvidersLinked, "password"),
+      hasPassword: deriveHasPassword(existing),
       lastActivityAt: now,
       updatedAt: now
     });
@@ -350,12 +376,73 @@ export const setPasswordHashByEmail = mutationGeneric({
 
     await ctx.db.patch(existing._id, {
       passwordHash: args.passwordHash,
+      hasPassword: true,
       authProvidersLinked: withLinkedProvider(existing.authProvidersLinked, "password"),
       lastActivityAt: now,
       updatedAt: now
     });
 
     return { ok: true as const, userId: existing.authSubject };
+  }
+});
+
+export const setPasswordHashByUserId = mutationGeneric({
+  args: {
+    userId: v.string(),
+    passwordHash: v.string(),
+    allowIfAlreadySet: v.optional(v.boolean())
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_auth_subject", (q) => q.eq("authSubject", args.userId))
+      .unique();
+
+    if (!existing) {
+      return { ok: false as const, code: "user_not_found" as const };
+    }
+
+    const currentHasPassword = deriveHasPassword(existing);
+    if (currentHasPassword && !args.allowIfAlreadySet) {
+      return { ok: false as const, code: "already_has_password" as const };
+    }
+
+    await ctx.db.patch(existing._id, {
+      passwordHash: args.passwordHash,
+      hasPassword: true,
+      authProvidersLinked: withLinkedProvider(existing.authProvidersLinked, "password"),
+      lastActivityAt: now,
+      updatedAt: now
+    });
+
+    return {
+      ok: true as const,
+      userId: existing.authSubject,
+      email: existing.primaryEmail ?? existing.email ?? null,
+      displayName: existing.display_name ?? null
+    };
+  }
+});
+
+export const getPasswordStateByUserId = queryGeneric({
+  args: {
+    userId: v.string()
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_auth_subject", (q) => q.eq("authSubject", args.userId))
+      .unique();
+    if (!user) return null;
+
+    return {
+      userId: user.authSubject,
+      email: user.primaryEmail ?? user.email ?? null,
+      displayName: user.display_name ?? null,
+      hasPassword: deriveHasPassword(user),
+      authProvidersLinked: normalizeProviderFlags(user.authProvidersLinked)
+    };
   }
 });
 
@@ -374,6 +461,7 @@ export const linkAuthProvider = mutationGeneric({
 
     await ctx.db.patch(existing._id, {
       authProvidersLinked: withLinkedProvider(existing.authProvidersLinked, args.provider),
+      hasPassword: deriveHasPassword(existing) || args.provider === "password",
       lastActivityAt: now,
       updatedAt: now
     });

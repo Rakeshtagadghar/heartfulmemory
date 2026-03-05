@@ -3,10 +3,12 @@ import { ZodError } from "zod";
 import {
   authTemplateIdSchema,
   loginLinkOrCodeVarsSchema,
+  passwordSetSuccessVarsSchema,
   resetPasswordVarsSchema,
   verifyEmailVarsSchema,
   type AuthTemplateId,
   type LoginLinkOrCodeVars,
+  type PasswordSetSuccessVars,
   type ResetPasswordVars,
   type VerifyEmailVars,
 } from "./contracts/auth";
@@ -21,8 +23,10 @@ import {
 import { VerifyEmailTemplate } from "./templates/auth/VerifyEmail";
 import { LoginLinkOrCodeTemplate } from "./templates/auth/LoginLinkOrCode";
 import { ResetPasswordTemplate } from "./templates/auth/ResetPassword";
+import { PasswordSetSuccessTemplate } from "./templates/auth/PasswordSetSuccess";
 import {
   loginLinkOrCodePlainText,
+  passwordSetSuccessPlainText,
   resetPasswordPlainText,
   verifyEmailPlainText,
 } from "./templates/auth/plaintext";
@@ -70,6 +74,8 @@ function getAuthSubject(templateId: AuthTemplateId, appName?: string) {
     return `Verify your email for ${productName}`;
   if (templateId === "login_code_or_magic_link")
     return `Your ${productName} login link`;
+  if (templateId === "password_set_success")
+    return `Your ${productName} password is set`;
   return `Reset your ${productName} password`;
 }
 
@@ -83,7 +89,7 @@ function getBillingSubject(templateId: BillingTemplateId, appName?: string) {
 export function validateAuthTemplateVars(
   templateId: AuthTemplateId,
   vars: unknown,
-): VerifyEmailVars | LoginLinkOrCodeVars | ResetPasswordVars {
+): VerifyEmailVars | LoginLinkOrCodeVars | ResetPasswordVars | PasswordSetSuccessVars {
   try {
     authTemplateIdSchema.parse(templateId);
 
@@ -93,6 +99,10 @@ export function validateAuthTemplateVars(
 
     if (templateId === "login_code_or_magic_link") {
       return loginLinkOrCodeVarsSchema.parse(vars);
+    }
+
+    if (templateId === "password_set_success") {
+      return passwordSetSuccessVarsSchema.parse(vars);
     }
 
     return resetPasswordVarsSchema.parse(vars);
@@ -120,7 +130,7 @@ export function validateBillingTemplateVars(
 
 export async function renderAuthEmail(
   templateId: AuthTemplateId,
-  vars: VerifyEmailVars | LoginLinkOrCodeVars | ResetPasswordVars,
+  vars: VerifyEmailVars | LoginLinkOrCodeVars | ResetPasswordVars | PasswordSetSuccessVars,
 ): Promise<RenderedEmail> {
   if (templateId === "verify_email") {
     const parsed = validateAuthTemplateVars(
@@ -143,6 +153,18 @@ export async function renderAuthEmail(
       subject: getAuthSubject(templateId, parsed.appName),
       html: await render(<LoginLinkOrCodeTemplate {...parsed} />),
       text: loginLinkOrCodePlainText(parsed),
+    };
+  }
+
+  if (templateId === "password_set_success") {
+    const parsed = validateAuthTemplateVars(
+      templateId,
+      vars,
+    ) as PasswordSetSuccessVars;
+    return {
+      subject: getAuthSubject(templateId, parsed.appName),
+      html: await render(<PasswordSetSuccessTemplate {...parsed} />),
+      text: passwordSetSuccessPlainText(parsed),
     };
   }
 
@@ -209,6 +231,14 @@ export async function renderEmail(
       templateId,
       vars,
     ) as ResetPasswordVars;
+    return renderAuthEmail(templateId, parsed);
+  }
+
+  if (templateId === "password_set_success") {
+    const parsed = validateAuthTemplateVars(
+      templateId,
+      vars,
+    ) as PasswordSetSuccessVars;
     return renderAuthEmail(templateId, parsed);
   }
 

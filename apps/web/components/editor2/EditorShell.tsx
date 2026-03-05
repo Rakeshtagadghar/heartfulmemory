@@ -2884,7 +2884,7 @@ export function Editor2Shell({// NOSONAR
                           onClick={() => {
                             setUserMenuOpen(false);
                             trackAuthLogout({ source: "studio_header_menu" });
-                            void signOut({ callbackUrl: "/login?loggedOut=1" });
+                            void signOut({ callbackUrl: "/auth/sign-in?loggedOut=1" });
                           }}
                         >
                           Logout

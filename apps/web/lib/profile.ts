@@ -24,6 +24,7 @@ export type ProfileRecord = {
   id: string;
   display_name: string | null;
   email: string | null;
+  has_password?: boolean | null;
   primary_email?: string | null;
   email_verified_at?: string | null;
   auth_providers_linked?: {
@@ -67,6 +68,7 @@ function fallbackProfile(user: AuthUserLike): ProfileRecord {
     id: user.id,
     display_name: user.name ?? null,
     email: user.email ?? null,
+    has_password: false,
     primary_email: user.email ?? null,
     email_verified_at: null,
     auth_providers_linked: {
@@ -92,6 +94,9 @@ async function getOrCreateLocalProfile(user: AuthUserLike) {
   if (records[user.id]) {
     records[user.id].email = user.email ?? records[user.id].email;
     records[user.id].display_name = records[user.id].display_name || user.name || null;
+    if (typeof records[user.id].has_password !== "boolean") {
+      records[user.id].has_password = false;
+    }
     await writeProfilesFile(records);
   } else {
     records[user.id] = {
@@ -115,7 +120,8 @@ export async function getOrCreateProfileForUser(user: AuthUserLike): Promise<Pro
     displayName: user.name ?? null,
     locale: null,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
-    authProvider: "magic_link"
+    authProvider: user.authProvider ?? "magic_link",
+    hasPassword: Boolean(user.hasPassword)
   });
 
   if (!result.ok) {

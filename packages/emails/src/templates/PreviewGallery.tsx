@@ -7,6 +7,7 @@ const templates = [
   { id: "preview/auth/VerifyEmail", title: "Auth: Verify Email" },
   { id: "preview/auth/LoginLinkOrCode", title: "Auth: Login Link or Code" },
   { id: "preview/auth/ResetPassword", title: "Auth: Reset Password" },
+  { id: "preview/auth/PasswordSetSuccess", title: "Auth: Password Set Success" },
   { id: "preview/billing/SubscriptionActive", title: "Billing: Subscription Active" },
   { id: "preview/billing/PaymentFailed", title: "Billing: Payment Failed" }
 ] as const;

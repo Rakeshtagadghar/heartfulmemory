@@ -1,0 +1,318 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 38,
+      "title": "Account Security v1: Set Password Flow + Google Sign-In UX (Account Chooser) + Branded Button",
+      "duration": "1 week",
+      "goal": "Add a Set Password flow for OAuth/OTP users who don't have a password, and improve Google login UX: show an account-chooser step and ensure the 'Continue with Google' button follows Google branding (official text/icon/theme).",
+      "definitionOfDone": [
+        "If a user logs in via Google/OTP and has no password, they are routed to /account/set-password based on policy",
+        "Set Password page sets a password securely and updates user profile hasPassword=true",
+        "React Email template exists and is sent for 'Password set successfully'",
+        "Google login UI uses compliant 'Continue with Google' button styling and icon",
+        "Google login supports account chooser behavior (user can pick which Google account) and does not silently reuse an existing session",
+        "No redirect loops; returnTo works; skip policy works if enabled",
+        "Automated tests cover routing, setPassword, and Google button rendering"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex + Convex Auth",
+      "emailTemplates": "React Email (Sprint 37)",
+      "oauth": "Google Identity Services / OAuth configuration via Convex Auth provider",
+      "design": "You want a separate page for Google account selection UX before starting OAuth"
+    },
+    "research": {
+      "googleBranding": [
+        "Google recommends using the Google-rendered 'Sign in with Google' button via Google Identity Services to ensure branding compliance.",
+        "If rendering yourself, you must use approved assets and allowed button text like 'Continue with Google'."
+      ],
+      "citations": ["turn0search0", "turn0search1", "turn0search6"]
+    }
+  },
+  "backlog": [
+    {
+      "id": "S38-T01",
+      "title": "Define Set Password policy and post-login routing rules",
+      "skill": ["Product", "Architecture"],
+      "priority": "P0",
+      "requirements": {
+        "policyOptions": [
+          "Optional prompt (allow skip) for elders",
+          "Required before sensitive actions (Export/Billing)",
+          "Required immediately after OAuth/OTP login"
+        ],
+        "v1Decision": "Optional prompt after OAuth/OTP login + required gate before Export (config-driven).",
+        "routingRules": [
+          "After successful auth, if hasPassword=false and policy requires prompt -> route to /account/set-password",
+          "Preserve returnTo to send user back to intended destination after set/skip"
+        ],
+        "constraints": [
+          "No redirect loops",
+          "Do not block story answering for elders"
+        ]
+      },
+      "acceptanceTests": [
+        "Policy is defined in one config location",
+        "Routing behavior is deterministic and loop-free"
+      ],
+      "deliverables": [
+        "docs/set_password_policy.md",
+        "lib/config/setPasswordPolicy.ts",
+        "lib/auth/postLoginRedirect.ts"
+      ]
+    },
+    {
+      "id": "S38-T02",
+      "title": "Detect password presence (hasPassword) and persist it in user profile",
+      "skill": ["Convex", "Auth", "Data Modeling"],
+      "priority": "P0",
+      "requirements": {
+        "behavior": [
+          "Determine if a user has a password credential linked (via Convex Auth identity/provider info you maintain)",
+          "Persist users.hasPassword boolean",
+          "Update flag when password is set/changed"
+        ],
+        "constraints": [
+          "Do not store password hashes yourself",
+          "Works for Google OAuth + OTP users"
+        ]
+      },
+      "acceptanceTests": [
+        "OAuth/OTP-only user has hasPassword=false",
+        "After setting password hasPassword=true"
+      ],
+      "deliverables": [
+        "convex/users.ts updated",
+        "convex/authHooks.ts (post-login sync)"
+      ]
+    },
+    {
+      "id": "S38-T03",
+      "title": "Set Password UI: elder-friendly form (New/Confirm) + show/hide + success",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "route": "/account/set-password",
+        "ui": [
+          "New password",
+          "Confirm password",
+          "Show/hide toggle",
+          "Simple strength hint (8+ chars)",
+          "CTA: Set password",
+          "Secondary: Skip for now (if policy allows)"
+        ],
+        "validation": [
+          ">= 8 chars",
+          "confirm matches",
+          "basic weak password blocklist optional"
+        ],
+        "constraints": [
+          "Clear error messages",
+          "Respect returnTo after completion/skip"
+        ]
+      },
+      "acceptanceTests": [
+        "User can set password and is redirected back",
+        "Skip works and returns user back"
+      ],
+      "deliverables": [
+        "app/account/set-password/page.tsx",
+        "components/account/SetPasswordForm.tsx",
+        "components/ui/PasswordField.tsx"
+      ]
+    },
+    {
+      "id": "S38-T04",
+      "title": "Backend action: set password for current user + rate limit + audit event",
+      "skill": ["Backend", "Convex", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "action": "account.setPassword",
+        "inputs": ["newPassword"],
+        "behavior": [
+          "Require authenticated user",
+          "Set password credential via Convex Auth password provider APIs",
+          "Update users.hasPassword=true",
+          "Emit audit event: password_set"
+        ],
+        "security": [
+          "Rate limit attempts per user",
+          "Never log passwords",
+          "If user already has password: return error (or redirect to Change Password in future)"
+        ]
+      },
+      "acceptanceTests": [
+        "OAuth/OTP user can set password once",
+        "Rate limit triggers on repeated attempts"
+      ],
+      "deliverables": [
+        "convex/account/setPassword.ts",
+        "lib/errors/passwordSetErrors.ts",
+        "convex/auditEvents.ts (if you have one)"
+      ]
+    },
+    {
+      "id": "S38-T05",
+      "title": "React Email template: Password Set Success (branded) + send on success",
+      "skill": ["Email Engineering", "Backend"],
+      "priority": "P0",
+      "requirements": {
+        "template": {
+          "id": "password_set_success",
+          "subject": "Your Memorioso password is set",
+          "vars": ["userName", "securityUrl", "supportUrl"]
+        },
+        "send": ["After setPassword success, send email via sender layer"],
+        "constraints": [
+          "Cross-client safe layout",
+          "Plain-text fallback",
+          "No sensitive details"
+        ]
+      },
+      "acceptanceTests": [
+        "Template renders with sample data",
+        "Email send is triggered after password set"
+      ],
+      "deliverables": [
+        "emails/templates/auth/PasswordSetSuccess.tsx",
+        "emails/templates/auth/plaintext.ts updated",
+        "convex/account/setPassword.ts updated (sendEmail call)"
+      ]
+    },
+    {
+      "id": "S38-T06",
+      "title": "Google Sign-In button branding compliance (Continue with Google + icon + theme)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "rules": [
+          "Prefer Google-rendered button via Google Identity Services where possible (branding always up-to-date).",
+          "If using custom button, use approved text options including 'Continue with Google' and the official Google 'G' mark per guidelines."
+        ],
+        "ui": [
+          "Primary Google auth button uses 'Continue with Google' label and Google icon",
+          "Button sizing consistent with other auth CTAs",
+          "Support dark/light themes using allowed button themes"
+        ],
+        "constraints": [
+          "Do not alter the Google logo",
+          "Use correct spacing/padding per guidelines"
+        ]
+      },
+      "acceptanceTests": [
+        "Google button matches branding requirements and uses allowed text 'continue_with'",
+        "Button displays correctly in light/dark mode"
+      ],
+      "deliverables": [
+        "components/auth/ContinueWithGoogleButton.tsx",
+        "docs/google_signin_branding_notes.md"
+      ]
+    },
+    {
+      "id": "S38-T07",
+      "title": "Google account chooser step (intermediate page) before OAuth redirect",
+      "skill": ["Frontend", "Product"],
+      "priority": "P0",
+      "requirements": {
+        "goal": "When user clicks Google login, show a short intermediate page that helps them choose which Google account will be used (especially useful on shared devices).",
+        "route": "/auth/choose-google-account",
+        "ui": [
+          "Brand heading: 'Continue with Google'",
+          "Short copy: 'Choose the Google account you want to use.'",
+          "CTA: Continue with Google (starts OAuth)",
+          "Secondary: Use email instead"
+        ],
+        "oauthBehavior": [
+          "Force Google account chooser by using appropriate OAuth parameters (e.g., prompt=select_account) where supported by your OAuth integration stack."
+        ],
+        "constraints": [
+          "If provider forces a picker anyway, this page still adds clarity and reduces surprise",
+          "Avoid collecting Google account list yourself (do not attempt to enumerate accounts)"
+        ]
+      },
+      "acceptanceTests": [
+        "Clicking Google on sign-in routes to choose-google-account page",
+        "Continuing triggers OAuth and shows Google account selection when multiple accounts exist"
+      ],
+      "deliverables": [
+        "app/auth/choose-google-account/page.tsx",
+        "lib/auth/googleOAuthParams.ts (prompt/select_account)",
+        "docs/google_account_chooser_ux.md"
+      ]
+    },
+    {
+      "id": "S38-T08",
+      "title": "Sensitive action gate (optional): require password before Export if configured",
+      "skill": ["Frontend", "Backend"],
+      "priority": "P1",
+      "requirements": {
+        "gates": [
+          "If hasPassword=false and policy says requiredForExport=true, show modal prompting Set Password"
+        ],
+        "constraints": ["Do not block story answering", "Keep copy friendly"]
+      },
+      "acceptanceTests": [
+        "Export prompts Set Password when required",
+        "After setting password, export proceeds"
+      ],
+      "deliverables": [
+        "components/billing/SecurityGateModal.tsx",
+        "lib/billing/guards.ts updated"
+      ]
+    },
+    {
+      "id": "S38-T09",
+      "title": "QA + automated tests (set password routing, google chooser, google button)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Google login → chooser page → OAuth → logged in",
+          "User without password → routed to set-password (or prompted) → set password → redirected back",
+          "Google button styling correct and consistent",
+          "Dark mode button theme is acceptable"
+        ],
+        "automation": [
+          "Unit: postLoginRedirect chooses set-password when hasPassword=false",
+          "UI: ContinueWithGoogleButton renders allowed label/icon",
+          "Integration: google chooser page sets OAuth params (prompt=select_account) in redirect URL"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 5 automated tests added and passing",
+        "No redirect loops"
+      ],
+      "deliverables": [
+        "tests/auth/postLoginRedirect.test.ts",
+        "tests/ui/continueWithGoogleButton.test.tsx",
+        "tests/auth/googleChooserRedirect.test.ts",
+        "docs/qa_sprint38_set_password_google.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S38-T01",
+      "S38-T02",
+      "S38-T06",
+      "S38-T07",
+      "S38-T03",
+      "S38-T04",
+      "S38-T05",
+      "S38-T09",
+      "S38-T08"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Google recommends using the Google-rendered button via Google Identity Services to ensure branding compliance and support allowed text like 'continue_with'.",
+      "Account selection is typically controlled by OAuth parameters (prompt=select_account) depending on the implementation."
+    ]
+  }
+}

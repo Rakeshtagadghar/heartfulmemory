@@ -145,7 +145,7 @@ export function AppShell({
                       onClick={() => {
                         setUserMenuOpen(false);
                         trackAuthLogout({ source: "app_shell_menu" });
-                        void signOut({ callbackUrl: "/login?loggedOut=1" });
+                        void signOut({ callbackUrl: "/auth/sign-in?loggedOut=1" });
                       }}
                     >
                       Logout

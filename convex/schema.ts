@@ -28,6 +28,7 @@ export default defineSchema({
     email: v.optional(v.string()),
     primaryEmail: v.optional(v.string()),
     passwordHash: v.optional(v.string()),
+    hasPassword: v.optional(v.boolean()),
     emailVerifiedAt: v.optional(v.union(v.number(), v.null())),
     authProvidersLinked: v.optional(
       v.object({
