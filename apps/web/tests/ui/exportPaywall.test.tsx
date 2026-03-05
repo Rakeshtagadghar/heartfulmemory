@@ -79,6 +79,6 @@ describe("Export paywall gating", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Export" }));
 
-    expect(await screen.findByRole("heading", { name: "Digital + Hardcopy Export" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "PDF, Word & PowerPoint" })).toBeInTheDocument();
   });
 });

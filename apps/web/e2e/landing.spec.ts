@@ -10,21 +10,22 @@ test.describe("Landing page", () => {
       })
     ).toBeVisible();
 
-    const startCta = page.getByRole("link", { name: "Start your Storybook" });
+    const startCta = page.getByRole("link", { name: "Start free" }).first();
     await expect(startCta).toBeVisible();
     await startCta.click();
 
-    await expect(page).toHaveURL(/\/login\?(.+&)?returnTo=%2Fapp%2Fstart/);
+    await expect(page).toHaveURL(/\/auth\/sign-in\?(.+&)?returnTo=%2Fcreate%2Ftemplate/);
     await expect(page.getByRole("heading", { name: /continue to memorioso/i })).toBeVisible();
   });
 
-  test("pricing CTA preserves plan query param", async ({ page }) => {
+  test("pricing CTA routes unauthenticated users to sign-in", async ({ page }) => {
     await page.goto("/");
-    await page.locator("#pricing").scrollIntoViewIfNeeded();
+    const pricingSection = page.locator("#pricing");
+    await pricingSection.scrollIntoViewIfNeeded();
 
-    await page.getByRole("link", { name: "Get Digital" }).click();
+    await pricingSection.getByRole("link", { name: "Upgrade to export" }).first().click();
 
-    await expect(page).toHaveURL(/\/checkout\?plan=digital$/);
-    await expect(page.getByText('"plan": "digital"')).toBeVisible();
+    await expect(page).toHaveURL(/\/auth\/sign-in\?(.+&)?returnTo=%2Fapp/);
+    await expect(page.getByRole("heading", { name: /continue to memorioso/i })).toBeVisible();
   });
 });

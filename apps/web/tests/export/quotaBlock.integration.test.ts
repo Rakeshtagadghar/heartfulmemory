@@ -31,6 +31,13 @@ vi.mock("../../../../lib/observability/spans", () => ({
   withSentrySpan: async (_name: string, _attrs: unknown, callback: () => Promise<unknown>) => callback()
 }));
 
+vi.mock("../../lib/auth/passwordSecurityGuard", () => ({
+  shouldBlockForMissingPassword: vi.fn(async () => ({
+    blocked: false,
+    hasPassword: true
+  }))
+}));
+
 import { POST } from "../../app/api/export/pdf/route";
 
 describe("POST /api/export/pdf quota enforcement", () => {
