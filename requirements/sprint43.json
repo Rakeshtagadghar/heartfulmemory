@@ -1,0 +1,303 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 43,
+      "title": "Featurebase Widgets v1: Feedback + Changelog + Messenger Widget + Embedded Portal",
+      "duration": "1 week",
+      "goal": "Embed Featurebase widgets into Memorioso: Feedback widget (bugs/ideas), Changelog widget (what’s new), and the Messenger widget for quick in-app support/feedback entry. Add clean entry points in Studio and Dashboard, theme them for dark UI, and optionally embed the full portal in a dedicated page.",
+      "definitionOfDone": [
+        "Featurebase Feedback widget installed and usable in-app (submit idea/bug without leaving)",
+        "Featurebase Changelog widget installed and accessible from Studio + Dashboard",
+        "Featurebase Messenger widget installed for quick help/feedback entry (floating button/launcher)",
+        "Widgets match Memorioso dark theme and do not interfere with Studio interactions",
+        "Optional: /feedback page embeds Featurebase portal (roadmap + feedback browsing) via iframe",
+        "Widgets are loaded only in the authenticated app shell (not on marketing pages) unless explicitly desired",
+        "Basic telemetry events recorded for opens/submissions (no PII)",
+        "QA checklist completed and minimal tests added (script load + launcher availability)"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex (optional for user context later)",
+      "featurebase": "Workspace already created; free tier usage",
+      "theme": "Memorioso uses dark UI in Studio"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S43-T01",
+      "title": "Confirm Featurebase widget capabilities + free-tier constraints + placements",
+      "skill": ["Product", "Ops"],
+      "priority": "P0",
+      "requirements": {
+        "research": [
+          "Verify which widgets are available on free tier (Feedback, Changelog, Messenger, Embedded portal)",
+          "Verify any limits (boards/projects, custom domains, branding, screenshot support)"
+        ],
+        "placements": [
+          "Studio: Help menu + optional floating launcher",
+          "Dashboard: Footer link + 'What’s new' icon",
+          "Account/Settings: Feedback & Changelog links",
+          "Optional: /feedback portal page (iframe)"
+        ],
+        "constraints": [
+          "Must remain compatible with free tier",
+          "Avoid cluttering Studio UI"
+        ]
+      },
+      "acceptanceTests": [
+        "A constraints + placements doc exists and matches what you can enable in Featurebase"
+      ],
+      "deliverables": ["docs/featurebase_free_tier_and_widgets.md"]
+    },
+    {
+      "id": "S43-T02",
+      "title": "Add a safe widget loader (script injection) gated to app shell routes only",
+      "skill": ["Frontend", "Integration", "Security"],
+      "priority": "P0",
+      "requirements": {
+        "loader": [
+          "Load Featurebase widget script once (singleton) on authenticated app layout",
+          "Do not load on landing/SEO pages by default",
+          "Support lazy-load after user interaction (P1)"
+        ],
+        "config": [
+          "FEATUREBASE_APP_ID / BOARD_ID / WIDGET_KEY (as required)",
+          "FEATUREBASE_ENABLED boolean flag"
+        ],
+        "constraints": [
+          "Avoid double-injecting script on route transitions",
+          "Handle CSP (if any) gracefully"
+        ]
+      },
+      "acceptanceTests": [
+        "Script loads exactly once and widgets initialize",
+        "No console errors during route changes"
+      ],
+      "deliverables": [
+        "lib/featurebase/loader.ts",
+        "components/featurebase/FeaturebaseProvider.tsx",
+        "docs/featurebase_loader_notes.md"
+      ]
+    },
+    {
+      "id": "S43-T03",
+      "title": "Install Featurebase Feedback widget and wire 'Send feedback' entry points (Studio + Dashboard)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "entryPoints": [
+          "Studio: Help menu → Send feedback",
+          "Dashboard: Footer link → Send feedback",
+          "Optional: keyboard shortcut (Ctrl+K then 'feedback') later"
+        ],
+        "widgetConfig": [
+          "Default category: Bug vs Feature",
+          "Optional custom fields: storybookId, chapterKey, route, browser",
+          "Enable screenshot attachment if available"
+        ],
+        "constraints": [
+          "Do not include story text or PII in custom fields",
+          "Keep it elder-friendly (simple form)"
+        ]
+      },
+      "acceptanceTests": [
+        "User can open feedback widget and submit a post",
+        "Custom context fields are included (safe metadata only)"
+      ],
+      "deliverables": [
+        "components/featurebase/FeedbackLauncher.tsx",
+        "lib/featurebase/context.ts",
+        "docs/featurebase_feedback_config.md"
+      ]
+    },
+    {
+      "id": "S43-T04",
+      "title": "Install Featurebase Changelog widget (What’s new) with badge/dot indicator",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "entryPoints": [
+          "Studio: top bar icon 'What’s new'",
+          "Dashboard: icon or link"
+        ],
+        "behavior": [
+          "Open changelog widget popup/card",
+          "Show new-item badge if supported (or store lastSeenChangelogAt locally)"
+        ],
+        "constraints": ["Do not block Studio interactions"]
+      },
+      "acceptanceTests": [
+        "Changelog widget opens and shows latest posts",
+        "Badge indicator works (native or local last-seen)"
+      ],
+      "deliverables": [
+        "components/featurebase/ChangelogLauncher.tsx",
+        "lib/featurebase/lastSeen.ts",
+        "docs/featurebase_changelog_install.md"
+      ]
+    },
+    {
+      "id": "S43-T05",
+      "title": "Install Featurebase Messenger widget (floating launcher) + Studio-safe positioning",
+      "skill": ["Frontend", "UX", "Integration"],
+      "priority": "P0",
+      "requirements": {
+        "messenger": [
+          "Enable Featurebase Messenger widget and render launcher in-app",
+          "Position: bottom-right by default, but avoid overlapping Studio controls",
+          "Hide/minimize while in critical edit modes (e.g., crop sidebar open) if needed"
+        ],
+        "studioSafety": [
+          "Ensure launcher does not capture drag gestures on canvas",
+          "Allow user to close/minimize messenger"
+        ],
+        "constraints": [
+          "Must not degrade performance or cause layout shift",
+          "Do not show on landing pages unless desired"
+        ]
+      },
+      "acceptanceTests": [
+        "Messenger widget appears and can be opened/closed",
+        "It does not interfere with selection/dragging in Studio"
+      ],
+      "deliverables": [
+        "components/featurebase/MessengerWidget.tsx",
+        "lib/featurebase/studioSafePositioning.ts",
+        "docs/featurebase_messenger_install.md"
+      ]
+    },
+    {
+      "id": "S43-T06",
+      "title": "Theme matching (dark mode): widget styling guidelines + fallback",
+      "skill": ["UI Design", "Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "theme": [
+          "Match Memorioso dark palette for widget container if supported",
+          "Ensure readable contrast and accessible font sizes",
+          "Fallback: keep default widget theme but wrap with minimal framing UI"
+        ],
+        "constraints": [
+          "Do not hack internal widget DOM aggressively (brittle)",
+          "Prefer official widget theming options"
+        ]
+      },
+      "acceptanceTests": [
+        "Widgets remain readable on dark background",
+        "No CSS conflicts in Studio"
+      ],
+      "deliverables": [
+        "styles/featurebaseOverrides.css (minimal)",
+        "docs/featurebase_theming.md"
+      ]
+    },
+    {
+      "id": "S43-T07",
+      "title": "Optional: /feedback page embedding Featurebase portal (roadmap + feedback) via iframe",
+      "skill": ["Frontend"],
+      "priority": "P1",
+      "requirements": {
+        "route": "/feedback",
+        "behavior": [
+          "Embed portal in iframe with responsive sizing",
+          "Add safe external link fallback if iframe blocked",
+          "Add noindex (it’s inside app, optional)"
+        ],
+        "constraints": [
+          "Do not embed on landing SEO pages",
+          "Keep authentication boundaries clear (public portal can be public, but app route is private unless you choose otherwise)"
+        ]
+      },
+      "acceptanceTests": [
+        "Portal renders inside iframe on /feedback",
+        "Fallback link works if iframe fails"
+      ],
+      "deliverables": [
+        "app/feedback/page.tsx",
+        "components/featurebase/EmbeddedPortal.tsx"
+      ]
+    },
+    {
+      "id": "S43-T08",
+      "title": "Telemetry hooks (no PII): widget_opened, feedback_submitted, changelog_opened, messenger_opened",
+      "skill": ["Frontend", "DX"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "featurebase_feedback_opened",
+          "featurebase_feedback_submitted",
+          "featurebase_changelog_opened",
+          "featurebase_messenger_opened",
+          "featurebase_messenger_message_sent (if exposed; otherwise omit)"
+        ],
+        "properties": [
+          "route",
+          "context=studio|dashboard|account",
+          "storybookId/chapterKey/nodeId (optional, non-PII ids only)"
+        ],
+        "constraints": ["Do not log message content", "Do not log emails/names"]
+      },
+      "acceptanceTests": [
+        "Events fire once per action",
+        "No sensitive content is recorded"
+      ],
+      "deliverables": [
+        "lib/analytics/featurebaseEvents.ts",
+        "docs/featurebase_telemetry.md"
+      ]
+    },
+    {
+      "id": "S43-T09",
+      "title": "QA + minimal tests (loader singleton, launchers available, studio non-interference)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Studio: open feedback widget, submit, close",
+          "Studio: open changelog widget, close",
+          "Studio: messenger launcher opens and does not block canvas drag",
+          "Dashboard: feedback and changelog entry points work",
+          "/feedback iframe loads (if implemented)"
+        ],
+        "automation": [
+          "Unit: loader injects script only once",
+          "UI: launchers render when FEATUREBASE_ENABLED=true"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 2 automated tests added and passing",
+        "No regressions in Studio input/drag"
+      ],
+      "deliverables": [
+        "tests/featurebase/loaderSingleton.test.ts",
+        "tests/ui/featurebaseLaunchers.test.tsx",
+        "docs/qa_sprint43_featurebase_widgets.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S43-T01",
+      "S43-T02",
+      "S43-T03",
+      "S43-T04",
+      "S43-T05",
+      "S43-T09",
+      "S43-T06",
+      "S43-T08",
+      "S43-T07"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 4.5,
+      "P1_total_days": 1.5,
+      "buffer_days": 1
+    },
+    "notes": [
+      "Use a singleton loader and only load widgets inside authenticated app pages to keep marketing pages fast and avoid SEO noise.",
+      "Ensure the Messenger launcher doesn’t overlap or interfere with Studio canvas interactions."
+    ]
+  }
+}

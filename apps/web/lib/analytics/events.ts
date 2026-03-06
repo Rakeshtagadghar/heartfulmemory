@@ -133,6 +133,30 @@ export type CanonicalAnalyticsEventMap = {
     value: number;
     currency: string;
   };
+  featurebase_feedback_opened: {
+    context: string;
+    route?: string;
+    storybook_id?: string;
+    chapter_id?: string;
+  };
+  featurebase_feedback_submitted: {
+    context: string;
+    route?: string;
+    storybook_id?: string;
+    chapter_id?: string;
+  };
+  featurebase_changelog_opened: {
+    context: string;
+    route?: string;
+    storybook_id?: string;
+    chapter_id?: string;
+  };
+  featurebase_messenger_opened: {
+    context: string;
+    route?: string;
+    storybook_id?: string;
+    chapter_id?: string;
+  };
 };
 
 export type CanonicalAnalyticsEventName = keyof CanonicalAnalyticsEventMap;
@@ -162,7 +186,11 @@ export const canonicalRequiredParams = {
   generate_lead: ["lead_type", "form_id"],
   paywall_view: ["feature", "reason"],
   begin_checkout: ["plan_id"],
-  purchase: ["transaction_id", "plan_id", "value", "currency"]
+  purchase: ["transaction_id", "plan_id", "value", "currency"],
+  featurebase_feedback_opened: ["context"],
+  featurebase_feedback_submitted: ["context"],
+  featurebase_changelog_opened: ["context"],
+  featurebase_messenger_opened: ["context"]
 } as const satisfies {
   [K in CanonicalAnalyticsEventName]: readonly (keyof CanonicalAnalyticsEventMap[K])[];
 };

@@ -13,6 +13,10 @@ import { PlanStatusBanner } from "../billing/PlanStatusBanner";
 import { AlphaBadge } from "../alpha/AlphaBadge";
 import { AlphaBanner } from "../alpha/AlphaBanner";
 import { AlphaInfoModal } from "../alpha/AlphaInfoModal";
+import { FeaturebaseProvider } from "../featurebase/FeaturebaseProvider";
+import { FeedbackLauncher } from "../featurebase/FeedbackLauncher";
+import { ChangelogLauncher } from "../featurebase/ChangelogLauncher";
+import { MessengerWidget } from "../featurebase/MessengerWidget";
 
 function getDisplayLabel(profile: ProfileRecord | null, email: string | null | undefined, suppressFallback: boolean) {
   return profile?.display_name || email || (suppressFallback ? "" : "Member");
@@ -90,6 +94,7 @@ export function AppShell({
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_15%_10%,rgba(213,179,106,0.06),transparent_38%),radial-gradient(circle_at_85%_10%,rgba(17,59,52,0.13),transparent_42%),linear-gradient(180deg,#0a1321_0%,#0b1423_40%,#09111d_100%)] text-white">
+      <FeaturebaseProvider />
       {isLayoutStudio ? null : (
         <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6">
           <div className="mx-auto w-full max-w-7xl">
@@ -154,6 +159,27 @@ export function AppShell({
                     >
                       Billing
                     </Link>
+                    <Link
+                      href="/feedback"
+                      role="menuitem"
+                      className="flex h-10 items-center rounded-xl px-3 text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => setUserMenuOpen(false)}
+                    >
+                      Feedback portal
+                    </Link>
+                    <FeedbackLauncher
+                      context={isLayoutStudio ? "studio" : "app_shell"}
+                      role="menuitem"
+                      className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      onClick={() => setUserMenuOpen(false)}
+                    />
+                    <ChangelogLauncher
+                      context={isLayoutStudio ? "studio" : "app_shell"}
+                      role="menuitem"
+                      className="flex h-10 w-full items-center justify-between rounded-xl px-3 text-left text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                      badgeClassName="inline-flex min-w-5 items-center justify-center rounded-full bg-gold/20 px-1.5 py-0.5 text-[11px] font-semibold text-gold"
+                      onClick={() => setUserMenuOpen(false)}
+                    />
                     <button
                       type="button"
                       role="menuitem"
@@ -196,6 +222,7 @@ export function AppShell({
         {isLayoutStudio ? null : <AlphaBanner onLearnMore={() => setAlphaInfoOpen(true)} />}
         <main className={isLayoutStudio ? "h-full w-full p-0" : ""}>{children}</main>
       </div>
+      <MessengerWidget context={isLayoutStudio ? "studio" : "app_shell"} isStudio={isLayoutStudio} />
       <AlphaInfoModal open={alphaInfoOpen} onClose={() => setAlphaInfoOpen(false)} />
     </div>
   );

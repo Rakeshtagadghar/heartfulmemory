@@ -45,7 +45,7 @@ function sanitizeEvent<T extends { request?: unknown; breadcrumbs?: unknown; ext
   return next as T;
 }
 
-function createAdapter(): ObservabilityAdapter {
+export function createAdapter(): ObservabilityAdapter {
   return {
     captureException(error, payload) {
       return Sentry.captureException(error, {
@@ -85,6 +85,11 @@ export function initSentryForRuntime(runtime: SentryRuntime) {
     return;
   }
 
+  const integrations = [
+    // Send console.log, console.warn, and console.error calls as logs to Sentry.
+    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] })
+  ];
+
   Sentry.init({
     dsn: config.dsn,
     environment: config.environment,
@@ -92,7 +97,11 @@ export function initSentryForRuntime(runtime: SentryRuntime) {
     tracesSampleRate: config.tracesSampleRate,
     sendDefaultPii: false,
     debug: config.debug,
+    integrations,
+    enableLogs: true,
     beforeSend: sanitizeEvent
   });
   registerObservabilityAdapter(createAdapter());
 }
+
+export { sanitizeEvent };

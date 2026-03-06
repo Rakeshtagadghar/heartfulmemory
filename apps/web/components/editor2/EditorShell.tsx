@@ -70,6 +70,8 @@ import {
 import { MemoriosoLogo } from "../memorioso-logo";
 import { trackAuthLogout } from "../../lib/analytics/events_auth";
 import { PlanStatusBanner } from "../billing/PlanStatusBanner";
+import { ChangelogLauncher } from "../featurebase/ChangelogLauncher";
+import { FeedbackLauncher } from "../featurebase/FeedbackLauncher";
 import { TextPanel } from "../studio/panels/TextPanel";
 import { ElementsPanel } from "../studio/panels/ElementsPanel";
 import { UploadsPanel } from "../studio/panels/UploadsPanel";
@@ -2877,6 +2879,21 @@ export function Editor2Shell({// NOSONAR
                         >
                           Billing
                         </Link>
+                        <FeedbackLauncher
+                          context="studio"
+                          storybookId={storybook.id}
+                          role="menuitem"
+                          className="flex h-10 w-full items-center rounded-xl px-3 text-left text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                          onClick={() => setUserMenuOpen(false)}
+                        />
+                        <ChangelogLauncher
+                          context="studio"
+                          storybookId={storybook.id}
+                          role="menuitem"
+                          className="flex h-10 w-full items-center justify-between rounded-xl px-3 text-left text-sm text-white/80 hover:bg-white/[0.05] hover:text-white"
+                          badgeClassName="inline-flex min-w-5 items-center justify-center rounded-full bg-gold/20 px-1.5 py-0.5 text-[11px] font-semibold text-gold"
+                          onClick={() => setUserMenuOpen(false)}
+                        />
                         <button
                           type="button"
                           role="menuitem"

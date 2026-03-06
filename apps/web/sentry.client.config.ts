@@ -1,3 +1,3 @@
-import { initSentryForRuntime } from "./lib/observability/sentry";
+import { initClientSentry } from "./lib/observability/sentry.client";
 
-initSentryForRuntime("client");
+initClientSentry();

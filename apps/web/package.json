@@ -2,7 +2,7 @@
   "name": "web",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . && pnpm run analytics:guard",
@@ -17,7 +17,8 @@
     "@aws-sdk/client-s3": "^3.997.0",
     "@aws-sdk/s3-request-presigner": "^3.997.0",
     "@memorioso/emails": "workspace:^",
-    "@sentry/nextjs": "^10.40.0",
+    "@sentry/browser": "10.42.0",
+    "@sentry/nextjs": "^10.42.0",
     "@sparticuz/chromium": "^138.0.2",
     "@tiptap/extension-character-count": "^3.20.0",
     "@tiptap/extension-color": "^3.20.0",
