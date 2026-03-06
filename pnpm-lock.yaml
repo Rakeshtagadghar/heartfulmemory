@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-voice-visualizer@2.0.8:
+    hash: v6wmrm4nyws6n5fxu76kzcgb74
+    path: patches/react-voice-visualizer@2.0.8.patch
+
 importers:
 
   .:
@@ -101,7 +106,7 @@ importers:
         version: 19.2.4(react@19.2.4)
       react-voice-visualizer:
         specifier: ^2.0.8
-        version: 2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 2.0.8(patch_hash=v6wmrm4nyws6n5fxu76kzcgb74)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       stripe:
         specifier: ^20.4.0
         version: 20.4.0(@types/node@25.3.0)
@@ -11191,7 +11196,7 @@ snapshots:
 
   react-refresh@0.18.0: {}
 
-  react-voice-visualizer@2.0.8(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+  react-voice-visualizer@2.0.8(patch_hash=v6wmrm4nyws6n5fxu76kzcgb74)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)

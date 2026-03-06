@@ -1,0 +1,355 @@
+{
+  "meta": {
+    "project": "Memorioso / Storykeeper",
+    "planType": "SPRINT_TASKS_JSON",
+    "sprint": {
+      "number": 44,
+      "title": "Voice Reliability v1: Microphone Error Handling + Graceful UX (Wizard + Studio)",
+      "duration": "1 week",
+      "goal": "Handle all microphone-related failure scenarios gracefully across the app: Questions & Answers mic and Studio textbox mic. Provide clear, elder-friendly messages, recovery actions, and consistent state handling so users never feel stuck.",
+      "definitionOfDone": [
+        "All common mic failures are detected and mapped to friendly, actionable messages",
+        "Wizard Q&A mic and Studio textbox mic share the same error handling layer",
+        "UI covers: permission denied, no mic device, mic busy, browser not supported, insecure context, audio capture failed, silent audio, STT/network errors",
+        "Recovery actions exist: Retry, Open browser settings instructions, Switch input, Use typing instead",
+        "Mic indicator is never left ‘stuck on’; streams are always released on stop/error/unmount",
+        "Errors are logged with stable error codes to Sentry (no transcript/audio content)",
+        "Automated tests cover error mapping and key UI states"
+      ]
+    },
+    "stackAssumptions": {
+      "frontend": "Next.js + TypeScript",
+      "backend": "Convex actions for STT (ElevenLabs)",
+      "voiceUI": "react-voice-visualizer integration from Sprint 35",
+      "observability": "Sentry installed"
+    }
+  },
+  "backlog": [
+    {
+      "id": "S44-T01",
+      "title": "Create microphone error taxonomy (stable codes) + user-friendly copy map",
+      "skill": ["UX", "Frontend", "DX"],
+      "priority": "P0",
+      "requirements": {
+        "errorCodes": [
+          "MIC_PERMISSION_DENIED",
+          "MIC_PERMISSION_DISMISSED",
+          "MIC_NOT_FOUND",
+          "MIC_IN_USE",
+          "MIC_INSECURE_CONTEXT",
+          "MIC_UNSUPPORTED_BROWSER",
+          "MIC_CAPTURE_FAILED",
+          "MIC_SILENT_AUDIO",
+          "MIC_RECORDING_FAILED",
+          "STT_NETWORK_ERROR",
+          "STT_PROVIDER_ERROR",
+          "STT_TIMEOUT",
+          "UNKNOWN_ERROR"
+        ],
+        "copyRules": [
+          "Short, calm, non-technical",
+          "Always include a next action",
+          "Offer 'Use typing instead' as a safe fallback"
+        ],
+        "outputs": [
+          "error → title, description, primaryAction, secondaryAction"
+        ]
+      },
+      "acceptanceTests": [
+        "Every error code has a copy entry",
+        "Copy is consistent across Wizard and Studio"
+      ],
+      "deliverables": [
+        "lib/voice/errors/voiceErrorCodes.ts",
+        "lib/voice/errors/voiceErrorCopy.ts",
+        "docs/voice_error_taxonomy.md"
+      ]
+    },
+    {
+      "id": "S44-T02",
+      "title": "Detect mic capability and permissions proactively (preflight checks)",
+      "skill": ["Frontend", "Browser APIs"],
+      "priority": "P0",
+      "requirements": {
+        "checks": [
+          "Secure context (https) required for getUserMedia",
+          "Browser support (navigator.mediaDevices + getUserMedia)",
+          "Permissions API check (if available): microphone state",
+          "Enumerate devices (navigator.mediaDevices.enumerateDevices) to detect presence"
+        ],
+        "behavior": [
+          "If failing preflight, disable mic button and show tooltip/info",
+          "If permission is 'prompt', allow user to click mic to request"
+        ],
+        "constraints": [
+          "Do not request permissions automatically; only on user gesture"
+        ]
+      },
+      "acceptanceTests": [
+        "On unsupported browser, mic is disabled with explanation",
+        "On no device, user sees 'No microphone detected' message"
+      ],
+      "deliverables": [
+        "lib/voice/preflight.ts",
+        "components/voice/MicAvailabilityBadge.tsx"
+      ]
+    },
+    {
+      "id": "S44-T03",
+      "title": "Centralize voice session lifecycle with guaranteed cleanup (no stuck mic)",
+      "skill": ["Frontend", "Reliability"],
+      "priority": "P0",
+      "requirements": {
+        "lifecycle": [
+          "Single active recorder at a time (shared lock)",
+          "On stop/error/unmount: stop tracks, cleanup audio context, cancel timers",
+          "Handle rapid start/stop clicks safely"
+        ],
+        "constraints": [
+          "Works both in Wizard Q&A and Studio overlay",
+          "No memory leaks after repeated recordings"
+        ]
+      },
+      "acceptanceTests": [
+        "Mic indicator turns off after stop/error",
+        "Starting in Studio while Wizard recording shows a friendly 'Finish current recording' message"
+      ],
+      "deliverables": [
+        "lib/voice/sessionLock.ts",
+        "lib/voice/useVoiceController.ts",
+        "docs/voice_lifecycle_rules.md"
+      ]
+    },
+    {
+      "id": "S44-T04",
+      "title": "Wizard Q&A mic: graceful error UI + fallback to typing",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "uiStates": [
+          "Idle",
+          "Listening (waveform visible)",
+          "Processing",
+          "Error (banner/card with actions)",
+          "Success (Inserted toast with Undo)"
+        ],
+        "errorActions": [
+          "Retry recording",
+          "Use typing instead",
+          "How to enable mic (opens help modal)",
+          "Switch input device (if supported, optional)"
+        ],
+        "constraints": [
+          "Do not wipe typed answer on error",
+          "Keep elder-friendly visuals and copy"
+        ]
+      },
+      "acceptanceTests": [
+        "Permission denied shows clear instructions and typing fallback",
+        "No mic device shows 'No microphone detected'",
+        "Retry works after resolving issue"
+      ],
+      "deliverables": [
+        "components/wizard/VoiceRecorderInline.tsx updated",
+        "components/voice/VoiceErrorCard.tsx",
+        "components/voice/MicHelpModal.tsx"
+      ]
+    },
+    {
+      "id": "S44-T05",
+      "title": "Studio textbox mic: graceful error UI in overlay + append behavior preserved",
+      "skill": ["Editor Engineering", "Frontend"],
+      "priority": "P0",
+      "requirements": {
+        "overlayStates": [
+          "Idle (mic button available on textbox)",
+          "Listening (waveform)",
+          "Processing",
+          "Error (overlay shows actions)",
+          "Success ('Added to text')"
+        ],
+        "behavior": [
+          "On error: do not modify textbox content",
+          "On success: append transcript with spacing rules (existing)",
+          "Locked page/textbox: mic action disabled with tooltip"
+        ],
+        "constraints": [
+          "Overlay should not block canvas interactions outside its bounds",
+          "Cancel always returns to previous editor state"
+        ]
+      },
+      "acceptanceTests": [
+        "Denied permission shows overlay error + Use typing instead",
+        "No device shows correct message",
+        "After fixing permission, retry works and appends transcript"
+      ],
+      "deliverables": [
+        "packages/editor/voice/VoiceOverlayCard.tsx updated",
+        "packages/editor/ui/TextboxMicAction.tsx updated",
+        "packages/editor/voice/RecordAppendController.tsx updated"
+      ]
+    },
+    {
+      "id": "S44-T06",
+      "title": "Silent audio and short recording detection (user guidance)",
+      "skill": ["Frontend", "UX"],
+      "priority": "P0",
+      "requirements": {
+        "detection": [
+          "If recording duration < X ms, show 'Recording too short' message",
+          "If RMS level remains below threshold for Y seconds, show 'No speech detected' hint",
+          "If STT returns empty transcript, show 'Couldn’t hear that—try again' guidance"
+        ],
+        "constraints": [
+          "Do not be overly sensitive (avoid false positives)",
+          "Never blame user; suggest moving closer to mic"
+        ]
+      },
+      "acceptanceTests": [
+        "Silent recording triggers a helpful hint",
+        "Empty transcript triggers retry suggestion"
+      ],
+      "deliverables": [
+        "lib/voice/silenceDetection.ts",
+        "components/voice/SpeechHint.tsx"
+      ]
+    },
+    {
+      "id": "S44-T07",
+      "title": "STT/network/provider error handling (timeouts, rate limits, provider errors) with retry/backoff",
+      "skill": ["Backend", "Frontend", "Reliability"],
+      "priority": "P0",
+      "requirements": {
+        "backend": [
+          "Return stable error codes for provider failures",
+          "Timeout guard for ElevenLabs request",
+          "Optional: single retry with backoff for transient network failures"
+        ],
+        "frontend": [
+          "Map backend error codes to friendly messages",
+          "Offer Retry and fallback to typing"
+        ],
+        "constraints": [
+          "Do not retry indefinitely",
+          "Do not log transcript/audio in errors"
+        ]
+      },
+      "acceptanceTests": [
+        "Timeout shows 'Taking too long' message with Retry",
+        "Provider 429/5xx mapped correctly"
+      ],
+      "deliverables": [
+        "convex/stt/transcribe.ts updated (error codes)",
+        "lib/voice/sttErrorMapper.ts",
+        "docs/stt_error_handling.md"
+      ]
+    },
+    {
+      "id": "S44-T08",
+      "title": "Help content: mic troubleshooting guide (browser steps) + link from error UI",
+      "skill": ["UX", "Copywriting"],
+      "priority": "P1",
+      "requirements": {
+        "content": [
+          "How to enable microphone permission in Chrome/Edge/Safari",
+          "What to do if mic is in use by another app",
+          "How to select correct input device in OS settings"
+        ],
+        "ui": [
+          "Help modal from error states",
+          "Optional: /help/microphone public page"
+        ],
+        "constraints": [
+          "Keep steps short and screenshot-friendly (no heavy docs)"
+        ]
+      },
+      "acceptanceTests": [
+        "Help is reachable from both Wizard and Studio error UI",
+        "Copy is clear and actionable"
+      ],
+      "deliverables": [
+        "docs/help_microphone.md",
+        "components/voice/MicHelpModal.tsx content updated"
+      ]
+    },
+    {
+      "id": "S44-T09",
+      "title": "Observability: Sentry breadcrumbs + error grouping for voice flows",
+      "skill": ["DX", "Observability"],
+      "priority": "P1",
+      "requirements": {
+        "events": [
+          "voice_preflight_failed (code)",
+          "voice_record_start/stop",
+          "voice_error (code)",
+          "stt_request_start/success/error (code)"
+        ],
+        "constraints": ["No PII, no audio blobs, no transcript content in logs"]
+      },
+      "acceptanceTests": [
+        "Errors appear in Sentry grouped by stable code",
+        "Breadcrumbs show where it happened (wizard vs studio)"
+      ],
+      "deliverables": [
+        "lib/observability/voiceTelemetry.ts updated",
+        "docs/voice_observability.md"
+      ]
+    },
+    {
+      "id": "S44-T10",
+      "title": "QA + automated tests (error mapping, preflight, UI states)",
+      "skill": ["QA", "Testing"],
+      "priority": "P0",
+      "requirements": {
+        "manualChecklist": [
+          "Permission denied: shows correct message + steps + typing fallback (wizard + studio)",
+          "No mic: correct message (wizard + studio)",
+          "Mic in use: correct message (wizard + studio)",
+          "Silent audio: hint appears",
+          "STT timeout: retry shown",
+          "After fixing permission, retry succeeds"
+        ],
+        "automation": [
+          "Unit: voiceErrorCopy map covers all codes",
+          "Unit: preflight detects unsupported browser/insecure context",
+          "UI: error card renders correct actions for MIC_PERMISSION_DENIED",
+          "Integration: STT error code mapping displayed in UI"
+        ]
+      },
+      "acceptanceTests": [
+        "At least 6 tests added and passing",
+        "No stuck mic sessions after errors"
+      ],
+      "deliverables": [
+        "tests/voice/errorCopyCoverage.test.ts",
+        "tests/voice/preflight.test.ts",
+        "tests/ui/voiceErrorCard.test.tsx",
+        "tests/integration/sttErrorUiMapping.test.tsx",
+        "docs/qa_sprint44_voice_errors.md"
+      ]
+    }
+  ],
+  "sprintPlanning": {
+    "suggestedOrder": [
+      "S44-T01",
+      "S44-T02",
+      "S44-T03",
+      "S44-T07",
+      "S44-T04",
+      "S44-T05",
+      "S44-T06",
+      "S44-T10",
+      "S44-T08",
+      "S44-T09"
+    ],
+    "timeboxGuidance": {
+      "P0_total_days": 5,
+      "P1_total_days": 1.5,
+      "buffer_days": 0.5
+    },
+    "notes": [
+      "The key is consistency: the same error codes and copy should appear in both Wizard and Studio.",
+      "Always provide a non-voice fallback (typing) so users can continue their story even if mic fails."
+    ]
+  }
+}

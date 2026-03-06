@@ -7,8 +7,7 @@ import {
   getFeaturebasePublicConfig,
   getFeaturebaseMessengerVisible,
   openFeaturebaseMessenger,
-} from "../../lib/featurebase/loader";
-import { subscribeToFeaturebaseMessengerVisibility } from "../../lib/featurebase/loader";
+ subscribeToFeaturebaseMessengerVisibility } from "../../lib/featurebase/loader";
 import { getFeaturebaseMessengerPositionClasses } from "../../lib/featurebase/studioSafePositioning";
 
 type Props = {
@@ -42,7 +41,7 @@ export function MessengerWidget({
         type="button"
         aria-label={isOpen ? "Close help messenger" : "Open help messenger"}
         aria-pressed={isOpen}
-        className="inline-flex cursor-pointer h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[radial-gradient(circle_at_35%_30%,#8f7bff_0%,#7b68ff_28%,#6758ff_55%,#5746f6_100%)] text-white shadow-[0_18px_42px_rgba(32,24,91,0.46)] transition hover:scale-[1.03] hover:shadow-[0_22px_48px_rgba(32,24,91,0.55)]"
+        className="inline-flex  cursor-pointer h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[radial-gradient(circle_at_35%_30%,#8f7bff_0%,#7b68ff_28%,#6758ff_55%,#5746f6_100%)] text-white shadow-[0_18px_42px_rgba(32,24,91,0.46)] transition hover:scale-[1.03] hover:shadow-[0_22px_48px_rgba(32,24,91,0.55)]"
         onClick={() => {
           if (isOpen) {
             void closeFeaturebaseMessenger();

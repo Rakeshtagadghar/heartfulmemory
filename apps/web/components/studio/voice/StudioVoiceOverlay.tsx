@@ -10,8 +10,17 @@ import { transcribeViaApi } from "../../voice/VoiceRecorder";
 import { acquireVoiceSession, releaseVoiceSession } from "../../../lib/voice/voiceSessionLock";
 import { VoiceWaveform } from "../../voice/VoiceWaveform";
 import { VoiceStatusPill } from "../../voice/VoiceStatusPill";
+import { VoiceErrorCard, type VoiceErrorCardAction } from "../../voice/VoiceErrorCard";
+import { MicHelpModal } from "../../voice/MicHelpModal";
 import type { VoiceSessionState } from "../../voice/voiceStates";
-import { getFriendlyVoiceError } from "../../../lib/voice/voiceErrorCodes";
+import { getVoiceErrorCopy } from "../../../lib/voice/errors/voiceErrorCopy";
+import { isMicSetupError, normalizeVoiceErrorCode, type VoiceErrorCode } from "../../../lib/voice/errors/voiceErrorCodes";
+import { isVoicePreflightBlocking, useVoicePreflight } from "../../../lib/voice/preflight";
+import {
+  recordVoiceError,
+  recordVoicePreflightFailed,
+  recordVoiceRecorderState
+} from "../../../lib/observability/voiceTelemetry";
 import {
   trackVoiceRecordStart,
   trackVoiceRecordStop,
@@ -39,10 +48,17 @@ export function StudioVoiceOverlay({
   storybookId,
   promptHint
 }: Props) {
+  const MIN_RECORDING_MS = 700;
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const preflight = useVoicePreflight(true);
+  const [errorCode, setErrorCode] = useState<VoiceErrorCode | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const recordStartTimeRef = useRef<number>(0);
   const closingRef = useRef(false);
+  const isRecordingRef = useRef(false);
+  const stopRecordingRef = useRef<() => void>(() => undefined);
+  const autoStartAttemptedRef = useRef(false);
+  const stopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const controls = useVoiceVisualizer({
     onStartRecording: () => {
@@ -51,7 +67,7 @@ export function StudioVoiceOverlay({
       trackVoiceRecordStart({ context: "studio", nodeId: frameId, storybookId });
     },
     onStopRecording: () => {
-      // recordedBlob effect handles next steps
+      setSessionState("processing");
     }
   });
 
@@ -59,42 +75,139 @@ export function StudioVoiceOverlay({
     startRecording,
     stopRecording,
     recordedBlob,
+    mediaRecorder,
+    error: recorderError,
     isRecordingInProgress,
-    formattedRecordingTime
+    isProcessingRecordedAudio,
+    formattedRecordingTime,
+    clearCanvas
   } = controls;
+
+  useEffect(() => {
+    isRecordingRef.current = isRecordingInProgress;
+  }, [isRecordingInProgress]);
+
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
+
+  useEffect(() => {
+    if (!isRecordingInProgress && stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+  }, [isRecordingInProgress]);
+
+  const setVoiceError = useCallback((value: unknown, fallbackCode: VoiceErrorCode) => {
+    const normalized = normalizeVoiceErrorCode(value, fallbackCode);
+    setErrorCode(normalized);
+    setSessionState("error");
+    recordVoiceError(normalized, {
+      surface: "studio",
+      storybookId,
+      nodeId: frameId
+    });
+    return normalized;
+  }, [frameId, storybookId]);
+
+  useEffect(() => {
+    if (!recorderError) return;
+    if (stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+    releaseVoiceSession("studio");
+    setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+  }, [recorderError, setVoiceError]);
+
+  const beginRecording = useCallback(async () => {
+    setErrorCode(null);
+
+    if (preflight && isVoicePreflightBlocking(preflight)) {
+      if (preflight.code) {
+        recordVoicePreflightFailed(preflight.code, {
+          surface: "studio",
+          storybookId,
+          nodeId: frameId
+        });
+        setVoiceError(preflight.code, preflight.code);
+      }
+      return;
+    }
+
+    if (!acquireVoiceSession("studio")) {
+      setVoiceError("MIC_IN_USE", "MIC_IN_USE");
+      return;
+    }
+
+    try {
+      await Promise.resolve(startRecording());
+      recordVoiceRecorderState("start", {
+        surface: "studio",
+        storybookId,
+        nodeId: frameId
+      });
+    } catch (error) {
+      releaseVoiceSession("studio");
+      setVoiceError(error, "MIC_CAPTURE_FAILED");
+    }
+  }, [frameId, preflight, setVoiceError, startRecording, storybookId]);
 
   // Auto-start recording on mount
   useEffect(() => {
-    if (!acquireVoiceSession("studio")) {
-      globalThis.queueMicrotask(() => {
-        setErrorMessage(getFriendlyVoiceError("SESSION_LOCKED"));
-        setSessionState("error");
-      });
-      return;
-    }
-    try {
-      startRecording();
-    } catch {
-      releaseVoiceSession("studio");
-      globalThis.queueMicrotask(() => {
-        setErrorMessage(getFriendlyVoiceError("UNKNOWN"));
-        setSessionState("error");
-      });
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    void beginRecording();
+  }, [beginRecording]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (stopFallbackTimerRef.current) {
+        clearTimeout(stopFallbackTimerRef.current);
+      }
+      if (isRecordingRef.current) {
+        try {
+          stopRecordingRef.current();
+        } catch {
+          // ignore best-effort cleanup
+        }
+      }
       releaseVoiceSession("studio");
     };
   }, []);
 
+  const forceStopActiveRecorder = useCallback(() => {
+    const activeRecorder = mediaRecorder;
+    if (!activeRecorder || activeRecorder.state === "inactive") return;
+    try {
+      activeRecorder.stop();
+    } catch {
+      // ignore and still stop tracks below
+    }
+    try {
+      activeRecorder.stream.getTracks().forEach((track) => track.stop());
+    } catch {
+      // ignore
+    }
+  }, [mediaRecorder]);
+
   const runTranscription = useCallback(async (blob: Blob, durationMs: number) => {
-    setErrorMessage(null);
+    setErrorCode(null);
     setSessionState("processing");
     const durationSec = Math.max(1, Math.round(durationMs / 1000));
     trackVoiceTranscribeStart({ context: "studio", nodeId: frameId, storybookId });
+
+    if (blob.size === 0 || durationMs < MIN_RECORDING_MS) {
+      const code = setVoiceError("MIC_SILENT_AUDIO", "MIC_SILENT_AUDIO");
+      trackVoiceTranscribeError({
+        context: "studio",
+        nodeId: frameId,
+        storybookId,
+        error_code: code
+      });
+      return;
+    }
 
     try {
       const audioBase64 = await blobToBase64(blob);
@@ -107,13 +220,23 @@ export function StudioVoiceOverlay({
       });
 
       if (!result.ok) {
-        setErrorMessage(result.message);
-        setSessionState("error");
+        const code = setVoiceError(result.errorCode, "STT_PROVIDER_ERROR");
         trackVoiceTranscribeError({
           context: "studio",
           nodeId: frameId,
           storybookId,
-          error_code: result.errorCode
+          error_code: code
+        });
+        return;
+      }
+
+      if (!result.transcriptText.trim()) {
+        const code = setVoiceError("MIC_SILENT_AUDIO", "MIC_SILENT_AUDIO");
+        trackVoiceTranscribeError({
+          context: "studio",
+          nodeId: frameId,
+          storybookId,
+          error_code: code
         });
         return;
       }
@@ -137,6 +260,11 @@ export function StudioVoiceOverlay({
         storybookId,
         durationSec
       });
+      recordVoiceRecorderState("stop", {
+        surface: "studio",
+        storybookId,
+        nodeId: frameId
+      });
 
       // Auto-close after success
       setTimeout(() => {
@@ -146,34 +274,54 @@ export function StudioVoiceOverlay({
         }
       }, 1500);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Transcription failed.";
-      setErrorMessage(message);
-      setSessionState("error");
+      const code = setVoiceError(error, "STT_NETWORK_ERROR");
       trackVoiceTranscribeError({
         context: "studio",
         nodeId: frameId,
         storybookId,
-        error_code: "UNKNOWN"
+        error_code: code
       });
     }
-  }, [currentDoc, frameId, onClose, onTranscriptAppended, promptHint, storybookId]);
+  }, [MIN_RECORDING_MS, currentDoc, frameId, onClose, onTranscriptAppended, promptHint, setVoiceError, storybookId]);
 
   // Bridge: when the library produces a blob, run transcription
   useEffect(() => {
     if (!recordedBlob) return;
     const durationMs = Date.now() - recordStartTimeRef.current;
+    if (stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+    releaseVoiceSession("studio");
     globalThis.queueMicrotask(() => {
       void runTranscription(recordedBlob, durationMs);
     });
   }, [recordedBlob]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleStop = () => {
-    stopRecording();
+  const handleStop = async () => {
+    setSessionState("processing");
+    try {
+      await Promise.resolve(stopRecording());
+      stopFallbackTimerRef.current = setTimeout(() => {
+        forceStopActiveRecorder();
+      }, 250);
+    } catch (error) {
+      if (stopFallbackTimerRef.current) {
+        clearTimeout(stopFallbackTimerRef.current);
+        stopFallbackTimerRef.current = null;
+      }
+      releaseVoiceSession("studio");
+      setVoiceError(error, "MIC_RECORDING_FAILED");
+    }
   };
 
   const handleCancel = () => {
     if (isRecordingInProgress) {
-      stopRecording();
+      try {
+        stopRecording();
+      } catch {
+        // ignore best-effort cancel
+      }
     }
     closingRef.current = true;
     releaseVoiceSession("studio");
@@ -181,15 +329,45 @@ export function StudioVoiceOverlay({
   };
 
   const handleRetry = async () => {
-    const blob = recordedBlob;
-    if (!blob) return;
-    const durationMs = Date.now() - recordStartTimeRef.current;
-    await runTranscription(blob, durationMs);
+    if (recordedBlob && (errorCode === "STT_NETWORK_ERROR" || errorCode === "STT_PROVIDER_ERROR" || errorCode === "STT_TIMEOUT")) {
+      const durationMs = Date.now() - recordStartTimeRef.current;
+      await runTranscription(recordedBlob, durationMs);
+      return;
+    }
+
+    clearCanvas();
+    recordStartTimeRef.current = 0;
+    setSessionState("idle");
+    setErrorCode(null);
+    await beginRecording();
   };
 
   // Position overlay below the frame anchor
   const overlayTop = anchorBounds.top + anchorBounds.height + 8;
   const overlayLeft = anchorBounds.left + anchorBounds.width / 2 - 140;
+  const errorActions: VoiceErrorCardAction[] = [];
+
+  if (sessionState === "error") {
+    errorActions.push({
+      label: errorCode ? getVoiceErrorCopy(errorCode).primaryActionLabel : "Try again",
+      onClick: () => {
+        void handleRetry();
+      },
+      variant: "primary"
+    });
+    if (errorCode && isMicSetupError(errorCode)) {
+      errorActions.push({
+        label: getVoiceErrorCopy(errorCode).helpActionLabel,
+        onClick: () => setHelpOpen(true),
+        variant: "ghost"
+      });
+    }
+    errorActions.push({
+      label: "Use typing instead",
+      onClick: handleCancel,
+      variant: "secondary"
+    });
+  }
 
   return (
     <div
@@ -212,7 +390,7 @@ export function StudioVoiceOverlay({
 
       <VoiceWaveform
         controls={controls}
-        visible={sessionState === "listening"}
+        visible={isRecordingInProgress || isProcessingRecordedAudio}
         height={48}
       />
 
@@ -221,30 +399,21 @@ export function StudioVoiceOverlay({
       )}
 
       {sessionState === "error" && (
-        <div className="space-y-2 py-2">
-          <p className="text-xs text-rose-300">{errorMessage ?? "Something went wrong."}</p>
-          <button
-            type="button"
-            onClick={() => void handleRetry()}
-            disabled={!recordedBlob}
-            className="cursor-pointer rounded-lg border border-white/15 px-3 py-1.5 text-xs font-semibold text-white/75 transition hover:bg-white/5 disabled:opacity-40"
-          >
-            Retry
-          </button>
-        </div>
+        <VoiceErrorCard code={errorCode} actions={errorActions} className="py-0" />
       )}
 
       <div className="mt-3 flex gap-2">
         {sessionState === "listening" && (
           <button
             type="button"
-            onClick={handleStop}
+            onClick={() => void handleStop()}
             className="flex-1 cursor-pointer rounded-xl border border-emerald-300/30 bg-emerald-500/20 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/30"
           >
             Stop
           </button>
         )}
       </div>
+      <MicHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

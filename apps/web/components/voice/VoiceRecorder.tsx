@@ -7,10 +7,20 @@ import { useVoiceConsent } from "../../lib/consent/useVoiceConsent";
 import { storeOrDiscardAudioForVoiceAnswer } from "../../lib/audio/audioStorage";
 import { blobToBase64 } from "../../lib/audio/mediaRecorder";
 import { acquireVoiceSession, releaseVoiceSession } from "../../lib/voice/voiceSessionLock";
+import { normalizeVoiceErrorCode, type VoiceErrorCode } from "../../lib/voice/errors/voiceErrorCodes";
+import { getVoiceErrorCopy } from "../../lib/voice/errors/voiceErrorCopy";
+import { isVoicePreflightBlocking, useVoicePreflight } from "../../lib/voice/preflight";
+import {
+  recordVoiceError,
+  recordVoicePreflightFailed,
+  recordVoiceRecorderState
+} from "../../lib/observability/voiceTelemetry";
 import { VoiceConsent } from "./VoiceConsent";
 import { VoiceErrors } from "./VoiceErrors";
 import { VoiceWaveform } from "./VoiceWaveform";
 import { VoiceStatusPill } from "./VoiceStatusPill";
+import { MicHelpModal } from "./MicHelpModal";
+import { MicAvailabilityBadge } from "./MicAvailabilityBadge";
 import type { VoiceSessionState } from "./voiceStates";
 import {
   trackVoiceRecordStart,
@@ -61,9 +71,18 @@ export async function transcribeViaApi(input: {
     });
     const data = (await response.json()) as VoiceTranscribeApiResult | { ok: false; error: string };
     if (!response.ok) {
+      const fallbackCode =
+        response.status === 408 || response.status === 504
+          ? "STT_TIMEOUT"
+          : response.status >= 500
+            ? "STT_PROVIDER_ERROR"
+            : "STT_NETWORK_ERROR";
       return {
         ok: false as const,
-        errorCode: "NETWORK",
+        errorCode: normalizeVoiceErrorCode(
+          "errorCode" in data && typeof data.errorCode === "string" ? data.errorCode : null,
+          fallbackCode
+        ),
         message: "Request failed before transcription could start.",
         retryable: true
       };
@@ -71,7 +90,7 @@ export async function transcribeViaApi(input: {
     if ("error" in data && data.ok === false) {
       return {
         ok: false as const,
-        errorCode: "UNKNOWN",
+        errorCode: normalizeVoiceErrorCode(data.error, "UNKNOWN_ERROR"),
         message: data.error,
         retryable: true
       };
@@ -80,7 +99,7 @@ export async function transcribeViaApi(input: {
   } catch {
     return {
       ok: false as const,
-      errorCode: "NETWORK",
+      errorCode: "STT_NETWORK_ERROR",
       message: "Network connection issue during transcription.",
       retryable: true
     };
@@ -108,16 +127,21 @@ export function VoiceRecorder({
   }) => void;
   onSwitchToTyping: () => void;
 }) {
+  const MIN_RECORDING_MS = 700;
   const sttConfig = useMemo(() => getClientSttConfig(), []);
   const consent = useVoiceConsent();
   const [sessionState, setSessionState] = useState<VoiceSessionState>("idle");
-  const [errorCode, setErrorCode] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const preflight = useVoicePreflight(sttConfig.enableVoiceInput);
+  const [errorCode, setErrorCode] = useState<VoiceErrorCode | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [lastTranscription, setLastTranscription] = useState<{
     transcriptText: string;
     provider: "groq" | "elevenlabs";
   } | null>(null);
   const recordStartTimeRef = useRef<number>(0);
+  const isRecordingRef = useRef(false);
+  const stopRecordingRef = useRef<() => void>(() => undefined);
+  const stopFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const maxMs = sttConfig.maxSecondsPerAnswer * 1000;
 
@@ -129,7 +153,7 @@ export function VoiceRecorder({
       trackVoiceRecordStart({ questionId, chapterKey });
     },
     onStopRecording: () => {
-      // recordedBlob useEffect handles next steps
+      setSessionState("processing");
     }
   });
 
@@ -137,18 +161,57 @@ export function VoiceRecorder({
     startRecording,
     stopRecording,
     recordedBlob,
+    mediaRecorder,
+    error: recorderError,
     isRecordingInProgress,
+    isProcessingRecordedAudio,
     recordingTime,
     formattedRecordingTime,
     clearCanvas
   } = controls;
+
+  useEffect(() => {
+    isRecordingRef.current = isRecordingInProgress;
+  }, [isRecordingInProgress]);
+
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
+
+  useEffect(() => {
+    if (!isRecordingInProgress && stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+  }, [isRecordingInProgress]);
+
+  const setVoiceError = useCallback((value: unknown, fallbackCode: VoiceErrorCode) => {
+    const normalized = normalizeVoiceErrorCode(value, fallbackCode);
+    setErrorCode(normalized);
+    setSessionState("error");
+    recordVoiceError(normalized, {
+      surface: "wizard",
+      questionId,
+      chapterKey
+    });
+    return normalized;
+  }, [chapterKey, questionId]);
+
+  useEffect(() => {
+    if (!recorderError) return;
+    if (stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+    releaseVoiceSession("wizard");
+    setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+  }, [recorderError, setVoiceError]);
 
   const runTranscription = useCallback(async (
     blob: Blob,
     durationMs: number
   ) => {
     setErrorCode(null);
-    setErrorMessage(null);
     setSessionState("processing");
     const durationSec = Math.max(1, Math.round(durationMs / 1000));
     trackVoiceTranscribeStart({
@@ -157,6 +220,18 @@ export function VoiceRecorder({
       questionId,
       chapterKey
     });
+
+    if (blob.size === 0 || durationMs < MIN_RECORDING_MS) {
+      const code = setVoiceError("MIC_SILENT_AUDIO", "MIC_SILENT_AUDIO");
+      trackVoiceTranscribeError({
+        provider: sttConfig.providerDefault,
+        durationSec,
+        questionId,
+        chapterKey,
+        error_code: code
+      });
+      return;
+    }
 
     try {
       const audioBase64 = await blobToBase64(blob);
@@ -170,15 +245,25 @@ export function VoiceRecorder({
       });
 
       if (!result.ok) {
-        setErrorCode(result.errorCode);
-        setErrorMessage(result.message);
-        setSessionState("error");
+        const code = setVoiceError(result.errorCode, "STT_PROVIDER_ERROR");
         trackVoiceTranscribeError({
           provider: sttConfig.providerDefault,
           durationSec,
           questionId,
           chapterKey,
-          error_code: result.errorCode
+          error_code: code
+        });
+        return;
+      }
+
+      if (!result.transcriptText.trim()) {
+        const code = setVoiceError("MIC_SILENT_AUDIO", "MIC_SILENT_AUDIO");
+        trackVoiceTranscribeError({
+          provider: sttConfig.providerDefault,
+          durationSec,
+          questionId,
+          chapterKey,
+          error_code: code
         });
         return;
       }
@@ -212,24 +297,31 @@ export function VoiceRecorder({
         chapterKey
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Transcription failed.";
-      setErrorCode("UNKNOWN");
-      setErrorMessage(message);
-      setSessionState("error");
+      const code = setVoiceError(error, "STT_NETWORK_ERROR");
       trackVoiceTranscribeError({
         provider: sttConfig.providerDefault,
         durationSec,
         questionId,
         chapterKey,
-        error_code: "UNKNOWN"
+        error_code: code
       });
     }
-  }, [chapterKey, onTranscriptReady, promptHint, questionId, sttConfig.providerDefault]);
+  }, [MIN_RECORDING_MS, chapterKey, onTranscriptReady, promptHint, questionId, setVoiceError, sttConfig.providerDefault]);
 
   // Bridge: when the library produces a blob, run transcription
   useEffect(() => {
     if (!recordedBlob) return;
     const durationMs = Date.now() - recordStartTimeRef.current;
+    if (stopFallbackTimerRef.current) {
+      clearTimeout(stopFallbackTimerRef.current);
+      stopFallbackTimerRef.current = null;
+    }
+    releaseVoiceSession("wizard");
+    recordVoiceRecorderState("stop", {
+      surface: "wizard",
+      questionId,
+      chapterKey
+    });
     trackVoiceRecordStop({
       questionId,
       chapterKey,
@@ -252,34 +344,83 @@ export function VoiceRecorder({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (stopFallbackTimerRef.current) {
+        clearTimeout(stopFallbackTimerRef.current);
+      }
+      if (isRecordingRef.current) {
+        try {
+          stopRecordingRef.current();
+        } catch {
+          // ignore best-effort cleanup
+        }
+      }
       releaseVoiceSession("wizard");
     };
   }, []);
 
+  const forceStopActiveRecorder = useCallback(() => {
+    const activeRecorder = mediaRecorder;
+    if (!activeRecorder || activeRecorder.state === "inactive") return;
+    try {
+      activeRecorder.stop();
+    } catch {
+      // ignore and still stop tracks below
+    }
+    try {
+      activeRecorder.stream.getTracks().forEach((track) => track.stop());
+    } catch {
+      // ignore
+    }
+  }, [mediaRecorder]);
+
   const beginRecording = async () => {
     setErrorCode(null);
-    setErrorMessage(null);
+
+    if (preflight && isVoicePreflightBlocking(preflight)) {
+      if (preflight.code) {
+        recordVoicePreflightFailed(preflight.code, {
+          surface: "wizard",
+          questionId,
+          chapterKey
+        });
+        setVoiceError(preflight.code, preflight.code);
+      }
+      return;
+    }
 
     if (!acquireVoiceSession("wizard")) {
-      setErrorCode("SESSION_LOCKED");
-      setErrorMessage("Voice recording is already active in another section.");
-      setSessionState("error");
+      setVoiceError("MIC_IN_USE", "MIC_IN_USE");
       return;
     }
 
     try {
-      startRecording();
+      await Promise.resolve(startRecording());
+      recordVoiceRecorderState("start", {
+        surface: "wizard",
+        questionId,
+        chapterKey
+      });
     } catch (error) {
       releaseVoiceSession("wizard");
-      const message = error instanceof Error ? error.message : "Unable to start recording.";
-      setErrorCode("UNKNOWN");
-      setErrorMessage(message);
-      setSessionState("error");
+      setVoiceError(error, "MIC_CAPTURE_FAILED");
     }
   };
 
-  const handleStop = () => {
-    stopRecording();
+  const handleStop = async () => {
+    setSessionState("processing");
+    try {
+      await Promise.resolve(stopRecording());
+      stopFallbackTimerRef.current = setTimeout(() => {
+        forceStopActiveRecorder();
+      }, 250);
+    } catch (error) {
+      if (stopFallbackTimerRef.current) {
+        clearTimeout(stopFallbackTimerRef.current);
+        stopFallbackTimerRef.current = null;
+      }
+      releaseVoiceSession("wizard");
+      setVoiceError(error, "MIC_RECORDING_FAILED");
+    }
   };
 
   const retryTranscription = async () => {
@@ -294,15 +435,13 @@ export function VoiceRecorder({
     recordStartTimeRef.current = 0;
     setLastTranscription(null);
     setErrorCode(null);
-    setErrorMessage(null);
     setSessionState("idle");
   };
 
   if (!sttConfig.enableVoiceInput) {
     return (
       <VoiceErrors
-        code="NOT_CONFIGURED"
-        message="Voice input is currently disabled."
+        code="VOICE_NOT_CONFIGURED"
         onSwitchToTyping={onSwitchToTyping}
       />
     );
@@ -324,18 +463,23 @@ export function VoiceRecorder({
         </div>
       </div>
 
+      <MicAvailabilityBadge
+        preflight={preflight}
+        onOpenMicHelp={() => setHelpOpen(true)}
+      />
+
       <VoiceWaveform
         controls={controls}
-        visible={sessionState === "listening"}
+        visible={isRecordingInProgress || isProcessingRecordedAudio}
       />
 
       {sessionState === "error" ? (
         <VoiceErrors
           code={errorCode}
-          message={errorMessage}
           onRetryTranscription={recordedBlob ? retryTranscription : undefined}
           onRecordAgain={recordAgain}
           onSwitchToTyping={onSwitchToTyping}
+          onOpenMicHelp={() => setHelpOpen(true)}
         />
       ) : null}
 
@@ -344,7 +488,8 @@ export function VoiceRecorder({
           <button
             type="button"
             onClick={() => void beginRecording()}
-            disabled={sessionState === "processing"}
+            disabled={sessionState === "processing" || isProcessingRecordedAudio || isVoicePreflightBlocking(preflight)}
+            title={isVoicePreflightBlocking(preflight) && preflight?.code ? getVoiceErrorCopy(preflight.code).title : undefined}
             className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-rose-300/30 bg-rose-400/15 px-5 text-base font-semibold text-rose-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Start Recording
@@ -352,7 +497,7 @@ export function VoiceRecorder({
         ) : (
           <button
             type="button"
-            onClick={handleStop}
+            onClick={() => void handleStop()}
             className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-emerald-300/30 bg-emerald-400/15 px-5 text-base font-semibold text-emerald-100"
           >
             Stop Recording
@@ -362,7 +507,7 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={recordAgain}
-          disabled={isRecordingInProgress || sessionState === "processing"}
+          disabled={isRecordingInProgress || isProcessingRecordedAudio || sessionState === "processing"}
           className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Record Again
@@ -371,7 +516,7 @@ export function VoiceRecorder({
         <button
           type="button"
           onClick={() => void retryTranscription()}
-          disabled={!recordedBlob || isRecordingInProgress || sessionState === "processing"}
+          disabled={!recordedBlob || isRecordingInProgress || isProcessingRecordedAudio || sessionState === "processing"}
           className="inline-flex h-14 cursor-pointer items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-semibold text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Retry Transcription
@@ -384,6 +529,7 @@ export function VoiceRecorder({
           <p className="mt-2 line-clamp-3 text-sm leading-6 text-white/75">{lastTranscription.transcriptText}</p>
         </div>
       ) : null}
+      <MicHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

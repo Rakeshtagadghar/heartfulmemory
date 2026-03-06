@@ -1051,10 +1051,6 @@ export function Editor2Shell({// NOSONAR
   }
 
   function handleStartStudioVoice(frameId: string) {
-    if (!acquireVoiceSession("studio")) {
-      showStudioToast({ title: "Recording already active in another section.", kind: "error" });
-      return;
-    }
     setStudioVoiceFrameId(frameId);
   }
 

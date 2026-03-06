@@ -1,0 +1,24 @@
+diff --git a/dist/react-voice-visualizer.js b/dist/react-voice-visualizer.js
+index 4cc418f37db011912231b89d06e7c7008bf280a2..f7cb168daa212f1b6dd20541738d8344006747d4 100644
+--- a/dist/react-voice-visualizer.js
++++ b/dist/react-voice-visualizer.js
+@@ -725,6 +725,10 @@ function pt({
+       );
+     });
+   }, k = () => {
++    if (!K.current || !me.current) {
++      T.current = null;
++      return;
++    }
+     K.current.getByteTimeDomainData(me.current), H(new Uint8Array(me.current)), T.current = requestAnimationFrame(k);
+   }, de = (i) => {
+     L.current && (L.current = null, s.current = new Audio(), R(i.data), je(i.data));
+@@ -741,7 +745,7 @@ function pt({
+     T.current && (cancelAnimationFrame(T.current), T.current = null), E.current && (cancelAnimationFrame(E.current), E.current = null), L.current && (L.current.removeEventListener(
+       "dataavailable",
+       de
+-    ), L.current.stop(), L.current = null), d == null || d.getTracks().forEach((i) => i.stop()), s != null && s.current && (s.current.removeEventListener("ended", we), s.current.pause(), s.current.src = "", s.current = null), F.current = null, K.current = null, me.current = null, ee.current = null, I(null), le(!1), g(!1), ge(!1), P(!1), R(null), V(null), B(0), ce(0), _(0), se(""), q(0), Z(!0), m(!1), ze(!1), H(new Uint8Array(0)), he(null), ue(!0), c && c();
++    ), L.current.state !== "inactive" && L.current.stop(), L.current = null), d == null || d.getTracks().forEach((i) => i.stop()), s != null && s.current && (s.current.removeEventListener("ended", we), s.current.pause(), s.current.src = "", s.current = null), F.current = null, K.current = null, me.current = null, ee.current = null, I(null), le(!1), g(!1), ge(!1), P(!1), R(null), V(null), B(0), ce(0), _(0), se(""), q(0), Z(!0), m(!1), ze(!1), H(new Uint8Array(0)), he(null), ue(!0), c && c();
+   }, be = () => {
+     if (s.current && s.current.paused) {
+       const i = s.current.play();
