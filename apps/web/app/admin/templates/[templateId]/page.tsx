@@ -101,6 +101,12 @@ export default async function AdminTemplateDetailPage({
                 <p className="mt-3 text-xs text-white/35">
                   {canManage ? "Your role can edit metadata here." : "Your role is view-only for templates."}
                 </p>
+                <Link
+                  href={`/admin/templates/${encodeURIComponent(template.id)}/builder`}
+                  className="mt-4 inline-flex rounded-lg bg-white/[0.08] px-3 py-2 text-sm text-white transition hover:bg-white/[0.14]"
+                >
+                  Open layout builder
+                </Link>
               </div>
             </div>
           </section>
