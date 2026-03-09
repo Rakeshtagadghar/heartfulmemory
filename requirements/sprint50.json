@@ -1,0 +1,924 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 50,
+    "sprintTitle": "Admin Console v1 - Template Management",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Enable authorised admins to manage Memorioso templates from the Admin Console so template availability, ordering, defaults, visibility, and lifecycle can be controlled without code deploys.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 6 - guided templates and editor direction",
+        "Sprint 7 - Layout to PDF Renderer v1",
+        "Sprint 8 - template/layout continuation",
+        "Sprint 9 - template/layout continuation",
+        "Sprint 10 - storybook content flow continuation",
+        "Sprint 32 - orientation support",
+        "Sprint 33 - reflow mode support",
+        "Sprint 45 - Admin Auth + RBAC",
+        "Sprint 46 - Users + Project Lookup",
+        "Sprint 47 - Export Monitoring + Retry Console",
+        "Sprint 49 - Super Admin Dashboard"
+      ],
+      "whyNow": [
+        "Templates are a core product surface and need operational control during alpha and launch",
+        "Broken, low-quality, or confusing templates should be hideable immediately without redeploying",
+        "Admins need to manage guided templates, default templates, cover templates, and template ordering centrally",
+        "Template lifecycle and compatibility with orientation/reflow/PDF rendering need visible governance"
+      ],
+      "productContext": [
+        "Memorioso depends heavily on templates for ease of use, especially for elder-friendly guided experiences",
+        "Template quality directly affects onboarding, book creation, completion rate, and export success",
+        "Admin control over templates reduces launch risk and speeds iteration"
+      ]
+    },
+    "nonGoals": [
+      "Full visual drag-and-drop template builder",
+      "In-browser WYSIWYG frame editor for template creation",
+      "Editing low-level renderer code from admin console",
+      "Bulk import/export of templates from third-party marketplaces",
+      "Template A/B experimentation engine",
+      "Per-user personalised template generation",
+      "Deep localization management for all template copy variants"
+    ],
+    "dependencies": [
+      "Sprint 45 admin auth and RBAC foundation",
+      "Existing template schema/model in application",
+      "Template-to-renderer compatibility rules",
+      "Orientation and reflow metadata support",
+      "Cover/page layout definitions",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Admin can enable or disable a template within seconds without code changes",
+      "Admin can change default template ordering and visibility from the console",
+      "Broken templates can be removed from user selection safely without affecting existing books"
+    ],
+    "product": [
+      "Template catalog shown to users stays aligned with current launch/alpha strategy",
+      "Admins can clearly distinguish templates intended for guided use versus advanced/freeform use",
+      "Template compatibility issues are visible before a template is published"
+    ],
+    "quality": [
+      "100% of template admin APIs are permission-guarded server-side",
+      "Template changes are audit logged",
+      "Existing books remain stable when template visibility changes"
+    ],
+    "security": [
+      "Only authorised roles can manage templates",
+      "Non-admin users cannot access template admin operations",
+      "Unsafe template state changes are blocked by validation"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Can view, create, edit, publish, disable, reorder, and archive templates and defaults."
+    },
+    {
+      "name": "Content Admin",
+      "description": "Primary operator for template lifecycle, copy, availability, and presentation."
+    },
+    {
+      "name": "Support Admin",
+      "description": "May view template metadata for support purposes but should not manage template configuration unless explicitly allowed."
+    },
+    {
+      "name": "Normal App User",
+      "description": "Regular Memorioso customer. Must never access admin template controls."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Templates list in admin console",
+      "Template detail and edit form",
+      "Template status lifecycle such as draft, published, disabled, archived",
+      "Template visibility controls",
+      "Default template management",
+      "Template ordering",
+      "Template category/type management",
+      "Guided vs advanced template flags",
+      "Cover template and page template metadata management",
+      "Compatibility indicators for orientation, reflow, and export support",
+      "Safe disable/archive rules for templates already in use",
+      "Audit logging for template changes"
+    ],
+    "outOfScope": [
+      "Building new layout frames visually from scratch",
+      "Per-page visual editing inside admin",
+      "Dynamic template theme designer",
+      "Automated image/content generation for templates",
+      "Live template preview renderer with full fidelity editing",
+      "Translation management system",
+      "User-facing template feedback analytics dashboard"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "templates.view",
+      "templates.manage",
+      "templates.publish",
+      "templates.reorder",
+      "templates.archive",
+      "audit_logs.view"
+    ],
+    "roleCapabilities": {
+      "super_admin": {
+        "canViewTemplates": true,
+        "canCreateTemplates": true,
+        "canEditTemplates": true,
+        "canPublishTemplates": true,
+        "canReorderTemplates": true,
+        "canArchiveTemplates": true,
+        "canSetDefaults": true
+      },
+      "content_admin": {
+        "canViewTemplates": true,
+        "canCreateTemplates": true,
+        "canEditTemplates": true,
+        "canPublishTemplates": true,
+        "canReorderTemplates": true,
+        "canArchiveTemplates": true,
+        "canSetDefaults": true
+      },
+      "support_admin": {
+        "canViewTemplates": true,
+        "canCreateTemplates": false,
+        "canEditTemplates": false,
+        "canPublishTemplates": false,
+        "canReorderTemplates": false,
+        "canArchiveTemplates": false,
+        "canSetDefaults": false
+      }
+    },
+    "rules": [
+      "templates.view is required for templates list and detail access",
+      "templates.manage is required for create and edit actions",
+      "templates.publish is required for publish/disable actions",
+      "templates.reorder is required for changing display order or featured ordering",
+      "templates.archive is required for archive actions",
+      "Client-side visibility rules must mirror server-side enforcement, not replace it"
+    ]
+  },
+  "templateLifecycleModel": {
+    "statuses": ["draft", "published", "disabled", "archived"],
+    "definitions": {
+      "draft": "Template exists in admin but is not selectable by users.",
+      "published": "Template is available to eligible users in the template picker.",
+      "disabled": "Template is hidden from new selection but preserved for existing books using it.",
+      "archived": "Template is retired from active operations and only retained for historical/admin reference."
+    },
+    "transitionRules": [
+      "draft -> published allowed only if validation passes",
+      "published -> disabled allowed at any time",
+      "disabled -> published allowed if validation passes",
+      "disabled -> archived allowed",
+      "published -> archived should require disable first unless explicit override policy exists"
+    ]
+  },
+  "templateInformationArchitecture": {
+    "templateTypes": [
+      "book_template",
+      "cover_template",
+      "page_template",
+      "guided_template",
+      "advanced_template"
+    ],
+    "adminSections": [
+      {
+        "section": "Catalog",
+        "purpose": "Browse all templates and statuses"
+      },
+      {
+        "section": "Metadata",
+        "purpose": "Edit display information, category, and visibility"
+      },
+      {
+        "section": "Compatibility",
+        "purpose": "Show support for orientation, reflow, export, and renderer version"
+      },
+      {
+        "section": "Publishing",
+        "purpose": "Control lifecycle, defaults, and ordering"
+      },
+      {
+        "section": "Usage",
+        "purpose": "Show whether template is in use and impact of changes"
+      }
+    ]
+  },
+  "dataModel": {
+    "sourceEntities": [
+      {
+        "name": "templates",
+        "purpose": "Primary template catalog"
+      },
+      {
+        "name": "template_versions_optional",
+        "purpose": "Track revisions if versioning exists or is added"
+      },
+      {
+        "name": "projects",
+        "purpose": "Track usage counts and active use of templates"
+      },
+      {
+        "name": "admin_audit_logs",
+        "purpose": "Trace template changes"
+      }
+    ],
+    "suggestedTemplateFields": [
+      "id",
+      "slug",
+      "name",
+      "description",
+      "type",
+      "status",
+      "visibility",
+      "is_default",
+      "display_order",
+      "category",
+      "thumbnail_url_if_available",
+      "guided_level",
+      "supports_orientation_portrait",
+      "supports_orientation_landscape",
+      "supports_reflow_mode",
+      "supports_pdf_export",
+      "supports_toc_if_available",
+      "cover_template_ref_if_applicable",
+      "renderer_version_min_if_any",
+      "renderer_version_max_if_any",
+      "is_internal_only",
+      "is_alpha_only",
+      "usage_count",
+      "created_at",
+      "updated_at",
+      "archived_at_if_any"
+    ],
+    "enums": {
+      "templateType": ["book_template", "cover_template", "page_template"],
+      "visibility": ["public", "alpha_only", "internal_only", "hidden"],
+      "category": [
+        "family_story",
+        "childhood",
+        "wedding",
+        "life_journey",
+        "memorial",
+        "general",
+        "custom"
+      ],
+      "guidedLevel": ["guided", "semi_guided", "advanced"]
+    },
+    "adminViewModels": [
+      {
+        "name": "AdminTemplateSummary",
+        "fields": [
+          "id",
+          "name",
+          "slug",
+          "type",
+          "status",
+          "visibility",
+          "category",
+          "guided_level",
+          "is_default",
+          "display_order",
+          "usage_count",
+          "updated_at"
+        ]
+      },
+      {
+        "name": "AdminTemplateDetail",
+        "fields": [
+          "id",
+          "name",
+          "slug",
+          "description",
+          "type",
+          "status",
+          "visibility",
+          "category",
+          "guided_level",
+          "is_default",
+          "display_order",
+          "thumbnail_url_if_available",
+          "compatibility",
+          "usage_summary",
+          "publishing_rules",
+          "created_at",
+          "updated_at"
+        ]
+      }
+    ]
+  },
+  "superAdminUsefulUseCases": [
+    {
+      "useCase": "A published template is causing export failures",
+      "adminNeeds": [
+        "disable template immediately",
+        "see usage count",
+        "keep existing books intact",
+        "prevent new users from selecting it"
+      ]
+    },
+    {
+      "useCase": "A new guided template is ready for alpha users only",
+      "adminNeeds": [
+        "mark as alpha_only",
+        "publish safely",
+        "set ordering",
+        "avoid exposure to general users"
+      ]
+    },
+    {
+      "useCase": "The default starter template should change",
+      "adminNeeds": [
+        "set new default",
+        "ensure only one default per applicable category/surface",
+        "apply change without deploy"
+      ]
+    },
+    {
+      "useCase": "Users are confused by too many templates",
+      "adminNeeds": [
+        "reorder templates",
+        "feature best templates first",
+        "disable noisy/unfinished templates"
+      ]
+    },
+    {
+      "useCase": "Template is incompatible with landscape or reflow",
+      "adminNeeds": [
+        "view compatibility clearly",
+        "block publication until valid",
+        "avoid user-facing broken combinations"
+      ]
+    }
+  ],
+  "userStories": [
+    {
+      "id": "S50-US-001",
+      "title": "Browse template catalog",
+      "asA": "content admin",
+      "iWant": "to view all templates with status, type, and usage",
+      "soThat": "I can manage the template catalog efficiently"
+    },
+    {
+      "id": "S50-US-002",
+      "title": "Create or edit template metadata",
+      "asA": "content admin",
+      "iWant": "to manage template name, description, category, visibility, and compatibility flags",
+      "soThat": "the right templates are presented correctly to users"
+    },
+    {
+      "id": "S50-US-003",
+      "title": "Publish or disable templates safely",
+      "asA": "content admin",
+      "iWant": "to control lifecycle states with validation",
+      "soThat": "broken or unfinished templates do not reach users"
+    },
+    {
+      "id": "S50-US-004",
+      "title": "Manage defaults and ordering",
+      "asA": "content admin",
+      "iWant": "to change default templates and display order",
+      "soThat": "the best templates appear first for users"
+    },
+    {
+      "id": "S50-US-005",
+      "title": "Protect existing books from template admin changes",
+      "asA": "system owner",
+      "iWant": "template disable/archive actions to avoid breaking existing projects",
+      "soThat": "admin operations stay safe"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Templates list page",
+      "requirements": [
+        "Provide /admin/templates page",
+        "Display paginated/searchable template catalog",
+        "Allow filtering by status, type, visibility, category, guided level, and compatibility flags",
+        "Show key fields such as name, status, type, visibility, order, default, and usage count"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Template detail page",
+      "requirements": [
+        "Provide /admin/templates/:templateId page",
+        "Show metadata, lifecycle state, compatibility, usage summary, and audit-friendly timestamps",
+        "Support edit mode for authorised roles"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Create template metadata entry",
+      "requirements": [
+        "Allow authorised roles to create a new template record",
+        "Required fields should include name, slug, type, status=draft by default, and key compatibility metadata",
+        "Creation does not automatically publish template"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Edit template metadata",
+      "requirements": [
+        "Allow editing of name, description, category, visibility, guided level, thumbnail, and compatibility flags",
+        "Allow editing cover/page template relationships where supported",
+        "Validation must block invalid combinations"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Publish/disable/archive template",
+      "requirements": [
+        "Allow publish only if required metadata and compatibility checks pass",
+        "Allow disable even when template is in use, but prevent breaking existing books",
+        "Allow archive only under safe policy rules",
+        "All lifecycle changes must require confirmation"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Default template management",
+      "requirements": [
+        "Allow setting a template as default for its applicable surface/category",
+        "System must enforce only one active default per applicable slot unless multi-default design exists",
+        "Changing default should not mutate existing books"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Template ordering",
+      "requirements": [
+        "Allow admins to change display order for template picker surfaces",
+        "Ordering should support featured templates first",
+        "Ordering changes should reflect in user-facing catalog without redeploy"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Usage visibility and safety checks",
+      "requirements": [
+        "Show how many books currently use a template",
+        "Show whether template is safe to archive",
+        "Warn when disabling/archiving a heavily used template",
+        "Do not allow destructive removal that breaks historical rendering if such dependency exists"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Compatibility visibility",
+      "requirements": [
+        "Show portrait/landscape compatibility",
+        "Show reflow compatibility",
+        "Show PDF export support",
+        "Show renderer/version constraints if applicable",
+        "Warn if template is incomplete for supported launch modes"
+      ]
+    },
+    {
+      "id": "FR-010",
+      "title": "Permission-aware template admin",
+      "requirements": [
+        "Only templates.view roles can view catalog and detail",
+        "Only templates.manage roles can create/edit",
+        "Only templates.publish roles can publish/disable",
+        "Only templates.reorder roles can change ordering",
+        "Only templates.archive roles can archive"
+      ]
+    },
+    {
+      "id": "FR-011",
+      "title": "Audit logging",
+      "requirements": [
+        "Log template creation",
+        "Log template edit changes",
+        "Log publish/disable/archive transitions",
+        "Log default changes and ordering updates",
+        "Include actor, template id, action, diff summary if feasible, and timestamp"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/templates",
+        "purpose": "List/search/filter templates",
+        "auth": "admin required",
+        "permission": "templates.view"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/templates/:templateId",
+        "purpose": "Get template detail",
+        "auth": "admin required",
+        "permission": "templates.view"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates",
+        "purpose": "Create template metadata entry",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/admin/templates/:templateId",
+        "purpose": "Update template metadata",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/publish",
+        "purpose": "Publish template after validation",
+        "auth": "admin required",
+        "permission": "templates.publish"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/disable",
+        "purpose": "Disable template for new selection",
+        "auth": "admin required",
+        "permission": "templates.publish"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/archive",
+        "purpose": "Archive template under safe rules",
+        "auth": "admin required",
+        "permission": "templates.archive"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/reorder",
+        "purpose": "Update display order",
+        "auth": "admin required",
+        "permission": "templates.reorder"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/set-default",
+        "purpose": "Set template as default for its applicable slot",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      }
+    ],
+    "responseModels": {
+      "AdminTemplatesListResponse": {
+        "items": "AdminTemplateSummary[]",
+        "pagination": {
+          "page": "number",
+          "pageSize": "number",
+          "total": "number"
+        }
+      },
+      "AdminTemplateDetailResponse": {
+        "template": "AdminTemplateDetail"
+      }
+    },
+    "errorShape": {
+      "success": false,
+      "error": {
+        "code": "TEMPLATE_VALIDATION_FAILED",
+        "message": "This template cannot be published until required checks pass."
+      }
+    }
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin/templates",
+        "title": "Templates",
+        "purpose": "Browse, filter, and manage template catalog"
+      },
+      {
+        "path": "/admin/templates/:templateId",
+        "title": "Template Detail",
+        "purpose": "Inspect and edit a single template"
+      }
+    ],
+    "components": [
+      "TemplatesTable",
+      "TemplateFiltersPanel",
+      "TemplateStatusBadge",
+      "TemplateVisibilityBadge",
+      "TemplateCompatibilityPanel",
+      "TemplateUsagePanel",
+      "TemplateMetadataForm",
+      "TemplateLifecycleActions",
+      "SetDefaultAction",
+      "TemplateOrderingManager",
+      "ConfirmationModal",
+      "EmptyState",
+      "ForbiddenState"
+    ],
+    "uxRules": [
+      "Make lifecycle state highly visible",
+      "Show compatibility warnings prominently before publish",
+      "Use confirmations for publish, disable, archive, and default changes",
+      "Display usage count and impact warnings before risky actions",
+      "Keep template list highly scannable with status and type badges"
+    ]
+  },
+  "widgetIdeasForTemplateAdminPage": [
+    {
+      "widget": "Template Catalog Summary",
+      "metrics": [
+        "total templates",
+        "published templates",
+        "draft templates",
+        "disabled templates"
+      ]
+    },
+    {
+      "widget": "Compatibility Warnings",
+      "metrics": [
+        "templates missing export compatibility",
+        "templates missing reflow support",
+        "templates with incomplete metadata"
+      ]
+    },
+    {
+      "widget": "Most Used Templates",
+      "metrics": ["top 5 templates by usage count"]
+    },
+    {
+      "widget": "Recently Changed Templates",
+      "metrics": ["latest edits, publishes, disables"]
+    }
+  ],
+  "validationRules": [
+    {
+      "rule": "slug_unique",
+      "description": "Template slug must be unique"
+    },
+    {
+      "rule": "required_publish_fields",
+      "description": "Template cannot be published until name, slug, type, visibility, and required compatibility fields are present"
+    },
+    {
+      "rule": "default_uniqueness",
+      "description": "Only one published default template can exist for a given template slot/category unless explicitly configured otherwise"
+    },
+    {
+      "rule": "archive_safety",
+      "description": "Template cannot be archived if archival would break active historical rendering guarantees"
+    },
+    {
+      "rule": "compatibility_consistency",
+      "description": "Template flags must not claim support for orientation/reflow/export modes the renderer cannot handle"
+    }
+  ],
+  "technicalTasks": [
+    {
+      "id": "T50-001",
+      "title": "Define template admin model and validation contract",
+      "description": "Document template fields, lifecycle statuses, compatibility rules, and validation requirements.",
+      "deliverables": [
+        "template admin schema contract",
+        "validation rules doc",
+        "typed DTOs"
+      ]
+    },
+    {
+      "id": "T50-002",
+      "title": "Build templates list and detail APIs",
+      "description": "Implement permission-guarded admin APIs for template listing, filtering, detail retrieval, create, and update.",
+      "deliverables": [
+        "GET /api/admin/templates",
+        "GET /api/admin/templates/:templateId",
+        "POST /api/admin/templates",
+        "PATCH /api/admin/templates/:templateId"
+      ]
+    },
+    {
+      "id": "T50-003",
+      "title": "Build lifecycle action APIs",
+      "description": "Implement publish, disable, archive, set-default, and reorder endpoints with validation and safety rules.",
+      "deliverables": [
+        "publish endpoint",
+        "disable endpoint",
+        "archive endpoint",
+        "set-default endpoint",
+        "reorder endpoint"
+      ]
+    },
+    {
+      "id": "T50-004",
+      "title": "Build templates admin UI",
+      "description": "Create /admin/templates page with filters, badges, search, and action entry points.",
+      "deliverables": [
+        "templates catalog page",
+        "table/list view",
+        "filters/search"
+      ]
+    },
+    {
+      "id": "T50-005",
+      "title": "Build template detail and edit UI",
+      "description": "Create template detail page with metadata form, compatibility panel, usage panel, and lifecycle controls.",
+      "deliverables": [
+        "template detail page",
+        "edit form",
+        "lifecycle actions UI"
+      ]
+    },
+    {
+      "id": "T50-006",
+      "title": "Build ordering and default management UI",
+      "description": "Provide simple controls to reorder templates and set defaults safely.",
+      "deliverables": [
+        "ordering manager",
+        "default toggle/action flow",
+        "validation messaging"
+      ]
+    },
+    {
+      "id": "T50-007",
+      "title": "Usage and impact integration",
+      "description": "Show usage counts and impact warnings derived from projects using each template.",
+      "deliverables": [
+        "usage queries",
+        "impact warnings",
+        "safe action blockers"
+      ]
+    },
+    {
+      "id": "T50-008",
+      "title": "Audit logging integration",
+      "description": "Track all template admin changes and lifecycle actions.",
+      "deliverables": ["audit events", "change diff summaries"]
+    },
+    {
+      "id": "T50-009",
+      "title": "Testing",
+      "description": "Add unit, integration, and E2E coverage for template management flows.",
+      "deliverables": [
+        "validation tests",
+        "permission tests",
+        "lifecycle tests",
+        "UI smoke tests"
+      ]
+    }
+  ],
+  "observability": {
+    "events": [
+      "admin_templates_viewed",
+      "admin_template_viewed",
+      "admin_template_created",
+      "admin_template_updated",
+      "admin_template_published",
+      "admin_template_disabled",
+      "admin_template_archived",
+      "admin_template_default_changed",
+      "admin_template_reordered"
+    ],
+    "metrics": [
+      "count of published templates",
+      "count of disabled templates",
+      "count of template lifecycle changes",
+      "count of validation failures on publish",
+      "count of default changes"
+    ],
+    "loggingNotes": [
+      "Log actor, template id, action, and timestamp",
+      "Prefer structured diff summaries for metadata changes",
+      "Avoid logging secret/internal-only asset URLs if any exist"
+    ]
+  },
+  "securityRequirements": [
+    "All template admin endpoints must be protected by admin auth and template-specific permissions",
+    "Non-admin users must not access template admin routes or APIs",
+    "Support admins should remain read-only unless explicitly granted manage rights",
+    "Unsafe lifecycle transitions must be blocked server-side",
+    "Template pages remain noindex and excluded from sitemap"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a content_admin",
+      "when": "they open /admin/templates",
+      "then": "they can view a filtered list of templates with status, type, visibility, default state, and usage count"
+    },
+    {
+      "id": "AC-002",
+      "given": "a content_admin with templates.manage",
+      "when": "they edit template metadata",
+      "then": "the changes are validated, saved, and audit logged"
+    },
+    {
+      "id": "AC-003",
+      "given": "a draft template missing required fields",
+      "when": "an admin attempts to publish it",
+      "then": "publication is blocked with a clear validation message"
+    },
+    {
+      "id": "AC-004",
+      "given": "a published template",
+      "when": "an authorised admin disables it",
+      "then": "new users can no longer select it, but existing books using it remain intact"
+    },
+    {
+      "id": "AC-005",
+      "given": "multiple templates in one category",
+      "when": "an authorised admin sets one as default",
+      "then": "the system enforces default uniqueness for that slot/category"
+    },
+    {
+      "id": "AC-006",
+      "given": "a support_admin without templates.manage",
+      "when": "they access template detail",
+      "then": "they can view metadata but cannot edit, publish, reorder, or archive"
+    },
+    {
+      "id": "AC-007",
+      "given": "an unauthorised user",
+      "when": "they attempt to access template admin route or API",
+      "then": "the request is rejected"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "publish validation blocks incomplete templates",
+      "default uniqueness enforcement works correctly",
+      "lifecycle transition rules enforce valid status changes",
+      "compatibility validation blocks inconsistent flags"
+    ],
+    "integrationTests": [
+      "GET /api/admin/templates requires templates.view",
+      "POST /api/admin/templates requires templates.manage",
+      "publish endpoint requires templates.publish",
+      "reorder endpoint requires templates.reorder",
+      "archive endpoint requires templates.archive"
+    ],
+    "e2eTests": [
+      "content_admin opens templates catalog and filters templates",
+      "content_admin edits draft template and publishes it after validation passes",
+      "content_admin disables published template",
+      "support_admin sees read-only template detail"
+    ],
+    "negativeTests": [
+      "unauthorised actor cannot access template admin APIs",
+      "invalid reorder payload is rejected safely",
+      "attempt to archive unsafe in-use template is blocked",
+      "hidden fields are not modifiable without permission"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Template changes break user-facing picker or export flows",
+      "impact": "High product disruption",
+      "mitigation": "Use strict validation and compatibility checks before publish"
+    },
+    {
+      "risk": "Disabling or archiving templates breaks existing books",
+      "impact": "Data/rendering regression",
+      "mitigation": "Make disable hide only for new selection and enforce archive safety rules"
+    },
+    {
+      "risk": "Too many templates create catalog confusion",
+      "impact": "Poor user onboarding and lower completion",
+      "mitigation": "Allow ordering, featured defaults, and admin visibility control"
+    },
+    {
+      "risk": "Template admin grows into an uncontrolled low-code editor",
+      "impact": "Scope creep",
+      "mitigation": "Keep sprint focused on metadata, lifecycle, defaults, and ordering only"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define template schema and validation rules",
+      "Implement list/detail/create/update APIs",
+      "Implement publish/disable/archive/default/reorder actions",
+      "Build templates catalog UI",
+      "Build template detail/edit UI",
+      "Integrate usage warnings and audit logs",
+      "Add tests"
+    ],
+    "futureSprintHooks": [
+      "Future: template preview rendering",
+      "Future: template versioning and rollback",
+      "Future: localization support for templates",
+      "Future: template performance and conversion analytics",
+      "Future: visual template builder"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin templates catalog page exists with filters and statuses",
+    "Template detail/edit page exists",
+    "Admins can create and update template metadata",
+    "Admins can publish, disable, archive, reorder, and set defaults under permission and validation rules",
+    "Usage counts and impact warnings are visible",
+    "Template compatibility information is visible",
+    "All changes are audit logged",
+    "Permissions are enforced server-side",
+    "Automated tests cover lifecycle, validation, permissions, and core UI flows"
+  ]
+}

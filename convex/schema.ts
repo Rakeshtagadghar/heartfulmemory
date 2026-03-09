@@ -146,6 +146,57 @@ export default defineSchema({
     subtitle: v.string(),
     templateJson: v.any(),
     isActive: v.boolean(),
+    status: v.optional(
+      v.union(
+        v.literal("draft"),
+        v.literal("published"),
+        v.literal("disabled"),
+        v.literal("archived")
+      )
+    ),
+    visibility: v.optional(
+      v.union(
+        v.literal("public"),
+        v.literal("alpha_only"),
+        v.literal("internal_only"),
+        v.literal("hidden")
+      )
+    ),
+    type: v.optional(
+      v.union(
+        v.literal("book_template"),
+        v.literal("cover_template"),
+        v.literal("page_template")
+      )
+    ),
+    category: v.optional(
+      v.union(
+        v.literal("family_story"),
+        v.literal("childhood"),
+        v.literal("wedding"),
+        v.literal("life_journey"),
+        v.literal("memorial"),
+        v.literal("general"),
+        v.literal("custom")
+      )
+    ),
+    guidedLevel: v.optional(
+      v.union(
+        v.literal("guided"),
+        v.literal("semi_guided"),
+        v.literal("advanced")
+      )
+    ),
+    slug: v.optional(v.string()),
+    description: v.optional(v.union(v.string(), v.null())),
+    displayOrder: v.optional(v.union(v.number(), v.null())),
+    isDefault: v.optional(v.boolean()),
+    supportsPortrait: v.optional(v.union(v.boolean(), v.null())),
+    supportsLandscape: v.optional(v.union(v.boolean(), v.null())),
+    supportsReflowMode: v.optional(v.union(v.boolean(), v.null())),
+    supportsPdfExport: v.optional(v.union(v.boolean(), v.null())),
+    archivedAt: v.optional(v.union(v.number(), v.null())),
+    updatedAt: v.optional(v.number()),
     createdAt: v.number()
   })
     .index("by_templateId", ["templateId"])

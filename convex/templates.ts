@@ -9,8 +9,42 @@ import type {
   GuidedTemplateSummary,
   GuidedTemplateV2
 } from "../packages/shared/templates/templateTypes";
+import {
+  inferAdminTemplateCategory,
+  normalizeAdminTemplateSlug,
+  type AdminTemplateCategory,
+  type AdminTemplateGuidedLevel,
+  type AdminTemplateStatus,
+  type AdminTemplateType,
+  type AdminTemplateVisibility,
+} from "../packages/shared/admin/templates";
 
 type ConvexCtx = MutationCtx | QueryCtx;
+
+type TemplateRow = {
+  _id: string;
+  templateId: string;
+  title: string;
+  subtitle: string;
+  templateJson: unknown;
+  isActive: boolean;
+  status?: AdminTemplateStatus;
+  visibility?: AdminTemplateVisibility;
+  type?: AdminTemplateType;
+  category?: AdminTemplateCategory;
+  guidedLevel?: AdminTemplateGuidedLevel;
+  slug?: string;
+  description?: string | null;
+  displayOrder?: number | null;
+  isDefault?: boolean;
+  supportsPortrait?: boolean | null;
+  supportsLandscape?: boolean | null;
+  supportsReflowMode?: boolean | null;
+  supportsPdfExport?: boolean | null;
+  archivedAt?: number | null;
+  updatedAt?: number;
+  createdAt: number;
+};
 
 function starterTextContent(chapterTitle: string) {
   return {
@@ -134,6 +168,28 @@ function normalizeTemplateList(values: unknown[]): GuidedTemplateV2[] {
 
 const templateSeedsV2 = normalizeTemplateList(Array.isArray(templatesV2Json) ? templatesV2Json : []);
 
+function buildSeedAdminMetadata(seed: GuidedTemplateV2, displayOrder: number) {
+  return {
+    slug: normalizeAdminTemplateSlug(seed.templateId),
+    description: seed.subtitle,
+    status: (seed.isActive ? "published" : "disabled") as AdminTemplateStatus,
+    visibility: "public" as AdminTemplateVisibility,
+    type: "book_template" as AdminTemplateType,
+    category: inferAdminTemplateCategory({
+      templateId: seed.templateId,
+      title: seed.title,
+    }),
+    guidedLevel: "guided" as AdminTemplateGuidedLevel,
+    displayOrder,
+    isDefault: false,
+    supportsPortrait: true,
+    supportsLandscape: null,
+    supportsReflowMode: null,
+    supportsPdfExport: true,
+    archivedAt: null,
+  };
+}
+
 export function getTemplateV2SeedById(templateId: string) {
   return templateSeedsV2.find((template) => template.templateId === templateId) ?? null;
 }
@@ -142,7 +198,7 @@ export async function loadTemplateV2ByIdFromDbOrSeed(ctx: ConvexCtx, templateId:
   const row = await ctx.db
     .query("templates")
     .withIndex("by_templateId", (q) => q.eq("templateId", templateId))
-    .unique();
+    .unique() as TemplateRow | null;
 
   if (row) {
     return coerceTemplateV2(row.templateJson) ?? getTemplateV2SeedById(templateId);
@@ -161,10 +217,21 @@ export const getActive = queryGeneric({
     const rows = await ctx.db
       .query("templates")
       .withIndex("by_isActive", (q) => q.eq("isActive", true))
-      .collect();
+      .collect() as TemplateRow[];
 
-    const dbTemplates = normalizeTemplateList(rows.map((row) => row.templateJson));
-    const source = dbTemplates.length > 0 ? dbTemplates : templateSeedsV2.filter((template) => template.isActive);
+    const dbTemplates = rows
+      .filter((row) => {
+        const status = row.status ?? (row.isActive ? "published" : "disabled");
+        const visibility = row.visibility ?? "public";
+        return status === "published" && visibility === "public";
+      })
+      .map((row) => coerceTemplateV2(row.templateJson))
+      .filter((template): template is GuidedTemplateV2 => Boolean(template));
+    const seen = new Set(dbTemplates.map((template) => template.templateId));
+    const source = [
+      ...dbTemplates,
+      ...templateSeedsV2.filter((template) => template.isActive && !seen.has(template.templateId)),
+    ];
 
     return source.map((template) => ({
       ...toTemplateSummary(template),
@@ -207,7 +274,9 @@ export const seedV2 = mutationGeneric({
           title: seed.title,
           subtitle: seed.subtitle,
           templateJson: seed,
-          isActive: seed.isActive
+          isActive: seed.isActive,
+          ...buildSeedAdminMetadata(seed, updated + inserted + 1),
+          updatedAt: Date.now(),
         });
         updated += 1;
         continue;
@@ -219,6 +288,8 @@ export const seedV2 = mutationGeneric({
         subtitle: seed.subtitle,
         templateJson: seed,
         isActive: seed.isActive,
+        ...buildSeedAdminMetadata(seed, updated + inserted + 1),
+        updatedAt: Date.now(),
         createdAt: Date.now()
       });
       inserted += 1;

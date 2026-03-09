@@ -99,32 +99,33 @@ function MiniSparkline({ metric }: { metric: AdminDashboardKpiMetric }) {
   const previousValue = metric.delta === null ? metric.value : Math.max(metric.value - metric.delta, 0);
   const middleValue = metric.secondaryValue ?? Math.max(metric.value * 0.7, 0);
   const values = [previousValue, middleValue, metric.value];
-  const path = buildSparklinePath(values, 100, 42);
+  const width = 100;
+  const height = 48;
+  const path = buildSparklinePath(values, width, height);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = Math.max(max - min, 1);
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-3">
-      <svg viewBox="0 0 100 42" className="h-12 w-full overflow-visible">
+    <div className="rounded-xl border border-white/8 bg-white/[0.03] p-2.5">
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-14 w-full overflow-visible">
         <defs>
           <linearGradient id="kpi-sparkline-fill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor="rgba(125, 211, 252, 0.35)" />
             <stop offset="100%" stopColor="rgba(125, 211, 252, 0.02)" />
           </linearGradient>
         </defs>
-        <path d={`${path} L 100 42 L 0 42 Z`} fill="url(#kpi-sparkline-fill)" />
+        <line x1="0" x2={width} y1={height - 1} y2={height - 1} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+        <line x1="0" x2={width} y1={height / 2} y2={height / 2} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+        <path d={`${path} L ${width} ${height} L 0 ${height} Z`} fill="url(#kpi-sparkline-fill)" />
         <path d={path} fill="none" stroke="#7dd3fc" strokeWidth="2.25" strokeLinecap="round" />
         {values.map((value, index) => {
-          const x = (index / Math.max(values.length - 1, 1)) * 100;
-          const max = Math.max(...values, 1);
-          const min = Math.min(...values, 0);
-          const range = Math.max(max - min, 1);
-          const y = 42 - ((value - min) / range) * 42;
+          const x = (index / Math.max(values.length - 1, 1)) * width;
+          const y = height - ((value - min) / range) * height;
           return <circle key={`${value}-${index}`} cx={x} cy={y} r="2.5" fill="#e0f2fe" />;
         })}
       </svg>
-      <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-[0.14em] text-white/30">
-        <span>Prev</span>
-        <span>Selected range</span>
-      </div>
+      <p className="mt-2 text-[10px] uppercase tracking-[0.16em] text-white/30">Recent trend</p>
     </div>
   );
 }
@@ -292,7 +293,7 @@ function KpiCard({
 
   return (
     <WidgetShell title={title} href={href} actionLabel="Inspect">
-      <div className="grid gap-4 lg:grid-cols-[1fr_132px] lg:items-end">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_112px] lg:items-start">
         <div>
           <p className="text-3xl font-semibold text-white">{formatMetricValue(metric)}</p>
           {secondary ? <p className="mt-2 text-sm text-white/55">{secondary}</p> : null}

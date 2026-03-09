@@ -1,0 +1,317 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 54,
+    "sprintTitle": "Client Portal v1 - Per-Page Layout Picker + Safe Content Remapping",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Allow end users to change the look of an individual page by selecting from compatible layouts in the client portal while preserving mapped text and image content safely.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 30 - Studio Pages UX v1",
+        "Sprint 32 - Studio Orientation v1",
+        "Sprint 33 - Orientation Switch v2",
+        "Sprint 51 - Template Layout System v1",
+        "Sprint 52 - Admin Template Builder v1",
+        "Sprint 53 - Template Versioning v1"
+      ],
+      "whyNow": [
+        "Users eventually need the ability to vary page appearance without editing raw coordinates",
+        "Canonical layouts and versioning now make page-level switching feasible and safer",
+        "This delivers a high-value customization feature while staying within controlled layout options"
+      ],
+      "productContext": [
+        "The user experience should feel like choosing a page look, not building a page from scratch",
+        "Per-page layout switching should preserve chapter/story content and images where possible",
+        "Only compatible layouts should be offered to avoid broken mapping and export regressions"
+      ]
+    },
+    "nonGoals": [
+      "Freeform end-user layout builder",
+      "Arbitrary movement of slots by end users",
+      "Automatic migration across incompatible layout families",
+      "User-facing template version controls",
+      "Theme designer or global style system"
+    ],
+    "dependencies": [
+      "Sprint 51 canonical layout schema",
+      "Sprint 52 builder-authored layouts",
+      "Sprint 53 template versioning and provenance",
+      "Stable slot metadata on populated frames",
+      "Studio/client portal page controls"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "User can change a page to another compatible layout from the client portal",
+      "Switching a page layout preserves mapped text and image content where a compatible slot exists",
+      "Incompatible layout options are filtered or clearly warned"
+    ],
+    "product": [
+      "Users can vary page appearance without learning drag-and-drop layout editing",
+      "Page customization feels controlled and elder-friendly",
+      "Layout switching increases perceived flexibility without sacrificing export reliability"
+    ],
+    "quality": [
+      "Switching layouts updates pageLayoutId and resulting frames deterministically",
+      "Remap rules are predictable and reversible within undo/history expectations",
+      "Exports reflect the newly selected layout without manual repair in common cases"
+    ],
+    "security": [
+      "Users can only select layouts exposed to their template/version and compatibility context",
+      "Server validates layout switch requests and remapping eligibility",
+      "Layout switching does not expose hidden/internal template layouts"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Studio User",
+      "description": "Wants to change the look of a single page without rebuilding it."
+    },
+    {
+      "name": "Elder/Low-confidence User",
+      "description": "Needs simple, safe page customization options."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Needs to understand which layout a user selected for a page."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Per-page change-layout action in client portal/Studio",
+      "Compatible layout picker UI",
+      "Layout preview cards or thumbnails",
+      "Server-side remap of page content from old slots to new slots",
+      "Preservation of mapped text and image assets where compatible",
+      "Warnings for unmapped or partially mapped content",
+      "Undo/history-aware page layout switch behavior"
+    ],
+    "outOfScope": [
+      "Drag-and-drop layout editing by end users",
+      "Cross-template layout marketplace",
+      "Automatic global restyling of all pages in a book",
+      "Advanced AI-assisted best-layout suggestions"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Treat page layout switching as selecting a different compatible PageLayout for a page instance. The system compares old and new slot sets, remaps known content by slot role/kind and explicit compatibility hints, updates pageLayoutId, and regenerates or patches the page frames accordingly.",
+    "principles": [
+      "Offer a curated set of compatible layouts instead of open-ended editing",
+      "Preserve user content first, aesthetics second",
+      "Only switch when remap confidence is acceptable or user explicitly confirms risks",
+      "Keep layout switching version-aware"
+    ],
+    "compatibilitySignals": [
+      "same page role",
+      "same orientation support",
+      "required slot kinds available",
+      "same or compatible slot roles",
+      "template version compatibility"
+    ]
+  },
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Change layout action",
+      "requirements": [
+        "Users can trigger a page-level change layout action from the page controls",
+        "The action opens a picker showing only compatible layouts",
+        "Current layout is clearly indicated"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Layout picker",
+      "requirements": [
+        "Display layout preview cards with name, short description, and thumbnail or schematic preview",
+        "Allow filtering or grouping by page role where helpful",
+        "Hide internal-only layouts from normal users"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Safe remapping",
+      "requirements": [
+        "Map text and image content from old slots to compatible new slots using stable slot metadata and compatibility rules",
+        "Preserve image asset references and crop where feasible",
+        "Preserve rich text content and plain text where feasible"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Warnings and confirmations",
+      "requirements": [
+        "Warn when some content cannot be mapped automatically",
+        "Require confirmation for switches with partial mapping or potential overflow risk",
+        "Allow cancellation without mutating the page"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Persistence and export compatibility",
+      "requirements": [
+        "Successful layout switch updates pageLayoutId and resulting frames persist",
+        "Studio preview and export reflect the new layout",
+        "Page layout provenance remains visible to support/admin tooling"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/pages/:pageId/layout-options",
+        "purpose": "Return compatible layout options for a page",
+        "auth": "user required",
+        "permission": "owner/collaborator access to project"
+      },
+      {
+        "method": "POST",
+        "path": "/api/pages/:pageId/change-layout",
+        "purpose": "Switch page to selected compatible layout and remap content",
+        "auth": "user required",
+        "permission": "owner/editor access to project"
+      }
+    ]
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "Studio/client portal page controls",
+        "title": "Change Layout",
+        "purpose": "Let users swap the current page to another compatible layout"
+      }
+    ],
+    "components": [
+      "PageLayoutPickerModal",
+      "PageLayoutPreviewCard",
+      "PageLayoutCompatibilitySummary",
+      "PageLayoutRemapWarning",
+      "ChangeLayoutAction"
+    ],
+    "uxRules": [
+      "Keep the flow simple: pick page, preview options, confirm",
+      "Prefer visual previews over technical slot terminology where possible",
+      "Do not offer clearly incompatible layouts",
+      "Explain what will happen to existing content before applying a risky switch"
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T54-001",
+      "title": "Define page layout compatibility rules",
+      "description": "Implement logic to decide which layouts are selectable for a given page instance.",
+      "deliverables": [
+        "compatibility evaluator",
+        "layout option DTOs",
+        "tests"
+      ]
+    },
+    {
+      "id": "T54-002",
+      "title": "Implement remap engine",
+      "description": "Map content from old slots to new slots and regenerate page frames safely.",
+      "deliverables": [
+        "slot remap engine",
+        "content preservation rules",
+        "warning model"
+      ]
+    },
+    {
+      "id": "T54-003",
+      "title": "Add page layout picker UI",
+      "description": "Create page-level layout change action and picker modal in the client portal/Studio.",
+      "deliverables": [
+        "layout picker modal",
+        "preview cards",
+        "confirmation flow"
+      ]
+    },
+    {
+      "id": "T54-004",
+      "title": "Persist layout switches and provenance",
+      "description": "Update page references, frame metadata, and project provenance when a layout changes.",
+      "deliverables": [
+        "page update plumbing",
+        "frame regeneration updates",
+        "support/admin visibility"
+      ]
+    },
+    {
+      "id": "T54-005",
+      "title": "Testing",
+      "description": "Add coverage for compatibility filtering, remap outcomes, and UI flows.",
+      "deliverables": [
+        "unit tests",
+        "integration tests",
+        "E2E tests"
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a user on a page with a compatible alternative layout",
+      "when": "they open change layout",
+      "then": "they see only compatible layout options with previews"
+    },
+    {
+      "id": "AC-002",
+      "given": "a page with text and image content",
+      "when": "the user switches to a compatible layout",
+      "then": "mapped text and images are preserved in the new layout where compatible slots exist"
+    },
+    {
+      "id": "AC-003",
+      "given": "a selected layout with partial slot compatibility",
+      "when": "the user attempts to switch",
+      "then": "the system shows warnings and requires confirmation before applying"
+    },
+    {
+      "id": "AC-004",
+      "given": "a successful page layout switch",
+      "when": "the user previews or exports the storybook",
+      "then": "the new layout is reflected consistently"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Remap rules fail for edge-case pages",
+      "impact": "High",
+      "mitigation": "Use compatibility gating and warning-based confirmation rather than forcing all switches"
+    },
+    {
+      "risk": "Users expect full freeform editing after seeing layout switching",
+      "impact": "Medium",
+      "mitigation": "Frame the feature as changing page look from curated options, not manual design editing"
+    },
+    {
+      "risk": "Too many layout options increase cognitive load",
+      "impact": "Medium",
+      "mitigation": "Curate options per page role and show only compatible/high-quality layouts"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define compatibility rules",
+      "Implement remap engine",
+      "Build layout picker UI",
+      "Persist provenance updates",
+      "Add tests"
+    ],
+    "futureSprintHooks": [
+      "Future: smarter slot remap heuristics",
+      "Future: user favorites/recommended layouts",
+      "Future: book-wide theme-aware layout suggestions"
+    ]
+  },
+  "definitionOfDone": [
+    "Users can open a per-page compatible layout picker",
+    "Compatible layouts can be selected and applied safely",
+    "Page content is remapped where possible and warnings are shown when not",
+    "Page layout provenance updates persist",
+    "Studio preview and export reflect the new layout",
+    "Automated tests cover compatibility, remap, and UI flows"
+  ]
+}

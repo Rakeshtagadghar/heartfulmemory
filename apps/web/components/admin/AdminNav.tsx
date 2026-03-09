@@ -15,6 +15,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/admin", permission: "dashboard.view" },
   { label: "Users", href: "/admin/users", permission: "users.view" },
+  { label: "Templates", href: "/admin/templates", permission: "templates.view" },
   { label: "Exports", href: "/admin/exports", permission: "exports.view" },
   { label: "Admin Users", href: "/admin/admin-users", permission: "users.manage_admin_roles" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit_logs.view" },

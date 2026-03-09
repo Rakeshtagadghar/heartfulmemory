@@ -1,0 +1,341 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 53,
+    "sprintTitle": "Template Versioning v1 - Publish Snapshots, Rollback, and Historical Rendering Safety",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Introduce immutable template layout versions and rollback controls so new storybooks can adopt improved layouts while existing books remain pinned to historically safe template snapshots.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 50 - Admin Console v1 - Template Management",
+        "Sprint 51 - Template Layout System v1",
+        "Sprint 52 - Admin Template Builder v1",
+        "Sprint 7 - Layout to PDF Renderer v1",
+        "Sprint 39 - Export v2",
+        "Sprint 47 - Export Monitoring + Retry Console"
+      ],
+      "whyNow": [
+        "Once admins can edit layouts visually, publishing those edits safely requires immutable version snapshots",
+        "Existing books should not silently change appearance when a template layout is improved",
+        "Rollback is needed to recover quickly from a bad layout publish without destructive data edits"
+      ],
+      "productContext": [
+        "Template versions are part of rendering safety, not just admin bookkeeping",
+        "Storybooks, previews, exports, and retries all need to know which template version they rely on",
+        "Versioning should make future per-page layout switching safer by preserving compatibility checks"
+      ]
+    },
+    "nonGoals": [
+      "Full Git-like diff UI with arbitrary merge workflows",
+      "Real-time collaborative editing history",
+      "Automatic migration of all existing storybooks to the newest template version",
+      "User-facing template version controls"
+    ],
+    "dependencies": [
+      "Sprint 50 template management permissions and lifecycle",
+      "Sprint 51 canonical layout schema",
+      "Sprint 52 builder draft and preview flows",
+      "Export pipeline with template provenance",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Each publish creates an immutable template version snapshot",
+      "Admin can roll back the active published version without destructive edits",
+      "Existing books continue to render against their pinned template version"
+    ],
+    "product": [
+      "Template iteration becomes safer and reversible",
+      "New books use the latest published version while historical books remain stable",
+      "Rollback can be performed in minutes during a template incident"
+    ],
+    "quality": [
+      "Preview, Studio, and export can resolve template versions deterministically",
+      "Version lineage and publish metadata are visible to admins",
+      "Retrying exports uses the correct template version policy"
+    ],
+    "security": [
+      "Only authorised roles can publish or roll back template versions",
+      "Historical versions are immutable once published",
+      "Rollback actions are fully audit logged"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Content Admin",
+      "description": "Publishes template changes and needs safe version history."
+    },
+    {
+      "name": "Super Admin",
+      "description": "Needs rollback authority during incidents."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Needs visibility into which template version a project/export used."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Immutable published template version records",
+      "Draft vs published version separation",
+      "Template version list and metadata",
+      "Rollback action to activate a previous published version",
+      "Pinning storybooks/pages to template version provenance",
+      "Version-aware preview/export resolution",
+      "Audit logging for publish and rollback"
+    ],
+    "outOfScope": [
+      "Automatic migration wizard for all existing books",
+      "Line-by-line visual diff inspector",
+      "Multi-branch template editing",
+      "User-facing template history UI"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "templates.view",
+      "templates.manage",
+      "templates.publish",
+      "templates.rollback",
+      "audit_logs.view"
+    ],
+    "rules": [
+      "templates.publish is required to create a published snapshot",
+      "templates.rollback is required to reactivate an earlier version",
+      "Version history is read-only for templates.view roles",
+      "Published versions must be immutable after creation"
+    ]
+  },
+  "dataModel": {
+    "suggestedEntities": [
+      {
+        "name": "template_versions",
+        "purpose": "Immutable snapshots of template metadata and layout JSON at publish time"
+      },
+      {
+        "name": "template_publish_pointer",
+        "purpose": "Tracks which published version is currently active for new books"
+      }
+    ],
+    "suggestedTemplateVersionFields": [
+      "templateVersionId",
+      "templateId",
+      "versionNumber",
+      "status",
+      "snapshotJson",
+      "publishedAt",
+      "publishedBy",
+      "rollbackOfVersionIdIfAny",
+      "notesIfAny",
+      "layoutFingerprint"
+    ],
+    "storybookProvenanceFields": [
+      "templateId",
+      "templateVersion",
+      "layoutFingerprint",
+      "pageLayoutVersionRefs"
+    ]
+  },
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Immutable publish snapshot",
+      "requirements": [
+        "Publishing a template creates an immutable snapshot containing metadata and layout JSON",
+        "Published snapshot receives a monotonically increasing version number",
+        "Snapshot cannot be edited in place after publication"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Active publish pointer",
+      "requirements": [
+        "System tracks the currently active published version for new storybooks",
+        "Changing the active pointer must not mutate historical snapshots",
+        "Only one active published version may exist per template at a time"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Rollback",
+      "requirements": [
+        "Authorised admins can reactivate a previous published version as the active version",
+        "Rollback should not delete newer versions",
+        "Rollback action must record who triggered it and why if a reason is supplied"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Historical rendering safety",
+      "requirements": [
+        "Storybooks created or populated against a version remain pinned to that version unless explicitly migrated",
+        "Exports and export retries can resolve the correct version for a project",
+        "Admin support views should surface template version provenance"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Version history UI",
+      "requirements": [
+        "Template detail should display version history with publish timestamps and active status",
+        "Admins should see which version is active and which versions are historical",
+        "Rollback controls must be confirmation-gated"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/templates/:templateId/versions",
+        "purpose": "List published template versions and active pointer",
+        "auth": "admin required",
+        "permission": "templates.view"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/publish-version",
+        "purpose": "Create immutable published snapshot from current draft",
+        "auth": "admin required",
+        "permission": "templates.publish"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/rollback",
+        "purpose": "Reactivate a prior published version",
+        "auth": "admin required",
+        "permission": "templates.rollback"
+      }
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T53-001",
+      "title": "Define template version entities and contracts",
+      "description": "Create immutable snapshot model, active pointer logic, and DTOs.",
+      "deliverables": [
+        "template version types",
+        "snapshot schema",
+        "publish/rollback rules"
+      ]
+    },
+    {
+      "id": "T53-002",
+      "title": "Implement publish snapshot flow",
+      "description": "Create server-side publish action that snapshots current draft and updates active pointer safely.",
+      "deliverables": [
+        "publish endpoint",
+        "validation integration",
+        "audit log events"
+      ]
+    },
+    {
+      "id": "T53-003",
+      "title": "Implement rollback flow",
+      "description": "Allow authorised admins to reactivate a previous published version.",
+      "deliverables": [
+        "rollback endpoint",
+        "confirmation UX",
+        "history updates"
+      ]
+    },
+    {
+      "id": "T53-004",
+      "title": "Version-aware storybook and export provenance",
+      "description": "Persist and surface template version references for Studio pages and exports.",
+      "deliverables": [
+        "storybook provenance updates",
+        "admin support visibility",
+        "export resolution updates"
+      ]
+    },
+    {
+      "id": "T53-005",
+      "title": "Build version history UI",
+      "description": "Show version history and active state inside template admin detail.",
+      "deliverables": [
+        "version history panel",
+        "publish controls",
+        "rollback controls"
+      ]
+    },
+    {
+      "id": "T53-006",
+      "title": "Testing",
+      "description": "Add coverage for immutable versioning, rollback, and historical rendering safety.",
+      "deliverables": [
+        "unit tests",
+        "integration tests",
+        "admin UI tests"
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a draft template ready to publish",
+      "when": "an authorised admin publishes it",
+      "then": "an immutable template version snapshot is created and becomes the active published version"
+    },
+    {
+      "id": "AC-002",
+      "given": "a storybook created on an older template version",
+      "when": "a newer template version is published",
+      "then": "the existing storybook remains pinned to its original version unless explicitly migrated"
+    },
+    {
+      "id": "AC-003",
+      "given": "a bad template publish",
+      "when": "a super_admin rolls back to a prior version",
+      "then": "the prior version becomes active for new books without deleting the newer snapshot"
+    },
+    {
+      "id": "AC-004",
+      "given": "a support/admin operator viewing a project or export",
+      "when": "they inspect its provenance",
+      "then": "the template id and version used for rendering are visible"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Version resolution differs across Studio, preview, and export",
+      "impact": "High",
+      "mitigation": "Use one version resolution contract shared across all render paths"
+    },
+    {
+      "risk": "Rollback mutates historical data accidentally",
+      "impact": "High",
+      "mitigation": "Keep published snapshots immutable and change only the active pointer"
+    },
+    {
+      "risk": "Projects created before versioning lack provenance",
+      "impact": "Medium",
+      "mitigation": "Provide sensible fallback provenance rules and migration notes for legacy records"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define version model and contracts",
+      "Implement publish snapshot flow",
+      "Implement rollback flow",
+      "Persist provenance to storybooks/pages/exports",
+      "Build version history UI",
+      "Add tests"
+    ],
+    "futureSprintHooks": [
+      "Future: visual diff for template versions",
+      "Future: project migration between template versions",
+      "Future: per-page layout switching compatibility checks"
+    ]
+  },
+  "definitionOfDone": [
+    "Publishing creates immutable template snapshots",
+    "System tracks one active published version per template",
+    "Rollback flow exists with permissions and audit logging",
+    "Storybooks and exports can resolve template provenance",
+    "Version history is visible in admin UI",
+    "Automated tests cover publish, rollback, and historical rendering safety"
+  ]
+}

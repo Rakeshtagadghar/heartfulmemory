@@ -49,13 +49,18 @@ describe("hasPermission", () => {
     }
   });
 
-  it("support_admin has dashboard.view but not users.manage_admin_roles", () => {
+  it("support_admin has dashboard.view and templates.view but not users.manage_admin_roles", () => {
     expect(hasPermission("support_admin", "dashboard.view")).toBe(true);
+    expect(hasPermission("support_admin", "templates.view")).toBe(true);
+    expect(hasPermission("support_admin", "templates.manage")).toBe(false);
     expect(hasPermission("support_admin", "users.manage_admin_roles")).toBe(false);
   });
 
-  it("content_admin has templates.manage but not dashboard.view or billing.view", () => {
+  it("content_admin has template management permissions but not dashboard.view or billing.view", () => {
     expect(hasPermission("content_admin", "templates.manage")).toBe(true);
+    expect(hasPermission("content_admin", "templates.publish")).toBe(true);
+    expect(hasPermission("content_admin", "templates.reorder")).toBe(true);
+    expect(hasPermission("content_admin", "templates.archive")).toBe(true);
     expect(hasPermission("content_admin", "dashboard.view")).toBe(false);
     expect(hasPermission("content_admin", "billing.view")).toBe(false);
     expect(hasPermission("content_admin", "exports.view")).toBe(true);
@@ -100,31 +105,34 @@ describe("isAdminActive", () => {
 describe("getNavItemsForRole", () => {
   it("super_admin sees all nav items", () => {
     const items = getNavItemsForRole("super_admin");
-    expect(items.length).toBe(5);
+    expect(items.length).toBe(6);
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Dashboard");
     expect(labels).toContain("Users");
+    expect(labels).toContain("Templates");
     expect(labels).toContain("Exports");
     expect(labels).toContain("Admin Users");
     expect(labels).toContain("Audit Logs");
   });
 
-  it("support_admin sees Dashboard, Users, and Exports", () => {
+  it("support_admin sees Dashboard, Users, Templates, and Exports", () => {
     const items = getNavItemsForRole("support_admin");
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Dashboard");
     expect(labels).toContain("Users");
+    expect(labels).toContain("Templates");
     expect(labels).toContain("Exports");
     expect(labels).not.toContain("Admin Users");
     expect(labels).not.toContain("Audit Logs");
   });
 
-  it("content_admin sees only Exports", () => {
+  it("content_admin sees Templates and Exports", () => {
     const items = getNavItemsForRole("content_admin");
     const labels = items.map((i) => i.label);
     expect(labels).toContain("Exports");
+    expect(labels).toContain("Templates");
     expect(labels).not.toContain("Dashboard");
-    expect(labels).toHaveLength(1);
+    expect(labels).toHaveLength(2);
   });
 
   it("unknown role gets no nav items", () => {

@@ -1,0 +1,363 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 52,
+    "sprintTitle": "Admin Template Builder v1 - Visual XY Layout Authoring + Live Preview",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Give authorised admins a visual template builder that lets them place text and image slots on pages using exact XY coordinates, edit layout properties, and preview the rendered result before publishing.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 50 - Admin Console v1 - Template Management",
+        "Sprint 51 - Template Layout System v1",
+        "Sprint 6 - WYSIWYG Page Layout System v1",
+        "Sprint 15 - Selection, Layers and Alignment v1",
+        "Sprint 16 - Layout to PDF Renderer v1",
+        "Sprint 30 - Studio Pages UX v1"
+      ],
+      "whyNow": [
+        "Once layout geometry is canonical data, the next bottleneck is authoring those layouts without hand-editing JSON",
+        "Template iteration speed is limited if every position change requires developer intervention",
+        "A visual builder is needed to support exact placement for image and text slots like the current designs"
+      ],
+      "productContext": [
+        "Admins should be able to author layouts using the same spatial mental model as Studio",
+        "The builder should feel like a constrained template-authoring mode rather than a full end-user editor",
+        "Preview fidelity must be high enough to trust the published layout"
+      ]
+    },
+    "nonGoals": [
+      "End-user page editing of template layouts",
+      "Arbitrary design system/theming engine",
+      "Real-time collaborative template editing",
+      "Template rollback and version history UI",
+      "Automatic content generation inside the builder"
+    ],
+    "dependencies": [
+      "Sprint 51 canonical layout schema",
+      "Existing Studio canvas interaction primitives",
+      "Template admin permissions",
+      "Server-side preview rendering support",
+      "Audit logging support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Admin can create or edit a page layout without directly editing JSON",
+      "Admin can place, drag, resize, align, and reorder slots visually",
+      "Admin can preview a layout before publish using the same underlying render model"
+    ],
+    "product": [
+      "Template iteration becomes much faster for new page designs",
+      "Exact XY placement for images and text is achievable through the builder UI",
+      "Layout authoring becomes consistent across templates and pages"
+    ],
+    "quality": [
+      "Builder output serializes to the canonical layout schema without lossy conversion",
+      "Preview reflects Studio/export geometry closely enough for sign-off",
+      "Validation prevents impossible or malformed slot setups"
+    ],
+    "security": [
+      "Only authorised admin roles can access layout builder routes and APIs",
+      "Draft-only edits cannot affect published templates until explicitly published",
+      "Audit logs capture visual layout edits and publish-related preview actions"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Content Admin",
+      "description": "Primary operator creating and tuning layouts visually."
+    },
+    {
+      "name": "Super Admin",
+      "description": "Needs oversight and publishing control for final template layouts."
+    },
+    {
+      "name": "Design/QA Reviewer",
+      "description": "Needs a previewable, inspectable layout before it is exposed to users."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Admin-only template layout builder route",
+      "Visual canvas for page layouts",
+      "Slot insertion for text and image slots",
+      "Slot drag, resize, align, distribute, z-index ordering, and lock controls",
+      "Slot property editing such as role, slot id, style, caption linkage, and constraints",
+      "Live preview inside the builder",
+      "Server-side preview render or snapshot endpoint",
+      "Draft save and validation flows"
+    ],
+    "outOfScope": [
+      "End-user layout authoring",
+      "Theme token system beyond layout-specific styles",
+      "Template rollback UI",
+      "A/B testing for layouts",
+      "Animation or interactive page elements"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "templates.view",
+      "templates.manage",
+      "templates.publish",
+      "audit_logs.view"
+    ],
+    "rules": [
+      "templates.view is required to open builder in read-only mode",
+      "templates.manage is required to add, move, resize, or edit slots",
+      "templates.publish remains required for any action that changes template public availability",
+      "Preview generation must not bypass template permission checks"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Reuse the existing Studio canvas/frame interaction primitives in an admin-specific template builder mode. The builder edits PageLayout draft data rather than live storybook frames. A serializer maps the visual canvas state directly into canonical layout JSON, while preview uses the same layout/render path used by Studio and export.",
+    "principles": [
+      "Reuse existing editor capabilities where possible",
+      "Builder edits draft layout definitions, not user storybooks",
+      "Visual edits must round-trip exactly to canonical schema",
+      "Preview should use the same render assumptions as export"
+    ],
+    "coreViews": [
+      {
+        "view": "Layout list",
+        "purpose": "Choose which page layout to edit inside a template"
+      },
+      {
+        "view": "Canvas builder",
+        "purpose": "Position and configure layout slots"
+      },
+      {
+        "view": "Properties panel",
+        "purpose": "Edit slot metadata and page layout settings"
+      },
+      {
+        "view": "Preview panel",
+        "purpose": "See rendered result with sample content"
+      }
+    ]
+  },
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Builder route",
+      "requirements": [
+        "Provide an admin route for template layout editing",
+        "Allow choosing a template and one of its page layouts",
+        "Support read-only and editable modes based on permission"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Visual slot authoring",
+      "requirements": [
+        "Allow adding text and image slots to a page layout",
+        "Allow exact placement and sizing with drag and resize interactions",
+        "Allow direct property editing for x, y, w, h, zIndex in a form for precision work"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Slot metadata editing",
+      "requirements": [
+        "Allow editing slot id, role, kind, lock state, style, and constraints",
+        "Allow linking caption slots to image slots",
+        "Allow marking slots as required or optional"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Layout-level settings",
+      "requirements": [
+        "Allow editing page role, name, description, supported orientation, and compatibility flags",
+        "Allow setting default background and safe-area-aware rules where relevant",
+        "Allow layout duplication for faster iteration"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Live preview",
+      "requirements": [
+        "Provide immediate preview of the page layout with sample content",
+        "Preview should render text and image slots with the same positioning model as Studio/export",
+        "Support refreshable server-side preview for higher-fidelity verification"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Draft save and validation",
+      "requirements": [
+        "Allow saving layout edits as draft changes",
+        "Show validation issues such as duplicate slot ids, missing required bindings, or overflow risk indicators where possible",
+        "Prevent malformed layout drafts from being published"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/templates/:templateId/layout-builder",
+        "purpose": "Load builder-ready layout draft data",
+        "auth": "admin required",
+        "permission": "templates.view"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/admin/templates/:templateId/layout-builder",
+        "purpose": "Save visual layout draft changes",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/layout-builder/preview",
+        "purpose": "Generate or refresh rendered preview for a draft layout",
+        "auth": "admin required",
+        "permission": "templates.view"
+      }
+    ]
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin/templates/:templateId/builder",
+        "title": "Template Layout Builder",
+        "purpose": "Author page layouts visually"
+      }
+    ],
+    "components": [
+      "TemplateLayoutBuilderShell",
+      "TemplateLayoutCanvas",
+      "TemplateLayoutPropertiesPanel",
+      "TemplateSlotPalette",
+      "TemplateLayoutList",
+      "TemplateLayoutPreviewPanel",
+      "TemplateLayoutValidationPanel",
+      "TemplateLayoutPrecisionInputs"
+    ],
+    "uxRules": [
+      "Prefer a focused builder mode over exposing all Studio actions",
+      "Always show page bounds and safe area clearly",
+      "Support both drag interactions and numeric coordinate editing",
+      "Keep preview visible without forcing page navigation away from the builder"
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T52-001",
+      "title": "Adapt existing canvas interactions for builder mode",
+      "description": "Reuse frame selection, drag, resize, align, and ordering interactions for layout slots.",
+      "deliverables": [
+        "builder canvas primitives",
+        "slot interaction layer",
+        "layout draft serializer"
+      ]
+    },
+    {
+      "id": "T52-002",
+      "title": "Build admin builder UI shell",
+      "description": "Create route, layout list, slot palette, properties panel, and validation display.",
+      "deliverables": [
+        "builder route",
+        "shell UI",
+        "permissions-aware states"
+      ]
+    },
+    {
+      "id": "T52-003",
+      "title": "Implement draft save APIs",
+      "description": "Provide draft save/load endpoints for builder-specific interactions.",
+      "deliverables": [
+        "builder read API",
+        "builder save API",
+        "audit log integration"
+      ]
+    },
+    {
+      "id": "T52-004",
+      "title": "Implement preview rendering",
+      "description": "Add sample-content preview using canonical layout definitions and rendered output.",
+      "deliverables": [
+        "live preview component",
+        "server preview endpoint",
+        "preview fixtures"
+      ]
+    },
+    {
+      "id": "T52-005",
+      "title": "Validation and testing",
+      "description": "Add validation, interaction, and serialization tests for the builder.",
+      "deliverables": [
+        "unit tests",
+        "UI tests",
+        "round-trip serialization tests"
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a content_admin with templates.manage",
+      "when": "they open the template builder",
+      "then": "they can place and resize text and image slots visually on the page canvas"
+    },
+    {
+      "id": "AC-002",
+      "given": "a layout slot on the builder",
+      "when": "the admin edits x, y, w, h numerically",
+      "then": "the visual slot position updates exactly and the draft serializes correctly"
+    },
+    {
+      "id": "AC-003",
+      "given": "a draft layout",
+      "when": "the admin opens preview",
+      "then": "the preview uses the same canonical layout source and reflects the intended geometry"
+    },
+    {
+      "id": "AC-004",
+      "given": "an admin without templates.manage",
+      "when": "they open the builder",
+      "then": "they can view the layout but cannot change slot geometry or save edits"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Builder grows into an uncontrolled general-purpose editor",
+      "impact": "Medium",
+      "mitigation": "Keep the builder constrained to layout slots, metadata, and preview only"
+    },
+    {
+      "risk": "Preview fidelity diverges from export",
+      "impact": "High",
+      "mitigation": "Share render assumptions and add preview parity checks against export fixtures"
+    },
+    {
+      "risk": "Round-trip serialization loses layout detail",
+      "impact": "Medium",
+      "mitigation": "Use canonical layout schema as the sole persisted output of the builder"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Adapt canvas interactions for builder mode",
+      "Build builder route and shell",
+      "Add draft save/load APIs",
+      "Add preview rendering",
+      "Add validation and tests"
+    ],
+    "futureSprintHooks": [
+      "Future: template versioning and rollback",
+      "Future: per-page layout picker in client portal",
+      "Future: richer theme tokens and reusable style presets"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin-only visual builder route exists",
+    "Admins can place and size slots using exact XY coordinates",
+    "Layout slot metadata can be edited and saved as draft",
+    "Live and server-side preview flows exist",
+    "Permissions and audit logging are enforced",
+    "Automated tests cover serialization, permissions, and core builder interactions"
+  ]
+}

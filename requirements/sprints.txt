@@ -30,3 +30,11 @@ Sharing & Invites v1 (contributors + permissions)
 Analytics + Observability (editor + export funnel)
 
 Hardening + Launch (perf, security, print QA, docs)
+
+Template Layout System v1: Canonical Layout Schema + Data-Driven Studio Population
+
+Admin Template Builder v1: Visual XY Layout Authoring + Live Preview
+
+Template Versioning v1: Publish Snapshots, Rollback, and Historical Rendering Safety
+
+Client Portal v1: Per-Page Layout Picker + Safe Content Remapping

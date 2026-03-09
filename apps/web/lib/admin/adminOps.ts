@@ -17,6 +17,13 @@ import {
   type AdminSubscriptionDetail,
 } from "../../../../packages/shared/admin/billingSupport";
 import type { AdminDashboardSummary } from "../../../../packages/shared/admin/dashboard";
+import type {
+  AdminTemplateDetail,
+  CreateAdminTemplateInput,
+  AdminTemplatesListQuery,
+  AdminTemplatesListResponse,
+  UpdateAdminTemplateInput,
+} from "../../../../packages/shared/admin/templates";
 import { getBillingRuntimeConfig } from "../config/billingMode";
 import { resolveAdminDashboardRange } from "./dashboardRange";
 
@@ -410,4 +417,114 @@ export async function getAdminDashboardSummary(input?: {
       label: range.label,
     },
   };
+}
+
+export async function listAdminTemplates(
+  query: AdminTemplatesListQuery
+): Promise<AdminTemplatesListResponse> {
+  const result = await convexQuery<AdminTemplatesListResponse>(
+    anyApi.adminTemplates.listTemplates,
+    {
+      q: query.q ?? undefined,
+      status: query.status ?? undefined,
+      type: query.type ?? undefined,
+      visibility: query.visibility ?? undefined,
+      category: query.category ?? undefined,
+      guidedLevel: query.guidedLevel ?? undefined,
+      compatibility: query.compatibility ?? undefined,
+      page: query.page ?? undefined,
+      pageSize: query.pageSize ?? undefined,
+    }
+  );
+  if (!result.ok) {
+    return {
+      items: [],
+      summary: {
+        total: 0,
+        published: 0,
+        disabled: 0,
+        inUse: 0,
+      },
+      pagination: {
+        page: Math.max(1, query.page ?? 1),
+        pageSize: Math.max(1, query.pageSize ?? 25),
+        total: 0,
+      },
+    };
+  }
+  return result.data;
+}
+
+export async function getAdminTemplateDetail(
+  templateId: string
+): Promise<AdminTemplateDetail | null> {
+  const result = await convexQuery<AdminTemplateDetail | null>(
+    anyApi.adminTemplates.getTemplateDetail,
+    { templateId }
+  );
+  if (!result.ok) return null;
+  return result.data;
+}
+
+export async function createAdminTemplate(input: CreateAdminTemplateInput) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+    templateId?: string;
+  }>(anyApi.adminTemplates.createTemplateMetadata, input as unknown as Record<string, unknown>);
+}
+
+export async function updateAdminTemplate(
+  templateId: string,
+  patch: UpdateAdminTemplateInput
+) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+  }>(anyApi.adminTemplates.updateTemplateMetadata, { templateId, patch });
+}
+
+export async function publishAdminTemplate(templateId: string) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+  }>(anyApi.adminTemplates.publishTemplate, { templateId });
+}
+
+export async function disableAdminTemplate(templateId: string) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+  }>(anyApi.adminTemplates.disableTemplate, { templateId });
+}
+
+export async function archiveAdminTemplate(templateId: string) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+  }>(anyApi.adminTemplates.archiveTemplate, { templateId });
+}
+
+export async function setAdminTemplateDefault(templateId: string) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+  }>(anyApi.adminTemplates.setDefaultTemplate, { templateId });
+}
+
+export async function reorderAdminTemplates(
+  items: Array<{ templateId: string; displayOrder: number }>
+) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+    count?: number;
+  }>(anyApi.adminTemplates.reorderTemplates, { items });
 }

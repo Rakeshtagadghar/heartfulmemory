@@ -1,0 +1,403 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 51,
+    "sprintTitle": "Template Layout System v1 - Canonical Layout Schema + Data-Driven Studio Population",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Replace hardcoded page layout geometry with a canonical template layout system so page composition, Studio rendering, and exports all use the same reusable layout definitions.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 6 - WYSIWYG Page Layout System v1",
+        "Sprint 7 - Layout to PDF Renderer v1",
+        "Sprint 17 - Template + Chapter Wizard v1",
+        "Sprint 20 - Auto-Illustrate v1",
+        "Sprint 21 - Chapter to Studio Populate v1",
+        "Sprint 30 - Studio Pages UX v1",
+        "Sprint 32 - Studio Orientation v1",
+        "Sprint 33 - Orientation Switch v2",
+        "Sprint 50 - Admin Console v1 - Template Management"
+      ],
+      "whyNow": [
+        "Current chapter population still relies on hardcoded fallback slot geometry and generated page layouts in application code",
+        "Template metadata exists, but layout definitions are not yet a first-class versioned data model",
+        "A visual builder, preview rendering, and per-page client layout switching all depend on a canonical layout schema first"
+      ],
+      "productContext": [
+        "Memorioso needs layout fidelity between Studio and export",
+        "Template-driven storybooks should be editable without redeploying frontend layout code",
+        "Each page should eventually be able to swap to a different compatible layout while preserving mapped content"
+      ]
+    },
+    "nonGoals": [
+      "Full visual drag-and-drop template builder UI in this sprint",
+      "End-user per-page layout switching UI",
+      "Template rollback UI",
+      "Bulk migration of all historical books to new layouts",
+      "Automatic AI generation of layouts"
+    ],
+    "dependencies": [
+      "Sprint 50 template catalog foundation",
+      "Existing pages and frames data model",
+      "Studio populate pipeline",
+      "PDF renderer contract and page/frame renderer",
+      "Orientation and reflow metadata support",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "At least one production template can be rendered without relying on hardcoded fallback slot placement",
+      "Studio population reads layout data from template JSON rather than code constants",
+      "A layout definition can be updated without frontend redeploys for geometry-only changes"
+    ],
+    "product": [
+      "Template layouts become reusable across multiple storybooks and chapters",
+      "Layout definitions can represent title, body, quote, caption, image, and decorative slots precisely",
+      "Future layout picker and builder work can extend the same schema without redesign"
+    ],
+    "quality": [
+      "Studio and export use the same coordinates and slot definitions",
+      "Validation blocks malformed or incomplete layouts from being published",
+      "Migration path exists for current hardcoded chapter layouts"
+    ],
+    "security": [
+      "Only authorised admins can modify template layout definitions",
+      "Layout JSON is validated server-side before persistence or publish",
+      "Existing books remain stable even if a layout is later edited"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Content Admin",
+      "description": "Needs canonical, editable layout definitions that control how chapters and pages are visually assembled."
+    },
+    {
+      "name": "Studio User",
+      "description": "Sees template-driven pages rendered consistently and should benefit from reduced layout bugs."
+    },
+    {
+      "name": "Renderer/System Owner",
+      "description": "Needs one layout source of truth across Studio and export."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Canonical template layout schema",
+      "Page layout and slot entities inside template JSON",
+      "Slot-level geometry and style metadata",
+      "Data-driven Studio population from template layouts",
+      "Migration of current hardcoded fallback layouts into seeded layout JSON",
+      "Validation for slot ids, geometry, slot types, and compatibility metadata",
+      "Stable references from page instances to selected page layout ids",
+      "Orientation-aware layout variants if present"
+    ],
+    "outOfScope": [
+      "Visual layout builder UI",
+      "User-facing page layout switching",
+      "Rollback UX",
+      "Advanced dynamic layout reflow engine beyond current compatibility flags",
+      "Marketplace/template import features"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Promote page layouts to first-class template data. Each template owns reusable page layout definitions and chapter page plans. Studio population resolves chapter content into named slots within those layouts, creates concrete frames from the layout definition, and stores a pageLayoutId reference on the page instance.",
+    "principles": [
+      "Template layout is data, not frontend code",
+      "Geometry should be represented once and reused everywhere",
+      "Slot mapping must remain stable across layout edits and future page switching",
+      "Existing storybooks should pin to the layout version used when populated unless explicitly migrated"
+    ],
+    "coreEntities": [
+      {
+        "entity": "TemplateLayoutDefinition",
+        "purpose": "Top-level visual layout package associated with a template version"
+      },
+      {
+        "entity": "PageLayout",
+        "purpose": "A reusable page-level layout with page size assumptions, slot set, and compatibility metadata"
+      },
+      {
+        "entity": "LayoutSlot",
+        "purpose": "A positioned image/text/shape slot with x, y, w, h, zIndex, type, and rules"
+      },
+      {
+        "entity": "PageInstance.pageLayoutId",
+        "purpose": "Reference from a concrete storybook page to the layout used to create or render it"
+      }
+    ]
+  },
+  "dataModel": {
+    "suggestedTemplateJsonAdditions": [
+      "layoutSchemaVersion",
+      "pageLayouts",
+      "chapterPagePlans",
+      "defaultPageLayoutIdsByRole",
+      "orientationVariants",
+      "layoutCompatibility"
+    ],
+    "suggestedPageLayoutFields": [
+      "pageLayoutId",
+      "name",
+      "description",
+      "pageRole",
+      "pageType",
+      "sizePreset",
+      "supportedOrientations",
+      "supportsReflowMode",
+      "previewThumbnailUrlIfAvailable",
+      "slots",
+      "defaultStyles",
+      "constraints"
+    ],
+    "suggestedSlotFields": [
+      "slotId",
+      "kind",
+      "role",
+      "x",
+      "y",
+      "w",
+      "h",
+      "zIndex",
+      "locked",
+      "required",
+      "style",
+      "allowedContentSources",
+      "captionSlotIdIfAny",
+      "minTextLengthIfAny",
+      "maxTextLengthIfAny"
+    ],
+    "pageInstanceAdditions": [
+      "pageLayoutId",
+      "layoutSourceTemplateId",
+      "layoutSourceTemplateVersion",
+      "layoutFingerprint"
+    ],
+    "frameMetadataAdditions": [
+      "populateMeta.pageLayoutId",
+      "populateMeta.slotId",
+      "populateMeta.stableNodeKey",
+      "populateMeta.layoutVersion"
+    ]
+  },
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Canonical layout schema",
+      "requirements": [
+        "Define a typed layout schema for page layouts and slots",
+        "Support text, image, frame, shape, line, and decorative slots where relevant",
+        "Allow explicit coordinates and dimensions in the same space used by pages and frames"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Template-owned reusable page layouts",
+      "requirements": [
+        "A template can include multiple reusable page layouts",
+        "Layouts can be identified by stable pageLayoutId values",
+        "Layouts can declare page role such as chapter opener, story page, gallery page, quote page, or cover"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Chapter page plans",
+      "requirements": [
+        "Templates can declare which page layouts are used for a chapter and in what sequence",
+        "Population can resolve a chapter page plan without falling back to hardcoded geometry",
+        "Plans can reference alternative layout ids for portrait and landscape where needed"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Data-driven Studio population",
+      "requirements": [
+        "Studio population must read slots from template layout definitions",
+        "Hardcoded fallback page specs should be retained only as a temporary migration safety net and not as the primary path",
+        "Created frames must include stable slot metadata derived from pageLayoutId and slotId"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Page instance layout references",
+      "requirements": [
+        "Concrete storybook pages must store which layout they were created from",
+        "The stored layout reference should be usable by preview, export, and future page layout switching",
+        "Layout references must survive reload and export jobs"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Validation",
+      "requirements": [
+        "Validate duplicate slot ids, invalid geometry, unsupported slot kinds, and incompatible orientation flags",
+        "Validate that required text/image slots referenced by chapter mappings actually exist",
+        "Block publishing when layouts are malformed"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Migration of current layouts",
+      "requirements": [
+        "Seed the current hardcoded chapter layout and answer-page geometry as explicit template layouts",
+        "Preserve the current visual output while moving geometry into data",
+        "Document the migration and deprecation of code-defined layouts"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/templates/:templateId/layouts",
+        "purpose": "Return page layouts and chapter page plans for a template",
+        "auth": "admin required",
+        "permission": "templates.view"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/admin/templates/:templateId/layouts",
+        "purpose": "Update canonical layout JSON for a template draft",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/templates/:templateId/layouts/validate",
+        "purpose": "Validate layout schema and publish readiness",
+        "auth": "admin required",
+        "permission": "templates.manage"
+      }
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T51-001",
+      "title": "Define layout schema contract",
+      "description": "Create typed contracts for page layouts, slots, chapter page plans, and layout validation.",
+      "deliverables": [
+        "shared template layout types",
+        "validation helpers",
+        "schema docs"
+      ]
+    },
+    {
+      "id": "T51-002",
+      "title": "Extend template storage",
+      "description": "Add canonical layout fields to template JSON and Convex read/write paths.",
+      "deliverables": [
+        "template JSON schema extension",
+        "admin template storage updates",
+        "backwards-compatible reads"
+      ]
+    },
+    {
+      "id": "T51-003",
+      "title": "Refactor Studio population to use layout definitions",
+      "description": "Remove primary dependence on hardcoded page specs and generate frames from stored page layouts.",
+      "deliverables": [
+        "studio populate refactor",
+        "stable slot metadata updates",
+        "migration-safe fallback handling"
+      ]
+    },
+    {
+      "id": "T51-004",
+      "title": "Persist page layout references on pages",
+      "description": "Store selected page layout ids and source template version information on concrete page instances.",
+      "deliverables": [
+        "page model updates",
+        "DTO updates",
+        "export contract plumbing"
+      ]
+    },
+    {
+      "id": "T51-005",
+      "title": "Seed current hardcoded layouts into data",
+      "description": "Translate existing fallback chapter layout and generated answer layouts into seeded template layout JSON.",
+      "deliverables": [
+        "seed data",
+        "migration notes",
+        "parity checklist"
+      ]
+    },
+    {
+      "id": "T51-006",
+      "title": "Testing",
+      "description": "Add tests covering schema validation, population parity, and layout references.",
+      "deliverables": [
+        "unit tests",
+        "integration tests",
+        "fixture-based parity tests"
+      ]
+    }
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a published template with canonical page layouts",
+      "when": "chapter population runs",
+      "then": "frames are created from the stored layout definitions instead of hardcoded fallback geometry"
+    },
+    {
+      "id": "AC-002",
+      "given": "a concrete storybook page",
+      "when": "it is read from the system",
+      "then": "its selected pageLayoutId and source template version are available"
+    },
+    {
+      "id": "AC-003",
+      "given": "a malformed layout definition",
+      "when": "an admin validates or publishes the template",
+      "then": "the action is blocked with clear schema errors"
+    },
+    {
+      "id": "AC-004",
+      "given": "the current built-in chapter layouts",
+      "when": "they are migrated to data",
+      "then": "Studio and export output remain visually equivalent within acceptable tolerance"
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Layout schema becomes too narrow for future page switching",
+      "impact": "Medium",
+      "mitigation": "Model reusable page layouts and slot compatibility now instead of chapter-only hardcoded pages"
+    },
+    {
+      "risk": "Migration changes current page output unexpectedly",
+      "impact": "High",
+      "mitigation": "Create fixture-based parity checks against current hardcoded layouts before removing them"
+    },
+    {
+      "risk": "Template JSON grows without clear validation",
+      "impact": "Medium",
+      "mitigation": "Use strict typed contracts and publish-time validation"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define schema and validation",
+      "Extend template storage",
+      "Persist page layout references",
+      "Refactor populate pipeline",
+      "Seed current layouts into data",
+      "Add tests and parity checks"
+    ],
+    "futureSprintHooks": [
+      "Future: admin visual layout builder",
+      "Future: template preview rendering",
+      "Future: template versioning and rollback",
+      "Future: client-side per-page layout switching"
+    ]
+  },
+  "definitionOfDone": [
+    "Canonical template layout schema exists and is documented",
+    "Templates can store page layouts and chapter page plans",
+    "Studio population reads stored layouts as the primary path",
+    "Concrete pages store pageLayoutId and template layout provenance",
+    "Current hardcoded layouts are seeded into data or clearly isolated as migration-only fallback",
+    "Layout validation blocks malformed definitions",
+    "Automated tests cover schema validation and population parity"
+  ]
+}

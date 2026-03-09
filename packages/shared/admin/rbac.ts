@@ -31,6 +31,9 @@ export const ADMIN_PERMISSIONS = [
   "billing.support_action",
   "templates.view",
   "templates.manage",
+  "templates.publish",
+  "templates.reorder",
+  "templates.archive",
   "content.moderate",
   "support.view",
   "feature_flags.view",
@@ -56,6 +59,9 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "billing.support_action",
     "templates.view",
     "templates.manage",
+    "templates.publish",
+    "templates.reorder",
+    "templates.archive",
     "content.moderate",
     "support.view",
     "feature_flags.view",
@@ -70,6 +76,7 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "exports.retry",
     "billing.view",
     "billing.support_action",
+    "templates.view",
     "support.view",
   ],
   content_admin: [
@@ -77,6 +84,9 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "exports.view",
     "templates.view",
     "templates.manage",
+    "templates.publish",
+    "templates.reorder",
+    "templates.archive",
     "content.moderate",
   ],
 };
@@ -145,6 +155,15 @@ export const ADMIN_AUDIT_EVENTS = [
   "admin_manual_entitlement_requested",
   "admin_manual_entitlement_completed",
   "admin_billing_action_blocked",
+  "admin_templates_viewed",
+  "admin_template_viewed",
+  "admin_template_created",
+  "admin_template_updated",
+  "admin_template_published",
+  "admin_template_disabled",
+  "admin_template_archived",
+  "admin_template_default_changed",
+  "admin_template_reordered",
 ] as const;
 
 export type AdminAuditEventType = (typeof ADMIN_AUDIT_EVENTS)[number];
@@ -163,6 +182,7 @@ export interface AdminNavItem {
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Dashboard", href: "/admin", permission: "dashboard.view" },
   { label: "Users", href: "/admin/users", permission: "users.view" },
+  { label: "Templates", href: "/admin/templates", permission: "templates.view" },
   { label: "Exports", href: "/admin/exports", permission: "exports.view" },
   { label: "Admin Users", href: "/admin/admin-users", permission: "users.manage_admin_roles" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit_logs.view" },

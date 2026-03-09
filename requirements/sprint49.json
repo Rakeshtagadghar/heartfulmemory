@@ -1,0 +1,977 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 49,
+    "sprintTitle": "Admin Console v1 - Super Admin Dashboard",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Create a high-signal Super Admin dashboard page that gives a fast operational snapshot of Memorioso across growth, engagement, book creation, exports, funnel performance, and platform health so issues can be identified early without opening multiple admin modules.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 40 - Early Alpha / sandbox upgrade messaging",
+        "Sprint 42 - SEO and public page readiness",
+        "Sprint 43 - Featurebase widget + messenger widget planning",
+        "Sprint 44 - Error handling and graceful user-facing messages",
+        "Sprint 45 - Admin Auth + RBAC",
+        "Sprint 46 - Users + Project Lookup",
+        "Sprint 47 - Export Monitoring + Retry Console",
+        "Sprint 48 - Billing + Plan Support View",
+        "Launch readiness review",
+        "GA4 lead capture, funnel tracking, and conversion analysis planning"
+      ],
+      "whyNow": [
+        "Super admin needs a single operational homepage instead of jumping across users, exports, billing, and error tools",
+        "Memorioso is in early alpha and needs close monitoring of usage, drop-off, export reliability, and errors",
+        "This dashboard will become the control tower for launch readiness and daily operational review"
+      ],
+      "dashboardIntent": [
+        "Show business health at a glance",
+        "Show product engagement at a glance",
+        "Show funnel drop-off at a glance",
+        "Show system/export health at a glance",
+        "Make it easy to drill into users, projects, exports, billing, and errors"
+      ]
+    },
+    "nonGoals": [
+      "Full BI/reporting platform",
+      "Deep analytics exploration with custom chart builders",
+      "Revenue forecasting",
+      "Advanced cohort analytics",
+      "Real-time monitoring infrastructure replacement",
+      "Editing operational data from dashboard widgets",
+      "External stakeholder reporting exports"
+    ],
+    "dependencies": [
+      "Sprint 45 admin auth and RBAC foundation",
+      "Sprint 46 users and project lookup data",
+      "Sprint 47 export job and export success/failure data",
+      "Sprint 48 billing/plan state data where relevant",
+      "GA4 or internal product analytics event tracking",
+      "Application error tracking source such as app logs/Sentry-equivalent",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Super admin can understand overall platform state within 30 seconds of opening the dashboard",
+      "Super admin can identify whether current issues are growth-related, funnel-related, export-related, or system-health-related without opening other modules",
+      "Dashboard widgets link directly to relevant admin modules for investigation"
+    ],
+    "quality": [
+      "Widgets load successfully with graceful fallbacks if some data sources are unavailable",
+      "Definitions for each metric are documented and consistent across backend and UI",
+      "Dashboard is useful on day one of alpha and scales to broader launch monitoring"
+    ],
+    "security": [
+      "Dashboard routes and APIs are permission-guarded server-side",
+      "Only authorised roles can view sensitive operational metrics",
+      "No sensitive user-level data is exposed unnecessarily in summary widgets"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Primary user of this dashboard. Needs platform-wide operational visibility and quick drill-down links."
+    },
+    {
+      "name": "Support Admin",
+      "description": "May see a reduced version of selected widgets if permitted, but this sprint is primarily designed for super_admin."
+    },
+    {
+      "name": "Content Admin",
+      "description": "Should not see full platform-wide operational dashboard unless explicitly allowed later."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Admin dashboard homepage at /admin",
+      "Top KPI widgets",
+      "Funnel snapshot widget",
+      "Export health widgets",
+      "Error health widgets",
+      "Book/project activity widgets",
+      "Recent operational activity widgets",
+      "Widget-level drill-down links into existing admin modules",
+      "Date range selector for dashboard summaries",
+      "Graceful empty/loading/error states",
+      "Metric definitions and backend aggregation APIs"
+    ],
+    "outOfScope": [
+      "Custom report builder",
+      "Exporting dashboard as CSV/PDF",
+      "Advanced segmentation by many dimensions",
+      "Multi-tenant dashboards",
+      "Forecasting and anomaly detection engine",
+      "Live websocket-based real-time streaming dashboard"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "dashboard.view",
+      "users.view",
+      "projects.view",
+      "exports.view",
+      "billing.view",
+      "audit_logs.view"
+    ],
+    "roleCapabilities": {
+      "super_admin": {
+        "canViewDashboard": true,
+        "canViewAllWidgets": true,
+        "canOpenAllDrilldowns": true
+      },
+      "support_admin": {
+        "canViewDashboard": true,
+        "canViewLimitedOperationalWidgets": true,
+        "canOpenSupportRelevantDrilldowns": true
+      },
+      "content_admin": {
+        "canViewDashboard": false,
+        "canViewLimitedOperationalWidgets": false,
+        "canOpenAllDrilldowns": false
+      }
+    },
+    "rules": [
+      "dashboard.view is required for dashboard route and API access",
+      "Widget drill-down links should only appear when user also has permission for destination module",
+      "If a role can view dashboard but not some sensitive widget, the widget must be hidden or replaced with a permission-safe state"
+    ]
+  },
+  "dashboardInformationArchitecture": {
+    "layoutSections": [
+      {
+        "section": "Primary KPIs",
+        "purpose": "Fast health snapshot for overall growth and product usage"
+      },
+      {
+        "section": "Funnel Snapshot",
+        "purpose": "Track landing-to-value journey and identify drop-off"
+      },
+      {
+        "section": "Books + Exports",
+        "purpose": "Understand creation volume and export success"
+      },
+      {
+        "section": "Errors + Reliability",
+        "purpose": "See platform health and recent operational issues"
+      },
+      {
+        "section": "Recent Activity",
+        "purpose": "Surface latest important operational events"
+      }
+    ],
+    "recommendedLayout": {
+      "row1": [
+        "total_users",
+        "active_users",
+        "books_created",
+        "export_success_rate"
+      ],
+      "row2": ["conversion_funnel_snapshot", "recent_errors_summary"],
+      "row3": [
+        "books_status_breakdown",
+        "export_jobs_breakdown",
+        "billing_plan_snapshot"
+      ],
+      "row4": [
+        "recent_signups",
+        "recent_failed_exports",
+        "recent_support_or_system_alerts"
+      ]
+    }
+  },
+  "widgetCatalog": [
+    {
+      "id": "W-001",
+      "title": "Total Users",
+      "type": "kpi_card",
+      "purpose": "Show total registered users",
+      "primaryMetric": "count of distinct user accounts",
+      "timeModes": ["all_time", "selected_range_new_users"],
+      "secondaryMetrics": [
+        "new users in selected date range",
+        "change vs previous equal period"
+      ],
+      "drilldown": "/admin/users",
+      "whyUseful": "Shows platform growth and whether acquisition is happening at all."
+    },
+    {
+      "id": "W-002",
+      "title": "Active Users",
+      "type": "kpi_card",
+      "purpose": "Show user engagement",
+      "primaryMetric": "active users in selected range",
+      "definitions": [
+        "DAU if range is today",
+        "WAU if range is 7 days",
+        "MAU if range is 30 days"
+      ],
+      "secondaryMetrics": [
+        "activity rate = active users / total users",
+        "change vs previous period"
+      ],
+      "drilldown": "/admin/users?filter=active",
+      "whyUseful": "Distinguishes signups from meaningful usage."
+    },
+    {
+      "id": "W-003",
+      "title": "Books Created",
+      "type": "kpi_card",
+      "purpose": "Show total project/book creation volume",
+      "primaryMetric": "count of created books/projects",
+      "secondaryMetrics": [
+        "books created in selected range",
+        "books per active user",
+        "draft vs completed ratio"
+      ],
+      "drilldown": "/admin/projects",
+      "whyUseful": "Measures core product usage, not just account creation."
+    },
+    {
+      "id": "W-004",
+      "title": "Export Success Rate",
+      "type": "kpi_card",
+      "purpose": "Show reliability of the highest-value output moment",
+      "primaryMetric": "successful export jobs / completed export attempts",
+      "secondaryMetrics": ["success count", "failure count", "retry rate"],
+      "drilldown": "/admin/exports",
+      "whyUseful": "Critical for user trust and monetisation readiness."
+    },
+    {
+      "id": "W-005",
+      "title": "Conversion Funnel Snapshot",
+      "type": "funnel_widget",
+      "purpose": "Show drop-off between main journey stages",
+      "stages": [
+        "landing_page_view",
+        "signup_started_or_completed",
+        "first_login",
+        "book_started",
+        "book_completed_or_export_ready",
+        "pdf_generated"
+      ],
+      "metrics": [
+        "count per stage",
+        "step-to-step conversion percentage",
+        "largest drop-off stage"
+      ],
+      "drilldown": "/admin/analytics/funnel",
+      "whyUseful": "Shows where growth is leaking and where UX or technical issues may exist."
+    },
+    {
+      "id": "W-006",
+      "title": "Recent Errors",
+      "type": "health_summary_widget",
+      "purpose": "Show platform stability snapshot",
+      "metrics": [
+        "count of recent errors in selected range",
+        "affected users count",
+        "top error category",
+        "top failing route/component if available"
+      ],
+      "drilldown": "/admin/errors",
+      "whyUseful": "Lets super admin quickly spot instability, especially after releases."
+    },
+    {
+      "id": "W-007",
+      "title": "Book Status Breakdown",
+      "type": "donut_or_bar_widget",
+      "purpose": "Show how books are distributed across lifecycle states",
+      "statuses": [
+        "draft",
+        "in_progress",
+        "export_ready",
+        "exported",
+        "failed_state_if_any"
+      ],
+      "drilldown": "/admin/projects",
+      "whyUseful": "Shows whether users are progressing or getting stuck."
+    },
+    {
+      "id": "W-008",
+      "title": "Export Jobs Breakdown",
+      "type": "donut_or_bar_widget",
+      "purpose": "Show current export workload and outcomes",
+      "statuses": [
+        "queued",
+        "processing",
+        "succeeded",
+        "failed",
+        "retry_queued"
+      ],
+      "drilldown": "/admin/exports",
+      "whyUseful": "Operational visibility into export pipeline state."
+    },
+    {
+      "id": "W-009",
+      "title": "Billing Plan Snapshot",
+      "type": "summary_widget",
+      "purpose": "Show current user distribution across plans where relevant",
+      "metrics": [
+        "free users",
+        "trial users",
+        "paid/premium users",
+        "manual entitlement users if any"
+      ],
+      "drilldown": "/admin/billing",
+      "whyUseful": "Useful for alpha monetisation readiness and support load forecasting."
+    },
+    {
+      "id": "W-010",
+      "title": "Recent Signups",
+      "type": "list_widget",
+      "purpose": "Show newest users for quick support and acquisition awareness",
+      "columns": ["name", "email", "signup_time", "plan", "onboarding_status"],
+      "drilldown": "/admin/users?sort=recent",
+      "whyUseful": "Helps during alpha when every new user matters."
+    },
+    {
+      "id": "W-011",
+      "title": "Recent Failed Exports",
+      "type": "list_widget",
+      "purpose": "Surface latest failed export jobs that may need attention",
+      "columns": [
+        "job_id",
+        "project_title",
+        "owner",
+        "failure_category",
+        "time"
+      ],
+      "drilldown": "/admin/exports?status=failed",
+      "whyUseful": "Fast access to the most urgent value-delivery issues."
+    },
+    {
+      "id": "W-012",
+      "title": "Recent Alerts / Operational Signals",
+      "type": "list_widget",
+      "purpose": "Surface notable recent platform events",
+      "examples": [
+        "error spike",
+        "retry spike",
+        "drop in funnel conversion",
+        "billing sync failures",
+        "high export failure rate"
+      ],
+      "drilldown": "/admin/alerts",
+      "whyUseful": "Gives super admin a concise action list rather than only passive stats."
+    }
+  ],
+  "superAdminUsefulInsights": [
+    {
+      "insight": "Are users coming in but not creating books?",
+      "widgets": [
+        "Total Users",
+        "Active Users",
+        "Books Created",
+        "Conversion Funnel Snapshot"
+      ]
+    },
+    {
+      "insight": "Are users creating books but failing at export?",
+      "widgets": [
+        "Books Created",
+        "Book Status Breakdown",
+        "Export Success Rate",
+        "Recent Failed Exports"
+      ]
+    },
+    {
+      "insight": "Is the product stable after release?",
+      "widgets": [
+        "Recent Errors",
+        "Export Jobs Breakdown",
+        "Recent Alerts / Operational Signals"
+      ]
+    },
+    {
+      "insight": "Are monetisation and sandbox states aligned?",
+      "widgets": [
+        "Billing Plan Snapshot",
+        "Conversion Funnel Snapshot",
+        "Export Success Rate"
+      ]
+    }
+  ],
+  "metricDefinitions": {
+    "totalUsers": {
+      "definition": "All distinct registered user accounts excluding deleted/test accounts unless explicitly included by filter."
+    },
+    "activeUsers": {
+      "definition": "Distinct users with qualifying activity in selected period, such as login, book creation, editing, answering prompts, or export attempt."
+    },
+    "booksCreated": {
+      "definition": "Count of distinct book/project records created in selected period and all-time total where applicable."
+    },
+    "exportSuccessRate": {
+      "definition": "Succeeded export jobs divided by succeeded + failed export jobs in selected period. Exclude queued/processing from denominator."
+    },
+    "conversionFunnel": {
+      "definition": "A stage-based summary of key user journey events from landing to PDF generation, using tracked analytics/internal events."
+    },
+    "recentErrors": {
+      "definition": "Recent application or system errors captured in selected period, grouped by severity/category, excluding noise if possible."
+    }
+  },
+  "dataSources": {
+    "internalSources": [
+      {
+        "domain": "users",
+        "metrics": ["total users", "recent signups", "active users"]
+      },
+      {
+        "domain": "projects/books",
+        "metrics": ["books created", "book status breakdown"]
+      },
+      {
+        "domain": "exports",
+        "metrics": [
+          "export success rate",
+          "export jobs breakdown",
+          "recent failed exports"
+        ]
+      },
+      {
+        "domain": "billing",
+        "metrics": ["billing plan snapshot", "trial/premium distribution"]
+      },
+      {
+        "domain": "errors/logging",
+        "metrics": ["recent errors", "affected users", "top error categories"]
+      },
+      {
+        "domain": "analytics events",
+        "metrics": ["conversion funnel snapshot"]
+      }
+    ],
+    "fallbackStrategy": [
+      "If some analytics source is unavailable, show widget with unavailable state rather than breaking the page",
+      "Allow dashboard to render partial data source success",
+      "Include last updated timestamp per widget or per dashboard response"
+    ]
+  },
+  "userStories": [
+    {
+      "id": "S49-US-001",
+      "title": "See platform health quickly",
+      "asA": "super admin",
+      "iWant": "to see a concise operational summary on admin home",
+      "soThat": "I can assess health without opening multiple modules"
+    },
+    {
+      "id": "S49-US-002",
+      "title": "See growth and engagement separately",
+      "asA": "super admin",
+      "iWant": "to compare total users, active users, and books created",
+      "soThat": "I can tell whether users are signing up and actually using the product"
+    },
+    {
+      "id": "S49-US-003",
+      "title": "See funnel drop-off",
+      "asA": "super admin",
+      "iWant": "to view a snapshot of the main conversion journey",
+      "soThat": "I can identify the highest-friction step"
+    },
+    {
+      "id": "S49-US-004",
+      "title": "See export reliability",
+      "asA": "super admin",
+      "iWant": "to monitor export success and recent failures",
+      "soThat": "I can respond quickly to user-impacting issues"
+    },
+    {
+      "id": "S49-US-005",
+      "title": "See recent errors",
+      "asA": "super admin",
+      "iWant": "to monitor system issues and affected areas",
+      "soThat": "I can catch regressions early"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Dashboard home route",
+      "requirements": [
+        "Provide /admin dashboard homepage as the primary landing page after admin login",
+        "Dashboard must be accessible only to roles with dashboard.view",
+        "Dashboard must load summary widgets from server-side aggregated APIs"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Date range support",
+      "requirements": [
+        "Allow selected ranges such as today, 7 days, 30 days, and custom range",
+        "All range-sensitive widgets should update together",
+        "Widgets using all-time totals may still show range-based secondary change values"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Top KPI cards",
+      "requirements": [
+        "Display total users",
+        "Display active users",
+        "Display books created",
+        "Display export success rate",
+        "Each KPI card should support primary value, secondary comparison, and drill-down link where allowed"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Conversion funnel snapshot",
+      "requirements": [
+        "Show main funnel stages from landing to PDF generation",
+        "Show counts and percentages between stages",
+        "Highlight largest drop-off stage",
+        "Allow drill-down to deeper analytics page later"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Recent errors widget",
+      "requirements": [
+        "Show recent error count in selected range",
+        "Show top categories and affected users count where available",
+        "Show latest/severe recent errors in compact list or summary panel",
+        "Link to detailed errors page when implemented"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Books and export operational widgets",
+      "requirements": [
+        "Show book status breakdown",
+        "Show export jobs breakdown",
+        "Show recent failed exports",
+        "Allow drill-down to projects/exports admin pages"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Recent operational activity widgets",
+      "requirements": [
+        "Show recent signups",
+        "Show recent failed exports",
+        "Show recent alerts or operational signals if available",
+        "Keep lists short and scannable"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Billing/plan snapshot",
+      "requirements": [
+        "Show plan distribution if billing data exists",
+        "At minimum show free/trial/premium/manual entitlement counts",
+        "Hide widget gracefully if billing module unavailable"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Graceful loading and partial failure handling",
+      "requirements": [
+        "Dashboard must still render if one or more widgets fail to load",
+        "Each widget should support loading, empty, unavailable, and error states",
+        "Do not block the whole dashboard on a single slow data source"
+      ]
+    },
+    {
+      "id": "FR-010",
+      "title": "Permission-aware dashboard",
+      "requirements": [
+        "Only show widgets the current role is allowed to view",
+        "Only show drill-down actions if destination permission exists",
+        "Sensitive widgets should not leak hidden data through summary text"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "note": "You can use one aggregated dashboard endpoint or multiple widget endpoints. Prefer one dashboard-summary endpoint for initial load plus optional widget-specific endpoints later.",
+    "recommendedEndpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/dashboard/summary",
+        "purpose": "Return all top-level dashboard widget data for selected range",
+        "auth": "admin required",
+        "permission": "dashboard.view",
+        "queryParams": ["rangePreset", "dateFrom", "dateTo"]
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/dashboard/funnel",
+        "purpose": "Return funnel stage counts and conversion percentages",
+        "auth": "admin required",
+        "permission": "dashboard.view"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/dashboard/errors",
+        "purpose": "Return recent error summary widget data",
+        "auth": "admin required",
+        "permission": "dashboard.view"
+      }
+    ],
+    "responseModels": {
+      "AdminDashboardSummaryResponse": {
+        "range": {
+          "preset": "string",
+          "dateFrom": "string",
+          "dateTo": "string"
+        },
+        "kpis": {
+          "totalUsers": {
+            "value": "number",
+            "delta": "number|null",
+            "deltaLabel": "string|null"
+          },
+          "activeUsers": {
+            "value": "number",
+            "delta": "number|null",
+            "deltaLabel": "string|null"
+          },
+          "booksCreated": {
+            "value": "number",
+            "delta": "number|null",
+            "deltaLabel": "string|null"
+          },
+          "exportSuccessRate": {
+            "value": "number",
+            "unit": "percentage",
+            "delta": "number|null"
+          }
+        },
+        "funnel": {
+          "stages": "array"
+        },
+        "bookStatusBreakdown": {
+          "items": "array"
+        },
+        "exportStatusBreakdown": {
+          "items": "array"
+        },
+        "billingPlanSnapshot": {
+          "items": "array|null"
+        },
+        "recentErrors": {
+          "count": "number",
+          "topCategories": "array",
+          "affectedUsers": "number|null",
+          "latestItems": "array"
+        },
+        "recentSignups": {
+          "items": "array"
+        },
+        "recentFailedExports": {
+          "items": "array"
+        },
+        "recentAlerts": {
+          "items": "array|null"
+        },
+        "lastUpdatedAt": "string"
+      }
+    }
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin",
+        "title": "Dashboard",
+        "purpose": "Operational home for super admin with platform-wide widgets and drill-down links."
+      }
+    ],
+    "components": [
+      "DashboardRangeSelector",
+      "KpiCard",
+      "FunnelSnapshotCard",
+      "StatusBreakdownChart",
+      "ErrorsSummaryCard",
+      "RecentSignupsList",
+      "RecentFailedExportsList",
+      "RecentAlertsList",
+      "BillingPlanSnapshotCard",
+      "WidgetShell",
+      "DashboardEmptyState",
+      "DashboardUnavailableState"
+    ],
+    "uxRules": [
+      "Use scan-friendly layout with strong visual hierarchy",
+      "Place highest-value KPIs first",
+      "Use charts only where they improve clarity, not decoration",
+      "Every widget should have a title, metric definition tooltip, and drill-down action where relevant",
+      "Keep the page useful even with low-volume alpha traffic"
+    ]
+  },
+  "visualisationGuidance": {
+    "kpiCards": [
+      "Use a large primary number",
+      "Show previous-period delta in smaller text",
+      "Use a subtle trend indicator if available"
+    ],
+    "funnelWidget": [
+      "Use step cards or vertical funnel bars",
+      "Show count and conversion rate between each step",
+      "Highlight biggest drop in the journey"
+    ],
+    "statusBreakdowns": [
+      "Use donut or horizontal bar chart",
+      "Show exact counts alongside percentages"
+    ],
+    "recentLists": [
+      "Limit to 5-10 rows",
+      "Use status badges and timestamps",
+      "Provide View All link"
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T49-001",
+      "title": "Define dashboard metrics contract",
+      "description": "Document exact metric definitions, date-range behaviour, exclusions, and comparison rules.",
+      "deliverables": [
+        "metrics definition doc",
+        "typed dashboard response contract"
+      ]
+    },
+    {
+      "id": "T49-002",
+      "title": "Build dashboard summary aggregation service",
+      "description": "Create backend aggregation layer that composes users, projects, exports, billing, analytics, and error summaries into one dashboard response.",
+      "deliverables": [
+        "dashboard summary service",
+        "data source adapters",
+        "fallback handling"
+      ]
+    },
+    {
+      "id": "T49-003",
+      "title": "Build dashboard APIs",
+      "description": "Implement permission-guarded admin dashboard endpoints for summary and optional widget drill-down data.",
+      "deliverables": [
+        "GET /api/admin/dashboard/summary",
+        "optional widget-specific endpoints",
+        "input validation"
+      ]
+    },
+    {
+      "id": "T49-004",
+      "title": "Build dashboard UI shell",
+      "description": "Create /admin dashboard page, section layout, range selector, and widget grid.",
+      "deliverables": [
+        "/admin page update",
+        "dashboard grid layout",
+        "responsive widget shell"
+      ]
+    },
+    {
+      "id": "T49-005",
+      "title": "Implement KPI widgets",
+      "description": "Build KPI cards for total users, active users, books created, and export success rate.",
+      "deliverables": ["4 KPI cards", "delta logic", "loading/error states"]
+    },
+    {
+      "id": "T49-006",
+      "title": "Implement funnel widget",
+      "description": "Build conversion funnel snapshot widget using tracked stage events.",
+      "deliverables": [
+        "funnel widget UI",
+        "largest drop-off highlight",
+        "drill-down action"
+      ]
+    },
+    {
+      "id": "T49-007",
+      "title": "Implement reliability widgets",
+      "description": "Build recent errors summary, export breakdown, and recent failed exports widgets.",
+      "deliverables": [
+        "errors widget",
+        "export status chart",
+        "failed exports list"
+      ]
+    },
+    {
+      "id": "T49-008",
+      "title": "Implement growth/activity widgets",
+      "description": "Build recent signups, book status breakdown, and optional billing plan snapshot widgets.",
+      "deliverables": [
+        "recent signups widget",
+        "book status chart",
+        "billing snapshot widget"
+      ]
+    },
+    {
+      "id": "T49-009",
+      "title": "Permission-aware widget rendering",
+      "description": "Ensure widgets and drill-down links render only when current admin has required permissions.",
+      "deliverables": ["widget visibility rules", "safe fallback states"]
+    },
+    {
+      "id": "T49-010",
+      "title": "Testing",
+      "description": "Add unit, integration, and E2E coverage for dashboard metrics and widget rendering.",
+      "deliverables": [
+        "aggregation tests",
+        "permission tests",
+        "dashboard UI smoke tests"
+      ]
+    }
+  ],
+  "metricComputationNotes": {
+    "rangeComparison": "Compare selected date range to immediately preceding equal-length period where possible.",
+    "activeUserQualifyingEvents": [
+      "login",
+      "book_created",
+      "book_updated",
+      "story_question_answered",
+      "asset_uploaded",
+      "export_requested"
+    ],
+    "booksCreatedQualifyingRule": "Count books by created_at in selected range, regardless of current state.",
+    "exportSuccessRule": "Use export job results from selected range; exclude queued and processing from denominator.",
+    "recentErrorsRule": "Prefer deduplicated grouped errors plus affected users rather than raw event volume only."
+  },
+  "observability": {
+    "events": [
+      "admin_dashboard_viewed",
+      "admin_dashboard_range_changed",
+      "admin_dashboard_widget_drilldown_clicked"
+    ],
+    "metrics": [
+      "dashboard API response time",
+      "widget load failure count",
+      "dashboard view count by role",
+      "stale data source count"
+    ],
+    "loggingNotes": [
+      "Log dashboard failures by widget/source to help operational debugging",
+      "Do not expose raw secrets or PII in logs",
+      "Track which data source was unavailable when partial rendering occurs"
+    ]
+  },
+  "securityRequirements": [
+    "Dashboard endpoints must be protected by admin auth and dashboard.view permission",
+    "Only show summary-level data by default; detailed user-level data belongs in drill-down pages",
+    "Sensitive widgets such as billing snapshot must follow permission checks",
+    "Dashboard must remain noindex and excluded from public sitemap",
+    "Unauthorised roles must not infer hidden widget data via partial payload leaks"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a super_admin",
+      "when": "they open /admin",
+      "then": "they see KPI widgets for total users, active users, books created, and export success rate"
+    },
+    {
+      "id": "AC-002",
+      "given": "a super_admin",
+      "when": "they view the dashboard",
+      "then": "they see a conversion funnel snapshot with stage counts, conversion percentages, and largest drop-off"
+    },
+    {
+      "id": "AC-003",
+      "given": "a super_admin",
+      "when": "they view the dashboard",
+      "then": "they see recent errors summary and recent failed exports"
+    },
+    {
+      "id": "AC-004",
+      "given": "a selected date range",
+      "when": "the dashboard reloads",
+      "then": "all range-sensitive widgets update consistently"
+    },
+    {
+      "id": "AC-005",
+      "given": "one widget data source is unavailable",
+      "when": "the dashboard loads",
+      "then": "the rest of the dashboard still renders and the failing widget shows an unavailable state"
+    },
+    {
+      "id": "AC-006",
+      "given": "an admin role without permission for a drill-down module",
+      "when": "they view the dashboard",
+      "then": "that widget link/action is hidden or disabled safely"
+    },
+    {
+      "id": "AC-007",
+      "given": "an unauthorised user",
+      "when": "they attempt to access dashboard route or API",
+      "then": "the request is rejected"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "metric definition helpers compute totals and deltas correctly",
+      "export success rate denominator excludes queued and processing jobs",
+      "funnel computation identifies largest drop-off correctly",
+      "widget visibility logic respects role permissions"
+    ],
+    "integrationTests": [
+      "GET /api/admin/dashboard/summary requires dashboard.view",
+      "dashboard summary aggregates user/project/export data correctly",
+      "partial data source failure still returns renderable response",
+      "billing widget omitted or hidden for roles without billing permission"
+    ],
+    "e2eTests": [
+      "super_admin opens dashboard and sees all primary widgets",
+      "changing date range refreshes widgets",
+      "drill-down click opens allowed destination module",
+      "support_admin sees restricted dashboard version if configured"
+    ],
+    "negativeTests": [
+      "unauthorised actor cannot access dashboard API",
+      "hidden widget data is not leaked in payload for disallowed roles",
+      "invalid date range input returns safe validation error"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Metrics become inconsistent across modules",
+      "impact": "Loss of trust in admin dashboard",
+      "mitigation": "Define and document each metric centrally and reuse shared aggregation logic"
+    },
+    {
+      "risk": "Dashboard becomes noisy and hard to scan",
+      "impact": "Reduced operational usefulness",
+      "mitigation": "Keep v1 focused on a small set of high-signal widgets and clear hierarchy"
+    },
+    {
+      "risk": "Some analytics sources are missing in early alpha",
+      "impact": "Incomplete widgets",
+      "mitigation": "Support graceful unavailable states and ship with core internal metrics first"
+    },
+    {
+      "risk": "High-cost aggregation slows dashboard load",
+      "impact": "Poor admin UX",
+      "mitigation": "Use pre-aggregations/caching where needed and separate heavy widgets if necessary"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define metric contract and range behaviour",
+      "Implement backend summary aggregation service",
+      "Build dashboard page shell and range selector",
+      "Add KPI cards",
+      "Add funnel widget",
+      "Add export/error widgets",
+      "Add recent activity widgets",
+      "Harden permission logic and partial failure handling",
+      "Add tests"
+    ],
+    "futureSprintHooks": [
+      "Sprint 50: Feature flags and operational controls",
+      "Future: deeper analytics page",
+      "Future: alerting and anomaly detection",
+      "Future: scheduled admin summary emails"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin dashboard homepage exists with key operational widgets",
+    "Top KPI cards show total users, active users, books created, and export success rate",
+    "Conversion funnel snapshot exists and is range-aware",
+    "Recent errors summary exists",
+    "Recent failed exports and recent signups widgets exist",
+    "Widget drill-down links connect to relevant admin modules",
+    "Dashboard renders gracefully under partial data source failures",
+    "Permissions are enforced server-side and in widget rendering",
+    "Automated tests cover metric logic, permissions, and core dashboard rendering"
+  ]
+}

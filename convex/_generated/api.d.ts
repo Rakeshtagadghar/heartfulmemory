@@ -14,6 +14,7 @@ import type * as adminBilling from "../adminBilling.js";
 import type * as adminDashboard from "../adminDashboard.js";
 import type * as adminExports from "../adminExports.js";
 import type * as adminLookup from "../adminLookup.js";
+import type * as adminTemplates from "../adminTemplates.js";
 import type * as adminUsers from "../adminUsers.js";
 import type * as ai_answersNarrate from "../ai/answersNarrate.js";
 import type * as ai_chapterNarratives from "../ai/chapterNarratives.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   adminDashboard: typeof adminDashboard;
   adminExports: typeof adminExports;
   adminLookup: typeof adminLookup;
+  adminTemplates: typeof adminTemplates;
   adminUsers: typeof adminUsers;
   "ai/answersNarrate": typeof ai_answersNarrate;
   "ai/chapterNarratives": typeof ai_chapterNarratives;
