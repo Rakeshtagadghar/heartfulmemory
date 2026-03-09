@@ -9,6 +9,8 @@
  */
 
 import type * as account_setPassword from "../account/setPassword.js";
+import type * as adminAuditLogs from "../adminAuditLogs.js";
+import type * as adminUsers from "../adminUsers.js";
 import type * as ai_answersNarrate from "../ai/answersNarrate.js";
 import type * as ai_chapterNarratives from "../ai/chapterNarratives.js";
 import type * as ai_entitiesExtractor from "../ai/entitiesExtractor.js";
@@ -64,6 +66,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "account/setPassword": typeof account_setPassword;
+  adminAuditLogs: typeof adminAuditLogs;
+  adminUsers: typeof adminUsers;
   "ai/answersNarrate": typeof ai_answersNarrate;
   "ai/chapterNarratives": typeof ai_chapterNarratives;
   "ai/entitiesExtractor": typeof ai_entitiesExtractor;

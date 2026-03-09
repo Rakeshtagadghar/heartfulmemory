@@ -729,6 +729,38 @@ export default defineSchema({
   })
     .index("by_storybookId", ["storybookId"])
     .index("by_storybookId_orderIndex", ["storybookId", "orderIndex"]),
+  // Sprint 45: Admin Console – admin users and audit logs
+  adminUsers: defineTable({
+    userId: v.string(),
+    role: v.union(
+      v.literal("super_admin"),
+      v.literal("support_admin"),
+      v.literal("content_admin")
+    ),
+    status: v.union(v.literal("active"), v.literal("disabled")),
+    createdBy: v.optional(v.union(v.string(), v.null())),
+    lastLoginAt: v.optional(v.union(v.number(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_role", ["role"])
+    .index("by_status", ["status"]),
+  adminAuditLogs: defineTable({
+    adminUserId: v.optional(v.union(v.string(), v.null())),
+    actorUserId: v.optional(v.union(v.string(), v.null())),
+    eventType: v.string(),
+    resourceType: v.optional(v.union(v.string(), v.null())),
+    resourceId: v.optional(v.union(v.string(), v.null())),
+    action: v.string(),
+    metadataJson: v.optional(v.union(v.any(), v.null())),
+    ipAddress: v.optional(v.union(v.string(), v.null())),
+    userAgent: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.number()
+  })
+    .index("by_adminUserId", ["adminUserId"])
+    .index("by_eventType", ["eventType"])
+    .index("by_createdAt", ["createdAt"]),
   chapterNarratives: defineTable({
     storybookId: v.id("storybooks"),
     chapterInstanceId: v.id("storybookChapters"),

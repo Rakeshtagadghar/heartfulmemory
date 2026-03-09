@@ -42,12 +42,14 @@ export function AppShell({
   children,
   email,
   profile,
-  suppressDisplayNameFallback = false
+  suppressDisplayNameFallback = false,
+  isAdmin = false,
 }: {
   children: ReactNode;
   email: string | null | undefined;
   profile: ProfileRecord | null;
   suppressDisplayNameFallback?: boolean;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const selectedSegments = useSelectedLayoutSegments();
@@ -111,6 +113,14 @@ export function AppShell({
                   <Link href="/app" className={navLinkClass(dashboardActive)}>Dashboard</Link>
                   <Link href="/create/template" className={navLinkClass(templatesActive)}>Templates</Link>
                   <Link href="/app/onboarding" className={navLinkClass(onboardingActive)}>Onboarding</Link>
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300 transition hover:bg-rose-500/20"
+                    >
+                      Admin
+                    </Link>
+                  )}
                   <AlphaBadge onLearnMore={() => setAlphaInfoOpen(true)} />
                   <div className="hidden lg:block">
                     <PlanStatusBanner compact />

@@ -1,0 +1,731 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 45,
+    "sprintTitle": "Admin Console v1 - Admin Auth + RBAC",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Introduce a secure Admin Console authentication and role-based access control foundation so authorised internal users can access operational tools without exposing customer data or privileged actions to normal users.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Auth and onboarding foundations",
+        "Storybook/project creation flows",
+        "Layout and PDF export pipeline",
+        "Billing and sandbox upgrade messaging",
+        "GA4 / funnel analytics planning",
+        "Featurebase + messenger widget planning",
+        "SEO/public page hardening",
+        "Error handling and graceful recovery planning"
+      ],
+      "whyNow": [
+        "Public launch and alpha operations need internal visibility and controlled access",
+        "Support, export troubleshooting, billing review, and moderation will require privileged screens",
+        "Admin must be isolated from normal user auth and protected with auditable permissions"
+      ]
+    },
+    "nonGoals": [
+      "Full admin dashboard implementation for all modules",
+      "Detailed analytics visualisations",
+      "Template/content management CRUD",
+      "Refund workflows or direct payment operations",
+      "User impersonation",
+      "Bulk admin actions",
+      "Public backoffice APIs for third parties"
+    ],
+    "dependencies": [
+      "Existing app authentication provider/session layer",
+      "Primary database user table",
+      "Ability to add server-side middleware/guards",
+      "Audit log persistence table or equivalent"
+    ]
+  },
+  "successMetrics": {
+    "security": [
+      "0 normal authenticated users can access admin routes",
+      "0 unauthorised API calls to admin endpoints succeed",
+      "All admin actions are attributable to an admin identity"
+    ],
+    "operational": [
+      "Internal admins can log in and reach the admin console",
+      "Admin roles restrict visibility and actions correctly",
+      "Audit logs are generated for auth and privileged actions"
+    ],
+    "quality": [
+      "Permission guard coverage for 100% of admin routes and APIs",
+      "Role checks are centralised, not duplicated ad hoc in UI",
+      "Admin auth and RBAC flows are covered by automated tests"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Full system operator with access to all admin modules and privileged actions."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Can inspect users, projects, and export states to resolve support issues, but cannot change system-wide security settings."
+    },
+    {
+      "name": "Content Admin",
+      "description": "Can manage templates, prompts, public content, and moderate content, but cannot access sensitive billing or security controls."
+    },
+    {
+      "name": "Normal App User",
+      "description": "Regular Memorioso customer. Must never gain admin access."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Dedicated admin route group and layout",
+      "Admin-only authentication gate",
+      "Admin user record or role mapping",
+      "RBAC role and permission model",
+      "Server-side authorization middleware/guards",
+      "Client-side permission-aware navigation",
+      "Audit logging for admin login and privileged actions",
+      "Admin session handling",
+      "Seed/bootstrap flow for initial super admin",
+      "Admin access denied states",
+      "Test coverage for auth and permission boundaries"
+    ],
+    "outOfScope": [
+      "SSO with enterprise IdP",
+      "2FA enforcement",
+      "Granular field-level masking beyond defined scope",
+      "Advanced ABAC or policy engine",
+      "Delegated admin invitations by non-super-admins",
+      "Cross-tenant support tooling"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Keep admin access within the same application stack but fully isolated via dedicated route namespace, dedicated permission checks, and server-side enforcement. Use role-to-permission mapping with a small fixed role set for v1.",
+    "routeNamespace": "/admin",
+    "authStrategy": {
+      "preferred": "Reuse existing authentication/session provider, then layer an admin eligibility check on top.",
+      "fallback": "Separate admin sign-in page using same auth backend but only allowing users flagged as admin.",
+      "rules": [
+        "Authentication alone is not sufficient; admin role must also be present",
+        "All admin route and API checks must be enforced server-side",
+        "Client-side checks are UX only and not security boundaries"
+      ]
+    },
+    "rbacModel": {
+      "type": "Role-based access control with permission strings",
+      "v1Roles": ["super_admin", "support_admin", "content_admin"],
+      "principles": [
+        "Least privilege by default",
+        "Deny by default",
+        "Single source of truth for permissions",
+        "Explicit permission checks per module/action"
+      ]
+    }
+  },
+  "dataModel": {
+    "tables": [
+      {
+        "name": "admin_users",
+        "purpose": "Maps a primary user account to admin eligibility and role.",
+        "fields": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "required": true,
+            "notes": "Primary key"
+          },
+          {
+            "name": "user_id",
+            "type": "uuid",
+            "required": true,
+            "notes": "FK to app user/auth user, unique"
+          },
+          {
+            "name": "role",
+            "type": "enum",
+            "required": true,
+            "allowedValues": ["super_admin", "support_admin", "content_admin"]
+          },
+          {
+            "name": "status",
+            "type": "enum",
+            "required": true,
+            "allowedValues": ["active", "disabled"]
+          },
+          { "name": "created_at", "type": "timestamp", "required": true },
+          { "name": "updated_at", "type": "timestamp", "required": true },
+          {
+            "name": "created_by",
+            "type": "uuid",
+            "required": false,
+            "notes": "Admin who granted access"
+          },
+          { "name": "last_login_at", "type": "timestamp", "required": false }
+        ],
+        "indexes": ["unique(user_id)", "index(role)", "index(status)"]
+      },
+      {
+        "name": "admin_audit_logs",
+        "purpose": "Stores security and privileged admin events.",
+        "fields": [
+          {
+            "name": "id",
+            "type": "uuid",
+            "required": true,
+            "notes": "Primary key"
+          },
+          {
+            "name": "admin_user_id",
+            "type": "uuid",
+            "required": false,
+            "notes": "Null allowed for denied attempts if needed"
+          },
+          {
+            "name": "actor_user_id",
+            "type": "uuid",
+            "required": false,
+            "notes": "Underlying authenticated user id"
+          },
+          {
+            "name": "event_type",
+            "type": "string",
+            "required": true,
+            "examples": [
+              "admin_login_success",
+              "admin_login_denied",
+              "role_updated",
+              "admin_route_accessed"
+            ]
+          },
+          {
+            "name": "resource_type",
+            "type": "string",
+            "required": false,
+            "examples": ["user", "project", "billing", "template"]
+          },
+          { "name": "resource_id", "type": "string", "required": false },
+          {
+            "name": "action",
+            "type": "string",
+            "required": true,
+            "examples": ["view", "update_role", "disable_admin", "access"]
+          },
+          { "name": "metadata_json", "type": "json", "required": false },
+          { "name": "ip_address", "type": "string", "required": false },
+          { "name": "user_agent", "type": "string", "required": false },
+          { "name": "created_at", "type": "timestamp", "required": true }
+        ],
+        "indexes": [
+          "index(admin_user_id)",
+          "index(event_type)",
+          "index(created_at)"
+        ]
+      }
+    ],
+    "optionalFutureTables": [
+      {
+        "name": "admin_role_permissions",
+        "whenNeeded": "Only if roles become configurable rather than code-defined."
+      }
+    ]
+  },
+  "permissionModel": {
+    "permissionStrings": [
+      "dashboard.view",
+      "users.view",
+      "users.manage_admin_roles",
+      "projects.view",
+      "exports.view",
+      "exports.retry",
+      "billing.view",
+      "templates.view",
+      "templates.manage",
+      "content.moderate",
+      "support.view",
+      "feature_flags.view",
+      "feature_flags.manage",
+      "audit_logs.view"
+    ],
+    "roleMatrix": {
+      "super_admin": [
+        "dashboard.view",
+        "users.view",
+        "users.manage_admin_roles",
+        "projects.view",
+        "exports.view",
+        "exports.retry",
+        "billing.view",
+        "templates.view",
+        "templates.manage",
+        "content.moderate",
+        "support.view",
+        "feature_flags.view",
+        "feature_flags.manage",
+        "audit_logs.view"
+      ],
+      "support_admin": [
+        "dashboard.view",
+        "users.view",
+        "projects.view",
+        "exports.view",
+        "exports.retry",
+        "support.view"
+      ],
+      "content_admin": [
+        "dashboard.view",
+        "templates.view",
+        "templates.manage",
+        "content.moderate",
+        "support.view"
+      ]
+    }
+  },
+  "userStories": [
+    {
+      "id": "S45-US-001",
+      "title": "Admin can sign in to admin console",
+      "asA": "authorised admin",
+      "iWant": "to access a protected admin area",
+      "soThat": "I can perform internal operational tasks securely"
+    },
+    {
+      "id": "S45-US-002",
+      "title": "Normal users are blocked from admin area",
+      "asA": "normal Memorioso user",
+      "iWant": "admin routes to be inaccessible to me",
+      "soThat": "privileged data and controls remain protected"
+    },
+    {
+      "id": "S45-US-003",
+      "title": "Role-based module visibility",
+      "asA": "support or content admin",
+      "iWant": "to see only the modules I am permitted to use",
+      "soThat": "the UI matches my responsibilities"
+    },
+    {
+      "id": "S45-US-004",
+      "title": "Server-side permission enforcement",
+      "asA": "system owner",
+      "iWant": "API and route authorization enforced on the server",
+      "soThat": "client-side bypasses cannot expose privileged functionality"
+    },
+    {
+      "id": "S45-US-005",
+      "title": "Audit privileged access",
+      "asA": "system owner",
+      "iWant": "admin auth and sensitive actions logged",
+      "soThat": "I can trace who did what and when"
+    },
+    {
+      "id": "S45-US-006",
+      "title": "Bootstrap initial super admin",
+      "asA": "technical owner",
+      "iWant": "a safe way to create the first super admin",
+      "soThat": "the admin console can be used without manual DB confusion"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Dedicated admin entrypoint",
+      "requirements": [
+        "Add an /admin route group with isolated layout and navigation",
+        "Unauthenticated visitors attempting /admin are redirected to sign-in",
+        "Authenticated non-admin users attempting /admin receive access denied or safe redirect"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Admin eligibility lookup",
+      "requirements": [
+        "After authentication, system checks whether the user exists in admin_users with active status",
+        "Disabled admins cannot access admin area even if they remain normally authenticated",
+        "Admin eligibility check must be available to both route guards and APIs"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Role resolution and permission mapping",
+      "requirements": [
+        "System resolves current admin role for each request/session",
+        "Permissions are computed from a central role-permission map",
+        "Unknown or missing roles must fail closed"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Admin navigation rendering",
+      "requirements": [
+        "Admin sidebar/top nav only shows modules permitted for current admin",
+        "Hidden nav items are not sufficient security; matching route guards are still required",
+        "Optional disabled-state messaging may be shown for discoverability only if safe"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Admin API authorization",
+      "requirements": [
+        "All admin APIs require authenticated admin context",
+        "Each endpoint checks required permission string before executing action",
+        "Forbidden responses use consistent error shape"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Admin session UX",
+      "requirements": [
+        "Admin users can sign out cleanly",
+        "Admin layout shows current admin identity and role",
+        "Expired sessions should redirect to sign-in without exposing sensitive state"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Audit logging",
+      "requirements": [
+        "Log admin login success",
+        "Log denied admin access attempts where feasible",
+        "Log admin role changes",
+        "Log access to sensitive modules and privileged actions where feasible in v1",
+        "Audit logs must include timestamp and actor identity"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Initial admin bootstrap",
+      "requirements": [
+        "Provide a secure bootstrap method to create the first super_admin",
+        "Bootstrap path must not remain publicly callable after setup",
+        "Bootstrap action must be documented for local, staging, and production use"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Admin role management v1",
+      "requirements": [
+        "Only super_admin can grant, change, disable, or reactivate admin roles",
+        "Support_admin and content_admin cannot manage other admins",
+        "System prevents removal of the last active super_admin without explicit safe-guard logic"
+      ]
+    },
+    {
+      "id": "FR-010",
+      "title": "Access denied handling",
+      "requirements": [
+        "Show clear but non-revealing access denied page/state for forbidden modules",
+        "Do not leak existence of protected records or actions in error messages",
+        "Forbidden and unauthenticated states must be distinguishable internally for logging"
+      ]
+    }
+  ],
+  "technicalTasks": [
+    {
+      "id": "T45-001",
+      "title": "Define admin domain model",
+      "description": "Create admin_users and admin_audit_logs schema, enums, indexes, and migrations.",
+      "deliverables": ["DB migration files", "Type definitions", "Schema docs"]
+    },
+    {
+      "id": "T45-002",
+      "title": "Create central RBAC module",
+      "description": "Implement role enum, permission constants, role-to-permission map, and helper functions such as hasPermission and requirePermission.",
+      "deliverables": ["rbac constants", "permission helpers", "unit tests"]
+    },
+    {
+      "id": "T45-003",
+      "title": "Implement admin auth guard",
+      "description": "Build server-side middleware/guard for /admin routes and admin APIs using current auth/session provider.",
+      "deliverables": [
+        "route guard",
+        "api guard",
+        "redirect/forbidden handling"
+      ]
+    },
+    {
+      "id": "T45-004",
+      "title": "Build admin shell",
+      "description": "Add /admin layout, placeholder dashboard page, role-aware navigation, current admin identity chip, and sign-out.",
+      "deliverables": [
+        "admin layout",
+        "sidebar or top nav",
+        "placeholder pages"
+      ]
+    },
+    {
+      "id": "T45-005",
+      "title": "Add admin bootstrap flow",
+      "description": "Provide documented secure method to seed first super admin via script, env-protected endpoint, or migration-time tool.",
+      "deliverables": ["bootstrap script/flow", "ops runbook"]
+    },
+    {
+      "id": "T45-006",
+      "title": "Add admin role management API surface",
+      "description": "Create minimal internal APIs for super_admin to list admins, assign role, disable admin, reactivate admin.",
+      "deliverables": [
+        "admin management endpoints",
+        "validation",
+        "permission checks"
+      ]
+    },
+    {
+      "id": "T45-007",
+      "title": "Audit logging integration",
+      "description": "Write audit events for sign-in success/failure and admin role mutations.",
+      "deliverables": [
+        "audit logger helper",
+        "event taxonomy",
+        "persistence wiring"
+      ]
+    },
+    {
+      "id": "T45-008",
+      "title": "Access denied and forbidden UX",
+      "description": "Add reusable forbidden state component/page for admin module access failures.",
+      "deliverables": ["403 page/state", "safe messaging"]
+    },
+    {
+      "id": "T45-009",
+      "title": "Testing",
+      "description": "Add unit, integration, and route protection tests.",
+      "deliverables": [
+        "RBAC unit tests",
+        "middleware tests",
+        "API authorization tests",
+        "smoke E2E coverage"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "note": "Naming is indicative; adapt to existing app conventions.",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/me",
+        "purpose": "Returns current admin identity, role, and effective permissions.",
+        "auth": "admin required",
+        "permission": "any active admin"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/admin-users",
+        "purpose": "List admin users and statuses.",
+        "auth": "admin required",
+        "permission": "users.manage_admin_roles"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/admin-users",
+        "purpose": "Grant admin role to an existing app user.",
+        "auth": "admin required",
+        "permission": "users.manage_admin_roles"
+      },
+      {
+        "method": "PATCH",
+        "path": "/api/admin/admin-users/:adminUserId",
+        "purpose": "Change role, disable, or reactivate admin.",
+        "auth": "admin required",
+        "permission": "users.manage_admin_roles"
+      }
+    ],
+    "errorShape": {
+      "success": false,
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "You do not have permission to perform this action."
+      }
+    }
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin",
+        "title": "Admin Dashboard",
+        "purpose": "Placeholder landing page confirming admin access and surfacing role-aware modules."
+      },
+      {
+        "path": "/admin/admin-users",
+        "title": "Admin Users",
+        "purpose": "Minimal internal page for viewing and managing admin roles."
+      },
+      {
+        "path": "/admin/forbidden",
+        "title": "Access Denied",
+        "purpose": "Reusable forbidden state."
+      }
+    ],
+    "components": [
+      "AdminLayout",
+      "AdminNav",
+      "RoleBadge",
+      "PermissionGate",
+      "ForbiddenState",
+      "AdminUserTable"
+    ],
+    "uxRules": [
+      "Admin UI should clearly indicate the operator is in Admin Console",
+      "Use a visually distinct shell from customer-facing app",
+      "Avoid clutter; only show modules relevant to role",
+      "Do not expose internal IDs or sensitive raw metadata unless necessary",
+      "Use confirmation for destructive role actions like disable admin"
+    ]
+  },
+  "securityRequirements": [
+    "All admin authorization decisions must happen server-side",
+    "No admin data should be returned from public/user APIs",
+    "Admin routes must not be indexable by search engines",
+    "Sensitive admin pages should set noindex and be excluded from sitemap",
+    "Role changes must be audit logged",
+    "Disabled admins lose admin access immediately on next authorization check",
+    "The system must not trust role information coming only from client state",
+    "Prevent privilege escalation by disallowing self-promotion from non-super-admin roles",
+    "Prevent deletion/disable of the final active super_admin unless a safe replacement exists",
+    "Avoid leaking whether a target user exists when unauthorised"
+  ],
+  "observability": {
+    "events": [
+      "admin_login_success",
+      "admin_login_denied",
+      "admin_logout",
+      "admin_role_granted",
+      "admin_role_changed",
+      "admin_role_disabled",
+      "admin_page_viewed",
+      "admin_api_forbidden"
+    ],
+    "metrics": [
+      "count of successful admin logins",
+      "count of denied admin access attempts",
+      "count of active admins by role",
+      "count of forbidden API responses",
+      "count of role changes"
+    ],
+    "loggingNotes": [
+      "Do not log secrets or tokens",
+      "Mask or minimise personal data in application logs",
+      "Audit logs are for traceability; app logs are for debugging"
+    ]
+  },
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a normal authenticated user",
+      "when": "they navigate to /admin",
+      "then": "they are denied access and cannot view admin content"
+    },
+    {
+      "id": "AC-002",
+      "given": "an active support_admin",
+      "when": "they sign in and open /admin",
+      "then": "they can access the admin console and only see modules allowed for support_admin"
+    },
+    {
+      "id": "AC-003",
+      "given": "an active content_admin",
+      "when": "they attempt to call a billing admin API",
+      "then": "the request is rejected with a forbidden response"
+    },
+    {
+      "id": "AC-004",
+      "given": "a super_admin",
+      "when": "they grant admin access to an existing user",
+      "then": "the new admin record is created and the action is audit logged"
+    },
+    {
+      "id": "AC-005",
+      "given": "a disabled admin",
+      "when": "they attempt to access the admin console",
+      "then": "they are denied even if their base user session remains valid"
+    },
+    {
+      "id": "AC-006",
+      "given": "an admin action that requires a specific permission",
+      "when": "the current admin lacks that permission",
+      "then": "both the UI path and the API path are blocked"
+    },
+    {
+      "id": "AC-007",
+      "given": "the first production deployment of admin console",
+      "when": "ops follow the bootstrap runbook",
+      "then": "exactly one initial super_admin can be created securely"
+    },
+    {
+      "id": "AC-008",
+      "given": "an admin login or role mutation",
+      "when": "the event completes",
+      "then": "an audit log entry exists with actor, event type, and timestamp"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "role-to-permission map returns expected permissions",
+      "hasPermission returns false for unknown roles",
+      "deny-by-default behaviour for missing permissions"
+    ],
+    "integrationTests": [
+      "admin guard blocks non-admin user on protected route",
+      "admin API returns 403 for insufficient role",
+      "disabled admin loses access",
+      "super_admin can assign content_admin/support_admin"
+    ],
+    "e2eTests": [
+      "super_admin login and access admin dashboard",
+      "support_admin sees limited nav",
+      "normal user redirected/blocked from /admin",
+      "audit log created on role change"
+    ],
+    "negativeTests": [
+      "forged client role does not bypass server checks",
+      "unknown admin role fails closed",
+      "attempt to disable last active super_admin is rejected"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Admin protection only implemented in UI, not server",
+      "impact": "Critical privilege escalation",
+      "mitigation": "Mandatory server-side route/API guard and authz tests"
+    },
+    {
+      "risk": "Ad hoc permission checks become inconsistent",
+      "impact": "Security drift and maintenance burden",
+      "mitigation": "Centralise permission constants and helper APIs"
+    },
+    {
+      "risk": "Bootstrap flow leaves a permanent backdoor",
+      "impact": "Critical security issue",
+      "mitigation": "One-time or env-protected bootstrap with documented shutdown/removal"
+    },
+    {
+      "risk": "Admin operations not auditable",
+      "impact": "Poor incident response and accountability",
+      "mitigation": "Mandatory audit log writes for auth and role changes"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "DB schema and role model",
+      "central RBAC utilities",
+      "admin guard/middleware",
+      "admin shell and /api/admin/me",
+      "bootstrap first super admin",
+      "admin role management",
+      "audit logging",
+      "test hardening"
+    ],
+    "futureSprintHooks": [
+      "Sprint 46: Admin Users + Project Lookup",
+      "Sprint 47: Export Monitoring + Retry Console",
+      "Sprint 48: Billing/Plan Support View",
+      "Sprint 49: Feedback, moderation, and support inbox",
+      "Sprint 50: Feature flags and operational controls"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin schema migrated in all environments",
+    "At least one super_admin can be provisioned safely",
+    "Protected /admin route group exists",
+    "Server-side RBAC guards protect admin routes and APIs",
+    "UI navigation is role-aware",
+    "Audit logging is active for auth and role changes",
+    "Automated tests cover positive and negative access paths",
+    "Ops/developer documentation for bootstrap and role management is written"
+  ]
+}
