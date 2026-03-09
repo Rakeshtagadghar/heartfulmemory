@@ -9,6 +9,13 @@ import type {
   AdminExportJobsQuery,
   AdminProjectExportHistoryResponse,
 } from "../../../../packages/shared/admin/exportMonitoring";
+import {
+  deriveAdminBillingMode,
+  deriveBillingDiagnosis,
+  type AdminBillingCoreDetail,
+  type AdminBillingDetail,
+} from "../../../../packages/shared/admin/billingSupport";
+import { getBillingRuntimeConfig } from "../config/billingMode";
 
 // ---------------------------------------------------------------------------
 // Admin user queries
@@ -298,4 +305,33 @@ export async function getAdminProjectExportHistory(
   );
   if (!result.ok) return null;
   return result.data;
+}
+
+export async function getAdminUserBillingDetail(
+  userId: string
+): Promise<AdminBillingDetail | null> {
+  const result = await convexQuery<AdminBillingCoreDetail | null>(
+    anyApi.adminBilling.getUserBillingCore,
+    { userId }
+  );
+  if (!result.ok || !result.data) return null;
+
+  const billingRuntime = getBillingRuntimeConfig();
+  const billingMode = deriveAdminBillingMode({
+    mode: billingRuntime.mode,
+    billingModeIsTest: billingRuntime.billingModeIsTest,
+  });
+
+  return {
+    ...result.data,
+    sandboxOrLiveStatus: billingMode,
+    recommendedSupportDiagnosis: deriveBillingDiagnosis({
+      billingMode,
+      entitlementStatus: result.data.entitlements.status,
+      subscriptionStatus: result.data.subscriptionSummary.status,
+      paymentAttemptStatus: result.data.paymentAttemptSummary.status,
+      hasCustomerRecord: result.data.supportFlags.hasCustomerRecord,
+      hasSubscriptionRecord: result.data.supportFlags.hasSubscriptionRecord,
+    }),
+  };
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
+import { hasPermission } from "../../../../../../packages/shared/admin/rbac";
 import { requireAdminWithPermission } from "../../../../lib/admin/requireAdmin";
-import { getUserDetail, writeAuditLog } from "../../../../lib/admin/adminOps";
+import { getAdminUserBillingDetail, getUserDetail, writeAuditLog } from "../../../../lib/admin/adminOps";
 import { redirect } from "next/navigation";
 
 function StatusBadge({ status, type }: { status: string; type?: "account" | "project" | "export" | "onboarding" }) {
@@ -44,6 +45,8 @@ export default async function AdminUserDetailPage({
   const { userId: rawUserId } = await params;
   const userId = decodeURIComponent(rawUserId);
   const user = await getUserDetail(userId);
+  const canViewBilling = hasPermission(admin.role, "billing.view");
+  const billing = canViewBilling ? await getAdminUserBillingDetail(userId) : null;
 
   if (!user) {
     console.error("[admin] User not found, redirecting. userId:", userId, "rawUserId:", rawUserId);
@@ -116,6 +119,39 @@ export default async function AdminUserDetailPage({
             <p className="text-[10px] uppercase tracking-wider text-white/30">User ID</p>
             <p className="mt-0.5 break-all font-mono text-xs text-white/40">{user.id}</p>
           </div>
+
+          {canViewBilling ? (
+            <div className="mt-4 rounded-lg border border-white/5 bg-white/[0.02] p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">Billing</p>
+                  {billing ? (
+                    <>
+                      <p className="mt-1 text-sm font-medium text-white/75">
+                        {billing.planSummary.planLabel}
+                      </p>
+                      <p className="mt-1 text-xs text-white/45">
+                        {billing.entitlements.status.replace(/_/g, " ")}
+                        {" · "}
+                        {billing.subscriptionSummary.status.replace(/_/g, " ")}
+                      </p>
+                      <p className="mt-1 text-xs text-white/35">
+                        Mode: {billing.sandboxOrLiveStatus}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-white/35">Billing summary unavailable.</p>
+                  )}
+                </div>
+                <Link
+                  href={`/admin/users/${encodeURIComponent(userId)}/billing`}
+                  className="text-xs text-white/45 hover:text-white/75"
+                >
+                  Open billing
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {/* Projects list */}

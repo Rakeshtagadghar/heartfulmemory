@@ -28,6 +28,7 @@ export const ADMIN_PERMISSIONS = [
   "exports.view",
   "exports.retry",
   "billing.view",
+  "billing.support_action",
   "templates.view",
   "templates.manage",
   "content.moderate",
@@ -52,6 +53,7 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "exports.view",
     "exports.retry",
     "billing.view",
+    "billing.support_action",
     "templates.view",
     "templates.manage",
     "content.moderate",
@@ -66,6 +68,8 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "projects.view",
     "exports.view",
     "exports.retry",
+    "billing.view",
+    "billing.support_action",
     "support.view",
   ],
   content_admin: [
@@ -134,6 +138,7 @@ export const ADMIN_AUDIT_EVENTS = [
   "admin_export_retry_blocked",
   "admin_export_retry_queued",
   "admin_export_retry_failed",
+  "admin_billing_viewed",
 ] as const;
 
 export type AdminAuditEventType = (typeof ADMIN_AUDIT_EVENTS)[number];

@@ -10,6 +10,7 @@
 
 import type * as account_setPassword from "../account/setPassword.js";
 import type * as adminAuditLogs from "../adminAuditLogs.js";
+import type * as adminBilling from "../adminBilling.js";
 import type * as adminExports from "../adminExports.js";
 import type * as adminLookup from "../adminLookup.js";
 import type * as adminUsers from "../adminUsers.js";
@@ -69,6 +70,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "account/setPassword": typeof account_setPassword;
   adminAuditLogs: typeof adminAuditLogs;
+  adminBilling: typeof adminBilling;
   adminExports: typeof adminExports;
   adminLookup: typeof adminLookup;
   adminUsers: typeof adminUsers;
