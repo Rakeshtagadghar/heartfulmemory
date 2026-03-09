@@ -73,7 +73,6 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
     "support.view",
   ],
   content_admin: [
-    "dashboard.view",
     "projects.view",
     "exports.view",
     "templates.view",
@@ -130,6 +129,7 @@ export const ADMIN_AUDIT_EVENTS = [
   "admin_role_disabled",
   "admin_role_reactivated",
   "admin_page_viewed",
+  "admin_dashboard_viewed",
   "admin_api_forbidden",
   "admin_export_list_viewed",
   "admin_export_viewed",

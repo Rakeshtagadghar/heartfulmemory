@@ -11,6 +11,7 @@
 import type * as account_setPassword from "../account/setPassword.js";
 import type * as adminAuditLogs from "../adminAuditLogs.js";
 import type * as adminBilling from "../adminBilling.js";
+import type * as adminDashboard from "../adminDashboard.js";
 import type * as adminExports from "../adminExports.js";
 import type * as adminLookup from "../adminLookup.js";
 import type * as adminUsers from "../adminUsers.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   "account/setPassword": typeof account_setPassword;
   adminAuditLogs: typeof adminAuditLogs;
   adminBilling: typeof adminBilling;
+  adminDashboard: typeof adminDashboard;
   adminExports: typeof adminExports;
   adminLookup: typeof adminLookup;
   adminUsers: typeof adminUsers;

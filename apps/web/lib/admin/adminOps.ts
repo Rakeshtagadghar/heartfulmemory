@@ -16,7 +16,9 @@ import {
   type AdminBillingDetail,
   type AdminSubscriptionDetail,
 } from "../../../../packages/shared/admin/billingSupport";
+import type { AdminDashboardSummary } from "../../../../packages/shared/admin/dashboard";
 import { getBillingRuntimeConfig } from "../config/billingMode";
+import { resolveAdminDashboardRange } from "./dashboardRange";
 
 // ---------------------------------------------------------------------------
 // Admin user queries
@@ -372,5 +374,40 @@ export async function getAdminSubscriptionDetail(
   return {
     ...result.data,
     mode: billingMode,
+  };
+}
+
+export async function getAdminDashboardSummary(input?: {
+  preset?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  includeBillingSnapshot?: boolean;
+}): Promise<AdminDashboardSummary | null> {
+  const range = resolveAdminDashboardRange({
+    preset: input?.preset,
+    dateFrom: input?.dateFrom,
+    dateTo: input?.dateTo,
+  });
+
+  const result = await convexQuery<Omit<AdminDashboardSummary, "range">>(
+    anyApi.adminDashboard.getDashboardSummaryCore,
+    {
+      dateFrom: range.dateFrom,
+      dateTo: range.dateTo,
+      previousDateFrom: range.previousDateFrom,
+      previousDateTo: range.previousDateTo,
+      includeBillingSnapshot: input?.includeBillingSnapshot ?? true,
+    }
+  );
+  if (!result.ok) return null;
+
+  return {
+    ...result.data,
+    range: {
+      preset: range.preset,
+      dateFrom: new Date(range.dateFrom).toISOString(),
+      dateTo: new Date(range.dateTo).toISOString(),
+      label: range.label,
+    },
   };
 }

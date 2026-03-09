@@ -54,8 +54,9 @@ describe("hasPermission", () => {
     expect(hasPermission("support_admin", "users.manage_admin_roles")).toBe(false);
   });
 
-  it("content_admin has templates.manage but not billing.view", () => {
+  it("content_admin has templates.manage but not dashboard.view or billing.view", () => {
     expect(hasPermission("content_admin", "templates.manage")).toBe(true);
+    expect(hasPermission("content_admin", "dashboard.view")).toBe(false);
     expect(hasPermission("content_admin", "billing.view")).toBe(false);
     expect(hasPermission("content_admin", "exports.view")).toBe(true);
     expect(hasPermission("content_admin", "support.view")).toBe(false);
@@ -118,12 +119,12 @@ describe("getNavItemsForRole", () => {
     expect(labels).not.toContain("Audit Logs");
   });
 
-  it("content_admin sees Dashboard and Exports", () => {
+  it("content_admin sees only Exports", () => {
     const items = getNavItemsForRole("content_admin");
     const labels = items.map((i) => i.label);
-    expect(labels).toContain("Dashboard");
     expect(labels).toContain("Exports");
-    expect(labels).toHaveLength(2);
+    expect(labels).not.toContain("Dashboard");
+    expect(labels).toHaveLength(1);
   });
 
   it("unknown role gets no nav items", () => {
