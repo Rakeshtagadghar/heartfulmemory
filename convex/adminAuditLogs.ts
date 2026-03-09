@@ -66,3 +66,34 @@ export const listAuditLogs = queryGeneric({
     }));
   },
 });
+
+export const listLogsForResource = queryGeneric({
+  args: {
+    resourceType: v.string(),
+    resourceId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 10)));
+    const logs = await ctx.db.query("adminAuditLogs").withIndex("by_createdAt").order("desc").take(200);
+
+    return logs
+      .filter(
+        (log) => log.resourceType === args.resourceType && log.resourceId === args.resourceId
+      )
+      .slice(0, limit)
+      .map((l) => ({
+        id: l._id as string,
+        adminUserId: l.adminUserId ?? null,
+        actorUserId: l.actorUserId ?? null,
+        eventType: l.eventType,
+        resourceType: l.resourceType ?? null,
+        resourceId: l.resourceId ?? null,
+        action: l.action,
+        metadataJson: l.metadataJson ?? null,
+        ipAddress: l.ipAddress ?? null,
+        userAgent: l.userAgent ?? null,
+        createdAt: l.createdAt,
+      }));
+  },
+});

@@ -29,6 +29,20 @@ type BillingSubscriptionRow = {
   latestInvoiceId?: string | null;
   updatedAt: number;
 } | null;
+type BillingManualEntitlementRow = {
+  _id: unknown;
+  userId: string;
+  entitlementStatus: "manually_granted" | "suspended";
+  expiresAt?: number | null;
+  reason: string;
+  note: string;
+  createdByAdminUserId?: string | null;
+  createdByActorUserId?: string | null;
+  revokedAt?: number | null;
+  revokedReason?: string | null;
+  createdAt: number;
+  updatedAt: number;
+} | null;
 
 const subscriptionStatusValidator = v.union(
   v.literal("trialing"),
@@ -52,6 +66,66 @@ async function getLatestSubscriptionByUserId(ctx: Ctx, userId: string) {
     .withIndex("by_userId", (q) => q.eq("userId", userId))
     .collect();
   return rows.sort((a, b) => b.updatedAt - a.updatedAt)[0] ?? null;
+}
+
+async function getLatestManualEntitlementByUserId(ctx: Ctx, userId: string) {
+  const rows = await ctx.db
+    .query("billingManualEntitlements")
+    .withIndex("by_userId_createdAt", (q) => q.eq("userId", userId))
+    .order("desc")
+    .take(10);
+  return rows[0] ?? null;
+}
+
+function isManualEntitlementActive(
+  row: BillingManualEntitlementRow,
+  nowMs = Date.now()
+) {
+  if (!row) return false;
+  if (row.revokedAt) return false;
+  if (row.expiresAt && row.expiresAt <= nowMs) return false;
+  return true;
+}
+
+function toManualEntitlementDto(row: BillingManualEntitlementRow) {
+  if (!row) return null;
+  return {
+    id: String(row._id),
+    userId: row.userId,
+    entitlementStatus: row.entitlementStatus,
+    expiresAt: row.expiresAt ?? null,
+    reason: row.reason,
+    note: row.note,
+    createdByAdminUserId: row.createdByAdminUserId ?? null,
+    createdByActorUserId: row.createdByActorUserId ?? null,
+    revokedAt: row.revokedAt ?? null,
+    revokedReason: row.revokedReason ?? null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    active: isManualEntitlementActive(row),
+  };
+}
+
+function applyManualEntitlementOverride(
+  entitlements: ReturnType<typeof resolveBillingEntitlements>,
+  manualOverride: BillingManualEntitlementRow
+) {
+  if (!manualOverride || !isManualEntitlementActive(manualOverride)) return entitlements;
+  if (manualOverride.entitlementStatus === "suspended") {
+    return {
+      ...entitlements,
+      canExportDigital: false,
+      canExportHardcopy: false,
+      exportsRemaining: 0,
+    };
+  }
+  return {
+    planId: "pro" as const,
+    subscriptionStatus: entitlements.subscriptionStatus,
+    canExportDigital: true,
+    canExportHardcopy: true,
+    exportsRemaining: null,
+  };
 }
 
 function toCustomerDto(row: BillingCustomerRow) {
@@ -156,9 +230,10 @@ export const getEntitlementsForViewer = queryGeneric({
   },
   handler: async (ctx, args) => {
     const viewer = await requireUser(ctx, args.viewerSubject);
-    const [customer, subscription] = await Promise.all([
+    const [customer, subscription, manualOverride] = await Promise.all([
       getCustomerByUserId(ctx, viewer.subject),
-      getLatestSubscriptionByUserId(ctx, viewer.subject)
+      getLatestSubscriptionByUserId(ctx, viewer.subject),
+      getLatestManualEntitlementByUserId(ctx, viewer.subject),
     ]);
     const quotaPeriod = await resolveQuotaPeriodForUser(ctx, viewer.subject);
     const resolvedExportsUsed =
@@ -166,18 +241,19 @@ export const getEntitlementsForViewer = queryGeneric({
         ? Math.max(0, args.exportsUsedThisMonth)
         : await getPdfExportUsageForPeriod(ctx, viewer.subject, quotaPeriod.periodStart);
 
-    const entitlements = resolveBillingEntitlements({
+    const entitlements = applyManualEntitlementOverride(resolveBillingEntitlements({
       planId: subscription?.planId ?? "free",
       subscriptionStatus: subscription?.status ?? "none",
       exportsUsedThisMonth: resolvedExportsUsed,
       currentPeriodEnd: subscription?.currentPeriodEnd ?? null,
       gracePeriodDays: args.gracePeriodDays ?? 0
-    });
+    }), manualOverride);
 
     return {
       entitlements,
       customer: toCustomerDto(customer),
       subscription: toSubscriptionDto(subscription),
+      manualOverride: toManualEntitlementDto(manualOverride),
       usage: {
         used: resolvedExportsUsed,
         periodStart: quotaPeriod.periodStart,
@@ -214,6 +290,29 @@ export const getCustomerByUserIdInternal = internalQuery({
   }
 });
 
+export const getCustomerByUserIdFromSupport = queryGeneric({
+  args: {
+    serverToken: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const expectedToken = process.env.BILLING_RECOVERY_TOKEN;
+    if (!expectedToken || args.serverToken !== expectedToken) {
+      throw new Error("Unauthorized: invalid server token");
+    }
+    return toCustomerDto(await getCustomerByUserId(ctx, args.userId));
+  },
+});
+
+export const getManualEntitlementByUserIdInternal = internalQuery({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return toManualEntitlementDto(await getLatestManualEntitlementByUserId(ctx, args.userId));
+  },
+});
+
 export const getCustomerByStripeCustomerIdInternal = queryGeneric({
   args: {
     stripeCustomerId: v.string()
@@ -241,6 +340,62 @@ export const upsertCustomerFromStripeInternal = mutationGeneric({
     });
     return { ok: true as const, customer: toCustomerDto(row) };
   }
+});
+
+export const setManualEntitlementOverrideFromSupport = mutationGeneric({
+  args: {
+    serverToken: v.string(),
+    userId: v.string(),
+    entitlementStatus: v.union(v.literal("manually_granted"), v.literal("suspended")),
+    expiresAt: v.optional(v.union(v.number(), v.null())),
+    reason: v.string(),
+    note: v.string(),
+    createdByAdminUserId: v.optional(v.union(v.string(), v.null())),
+    createdByActorUserId: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const expectedToken = process.env.BILLING_RECOVERY_TOKEN;
+    if (!expectedToken || args.serverToken !== expectedToken) {
+      throw new Error("Unauthorized: invalid server token");
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("billingManualEntitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    await Promise.all(
+      existing
+        .filter((row) => !row.revokedAt)
+        .map((row) =>
+          ctx.db.patch(row._id, {
+            revokedAt: now,
+            revokedReason: "superseded_by_support_action",
+            updatedAt: now,
+          })
+        )
+    );
+
+    const inserted = await ctx.db.insert("billingManualEntitlements", {
+      userId: args.userId,
+      entitlementStatus: args.entitlementStatus,
+      expiresAt: args.expiresAt ?? null,
+      reason: args.reason,
+      note: args.note,
+      createdByAdminUserId: args.createdByAdminUserId ?? null,
+      createdByActorUserId: args.createdByActorUserId ?? null,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      ok: true as const,
+      override: toManualEntitlementDto(await ctx.db.get(inserted)),
+    };
+  },
 });
 
 // Public mutation used by the server-side recovery path (no admin key required).

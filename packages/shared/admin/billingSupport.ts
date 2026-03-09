@@ -94,10 +94,47 @@ export interface AdminBillingDetail {
   } | null;
 }
 
+export interface AdminSubscriptionDetail {
+  subscriptionId: string;
+  userId: string;
+  userDisplayName: string | null;
+  userEmail: string | null;
+  providerSubscriptionRefMasked: string | null;
+  providerCustomerRefMasked: string | null;
+  planCode: string;
+  planLabel: string;
+  status: string;
+  currentPeriodStart: number | null;
+  currentPeriodEnd: number | null;
+  cancelAtPeriodEnd: boolean;
+  mode: AdminBillingMode;
+  latestInvoiceIdMasked: string | null;
+  latestPaymentStatus: AdminBillingPaymentAttemptStatus;
+  lastSyncedAt: number | null;
+  entitlementProjection: {
+    status: AdminBillingEntitlementStatus;
+    canExportDigital: boolean;
+    canExportHardcopy: boolean;
+    exportsRemaining: number | null;
+  };
+  manualOverrideState: {
+    active: boolean;
+    expiresAt: number | null;
+  } | null;
+}
+
 export type AdminBillingCoreDetail = Omit<
   AdminBillingDetail,
   "sandboxOrLiveStatus" | "recommendedSupportDiagnosis"
 >;
+
+export const ADMIN_BILLING_MANUAL_ENTITLEMENT_STATUSES = [
+  "manually_granted",
+  "suspended",
+] as const;
+
+export type AdminBillingManualEntitlementStatus =
+  (typeof ADMIN_BILLING_MANUAL_ENTITLEMENT_STATUSES)[number];
 
 export function maskBillingReference(
   value: string | null | undefined,
@@ -124,8 +161,16 @@ export function deriveEntitlementStatus(input: {
   subscriptionStatus: string | null | undefined;
   canExportDigital: boolean;
   currentPeriodEnd: number | null | undefined;
+  manualOverrideStatus?: AdminBillingManualEntitlementStatus | null;
   nowMs?: number;
 }): AdminBillingEntitlementStatus {
+  if (input.manualOverrideStatus === "manually_granted") {
+    return "manually_granted";
+  }
+  if (input.manualOverrideStatus === "suspended") {
+    return "suspended";
+  }
+
   const now = input.nowMs ?? Date.now();
   if (!input.canExportDigital) {
     if (input.subscriptionStatus === "trialing") return "trial_active";
@@ -143,6 +188,12 @@ export function deriveEntitlementStatus(input: {
   if (input.subscriptionStatus === "past_due") return "grace_period";
   if (input.subscriptionStatus === "active") return "active";
   return input.planCode === "pro" ? "active" : "none";
+}
+
+export function isAllowedAdminManualEntitlementStatus(
+  value: string | null | undefined
+): value is AdminBillingManualEntitlementStatus {
+  return value === "manually_granted";
 }
 
 export function derivePaymentAttemptStatus(input: {

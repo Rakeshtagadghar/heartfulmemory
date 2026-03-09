@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
-import { getAdminUserBillingDetail, writeAuditLog } from "../../../../../lib/admin/adminOps";
+import { hasPermission } from "../../../../../../../packages/shared/admin/rbac";
+import { BillingResyncActionCard } from "../../../../../components/admin/BillingResyncActionCard";
+import { ManualEntitlementActionCard } from "../../../../../components/admin/ManualEntitlementActionCard";
+import {
+  getAdminUserBillingDetail,
+  listAuditLogsForResource,
+  writeAuditLog,
+} from "../../../../../lib/admin/adminOps";
 import { requireAdminWithPermission } from "../../../../../lib/admin/requireAdmin";
 import type { AdminBillingDetail } from "../../../../../../../packages/shared/admin/billingSupport";
 
@@ -107,6 +114,11 @@ export default async function AdminUserBillingPage({
   const { userId: rawUserId } = await params;
   const userId = decodeURIComponent(rawUserId);
   const billing = await getAdminUserBillingDetail(userId);
+  const canManageBilling = hasPermission(admin.role, "billing.support_action");
+  const billingActivity = (await listAuditLogsForResource("user", userId, 12)).filter((item) =>
+    item.eventType.startsWith("admin_billing") ||
+    item.eventType.startsWith("admin_manual_entitlement")
+  );
 
   if (!billing) {
     redirect(`/admin/users/${encodeURIComponent(userId)}`);
@@ -243,6 +255,31 @@ export default async function AdminUserBillingPage({
               ))}
             </div>
           </section>
+
+          <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+            <h2 className="text-sm font-medium text-white/75">Recent billing activity</h2>
+            {billingActivity.length === 0 ? (
+              <p className="mt-3 text-sm text-white/45">
+                No recent billing support activity is recorded for this user.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {billingActivity.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-white/8 bg-white/[0.02] p-3"
+                  >
+                    <p className="text-xs uppercase tracking-[0.14em] text-white/35">
+                      {item.eventType.replaceAll("_", " ")}
+                    </p>
+                    <p className="mt-2 text-sm text-white/65">
+                      {new Date(item.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
         <div className="space-y-6">
@@ -269,6 +306,14 @@ export default async function AdminUserBillingPage({
               />
               <InfoRow label="Last updated" value={formatDateTime(billing.subscriptionSummary.updatedAt)} />
             </div>
+            {billing.subscriptionSummary.id ? (
+              <Link
+                href={`/admin/billing/subscriptions/${encodeURIComponent(billing.subscriptionSummary.id)}`}
+                className="mt-4 inline-flex text-sm text-white/65 hover:text-white"
+              >
+                Open subscription detail
+              </Link>
+            ) : null}
           </section>
 
           <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
@@ -303,8 +348,26 @@ export default async function AdminUserBillingPage({
                 label="Manual override"
                 value={billing.manualOverrideState?.active ?? false}
               />
+              <InfoRow
+                label="Override expiry"
+                value={formatDateTime(billing.manualOverrideState?.expiresAt ?? null)}
+              />
             </div>
           </section>
+
+          {canManageBilling ? (
+            <>
+              <BillingResyncActionCard userId={userId} />
+              <ManualEntitlementActionCard userId={userId} />
+            </>
+          ) : (
+            <section className="rounded-xl border border-white/10 bg-white/[0.03] p-5">
+              <h2 className="text-sm font-medium text-white/75">Support actions</h2>
+              <p className="mt-3 text-sm text-white/45">
+                Your role can view billing state but cannot perform support actions.
+              </p>
+            </section>
+          )}
         </div>
       </div>
     </div>

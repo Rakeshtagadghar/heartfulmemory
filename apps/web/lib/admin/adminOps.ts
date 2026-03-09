@@ -14,6 +14,7 @@ import {
   deriveBillingDiagnosis,
   type AdminBillingCoreDetail,
   type AdminBillingDetail,
+  type AdminSubscriptionDetail,
 } from "../../../../packages/shared/admin/billingSupport";
 import { getBillingRuntimeConfig } from "../config/billingMode";
 
@@ -129,6 +130,23 @@ export async function listAuditLogs(opts?: {
   const result = await convexQuery<AuditLogEntry[]>(
     anyApi.adminAuditLogs.listAuditLogs,
     opts ?? {}
+  );
+  if (!result.ok) return [];
+  return result.data;
+}
+
+export async function listAuditLogsForResource(
+  resourceType: string,
+  resourceId: string,
+  limit?: number
+): Promise<AuditLogEntry[]> {
+  const result = await convexQuery<AuditLogEntry[]>(
+    anyApi.adminAuditLogs.listLogsForResource,
+    {
+      resourceType,
+      resourceId,
+      limit,
+    }
   );
   if (!result.ok) return [];
   return result.data;
@@ -333,5 +351,26 @@ export async function getAdminUserBillingDetail(
       hasCustomerRecord: result.data.supportFlags.hasCustomerRecord,
       hasSubscriptionRecord: result.data.supportFlags.hasSubscriptionRecord,
     }),
+  };
+}
+
+export async function getAdminSubscriptionDetail(
+  subscriptionId: string
+): Promise<AdminSubscriptionDetail | null> {
+  const result = await convexQuery<Omit<AdminSubscriptionDetail, "mode"> | null>(
+    anyApi.adminBilling.getSubscriptionDetailCore,
+    { subscriptionId }
+  );
+  if (!result.ok || !result.data) return null;
+
+  const billingRuntime = getBillingRuntimeConfig();
+  const billingMode = deriveAdminBillingMode({
+    mode: billingRuntime.mode,
+    billingModeIsTest: billingRuntime.billingModeIsTest,
+  });
+
+  return {
+    ...result.data,
+    mode: billingMode,
   };
 }

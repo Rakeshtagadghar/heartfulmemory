@@ -96,6 +96,21 @@ export default defineSchema({
     processedAt: v.number(),
     subscriptionId: v.optional(v.union(v.string(), v.null()))
   }).index("by_stripeEventId", ["stripeEventId"]),
+  billingManualEntitlements: defineTable({
+    userId: v.string(),
+    entitlementStatus: v.union(v.literal("manually_granted"), v.literal("suspended")),
+    expiresAt: v.optional(v.union(v.number(), v.null())),
+    reason: v.string(),
+    note: v.string(),
+    createdByAdminUserId: v.optional(v.union(v.string(), v.null())),
+    createdByActorUserId: v.optional(v.union(v.string(), v.null())),
+    revokedAt: v.optional(v.union(v.number(), v.null())),
+    revokedReason: v.optional(v.union(v.string(), v.null())),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_createdAt", ["userId", "createdAt"]),
   exportUsage: defineTable({
     userId: v.string(),
     periodStart: v.number(),

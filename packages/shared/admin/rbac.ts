@@ -139,6 +139,12 @@ export const ADMIN_AUDIT_EVENTS = [
   "admin_export_retry_queued",
   "admin_export_retry_failed",
   "admin_billing_viewed",
+  "admin_subscription_viewed",
+  "admin_billing_resync_requested",
+  "admin_billing_resync_completed",
+  "admin_manual_entitlement_requested",
+  "admin_manual_entitlement_completed",
+  "admin_billing_action_blocked",
 ] as const;
 
 export type AdminAuditEventType = (typeof ADMIN_AUDIT_EVENTS)[number];

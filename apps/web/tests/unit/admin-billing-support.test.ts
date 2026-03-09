@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveAdminBillingMode,
   deriveBillingDiagnosis,
+  isAllowedAdminManualEntitlementStatus,
   maskBillingReference,
 } from "../../../../packages/shared/admin/billingSupport";
 
@@ -70,5 +71,13 @@ describe("deriveBillingDiagnosis", () => {
     ).toMatchObject({
       code: "checkout_incomplete",
     });
+  });
+});
+
+describe("isAllowedAdminManualEntitlementStatus", () => {
+  it("allows only the safe temporary grant action", () => {
+    expect(isAllowedAdminManualEntitlementStatus("manually_granted")).toBe(true);
+    expect(isAllowedAdminManualEntitlementStatus("suspended")).toBe(false);
+    expect(isAllowedAdminManualEntitlementStatus("active")).toBe(false);
   });
 });
