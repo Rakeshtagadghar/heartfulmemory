@@ -24,6 +24,10 @@ import type {
   AdminTemplatesListResponse,
   UpdateAdminTemplateInput,
 } from "../../../../packages/shared/admin/templates";
+import type {
+  TemplateLayoutDefinition,
+  TemplateLayoutValidationResult,
+} from "../../../../packages/shared/templates/layoutTypes";
 import { getBillingRuntimeConfig } from "../config/billingMode";
 import { resolveAdminDashboardRange } from "./dashboardRange";
 
@@ -484,6 +488,46 @@ export async function updateAdminTemplate(
     code?: string;
     errors?: string[];
   }>(anyApi.adminTemplates.updateTemplateMetadata, { templateId, patch });
+}
+
+export async function getAdminTemplateLayouts(templateId: string) {
+  const result = await convexQuery<{
+    templateId: string;
+    layoutDefinition: TemplateLayoutDefinition;
+    validation: TemplateLayoutValidationResult;
+  } | null>(anyApi.adminTemplates.getTemplateLayouts, { templateId });
+  if (!result.ok) return null;
+  return result.data;
+}
+
+export async function validateAdminTemplateLayouts(
+  templateId: string,
+  layoutDefinition?: TemplateLayoutDefinition
+) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+    validation?: TemplateLayoutValidationResult;
+  }>(anyApi.adminTemplates.validateTemplateLayouts, {
+    templateId,
+    layoutDefinition,
+  });
+}
+
+export async function updateAdminTemplateLayouts(
+  templateId: string,
+  layoutDefinition: TemplateLayoutDefinition
+) {
+  return convexMutation<{
+    ok: boolean;
+    code?: string;
+    errors?: string[];
+    validation?: TemplateLayoutValidationResult;
+  }>(anyApi.adminTemplates.updateTemplateLayouts, {
+    templateId,
+    layoutDefinition,
+  });
 }
 
 export async function publishAdminTemplate(templateId: string) {

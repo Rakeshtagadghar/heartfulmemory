@@ -7,10 +7,27 @@ import { api } from "./_generated/api";
 import { mapPhotosToImageSlots } from "../packages/shared/populate/photoSlotMapper";
 import { buildFillSlotWithImagePatch } from "../packages/editor/commands/fillSlotWithImage";
 import { getTemplateQuestionsForChapter } from "./templates";
+import {
+  buildResolvedLayoutFingerprint,
+  type ResolvedChapterPageLayout,
+  type ResolvedImageLayoutSlot,
+  type ResolvedLayoutSlot,
+  type ResolvedTextLayoutSlot,
+} from "../packages/shared/templates/layoutResolver";
 import { captureConvexError, withConvexSpan } from "./observability/sentry";
 
 // Reuse types from studioPopulate
-type PageDto = { id: string; title?: string; order_index: number; width_px: number; height_px: number };
+type PageDto = {
+  id: string;
+  title?: string;
+  page_layout_id?: string | null;
+  layout_source_template_id?: string | null;
+  layout_source_template_version?: number | null;
+  layout_fingerprint?: string | null;
+  order_index: number;
+  width_px: number;
+  height_px: number;
+};
 type FrameDto = {
   id: string;
   page_id: string;
@@ -29,10 +46,6 @@ type ChapterAnswerDto = {
   skipped?: boolean;
   updatedAt?: number;
 };
-type TextSlotSpec = { slotId: string; kind: "text"; role: "title" | "subtitle" | "body" | "quote" | "caption"; x: number; y: number; w: number; h: number; zIndex: number };
-type ImageSlotSpec = { slotId: string; kind: "image"; frameType: "IMAGE" | "FRAME"; captionSlotId?: string; x: number; y: number; w: number; h: number; zIndex: number };
-type SlotSpec = TextSlotSpec | ImageSlotSpec;
-type ChapterPageSpec = { pageTemplateId: string; slots: SlotSpec[] };
 
 function recordOrNull(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
@@ -40,27 +53,37 @@ function recordOrNull(value: unknown) {
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : null;
 }
-function numberValue(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-function inferTextRole(slotId: string): TextSlotSpec["role"] {
-  const lower = slotId.toLowerCase();
-  if (lower.includes("subtitle")) return "subtitle";
-  if (lower.includes("quote") || lower.includes("pull")) return "quote";
-  if (lower.includes("caption")) return "caption";
-  if (lower.includes("body") || lower.includes("main") || lower.includes("text")) return "body";
-  return "title";
-}
-function inferSlotKind(slot: Record<string, unknown>): "text" | "image" | null {
-  const candidates = [slot.kind, slot.type, slot.role, slot.slotId, slot.id]
-    .map((v) => (typeof v === "string" ? v.toLowerCase() : "")).filter(Boolean);
-  if (candidates.some((v) => v.includes("image"))) return "image";
-  if (candidates.some((v) => v.includes("text") || v.includes("title") || v.includes("caption") || v.includes("quote"))) return "text";
-  return null;
-}
 
 function sanitizeKeyPart(value: string) {
   return value.trim().replaceAll(/[^a-zA-Z0-9_-]+/g, "_").replaceAll(/^_+/g, "").replaceAll(/_+$/g, "") || "item";
+}
+
+function slotLookupKey(slot: { slotId: string; bindingKey?: string }) {
+  const bindingKey = typeof slot.bindingKey === "string" ? slot.bindingKey.trim() : "";
+  return bindingKey.length > 0 ? bindingKey : slot.slotId;
+}
+
+function readSlotText(slotText: Record<string, string | undefined>, slot: { slotId: string; bindingKey?: string }) {
+  return slotText[slot.slotId] ?? slotText[slotLookupKey(slot)] ?? "";
+}
+
+function remapPhotoImagesBySlotId(
+  slotImages: Record<string, {
+    mediaAssetId: string;
+    sourceUrl: string;
+    previewUrl: string;
+    attribution: unknown;
+    crop: Record<string, unknown>;
+  }>,
+  slots: ResolvedImageLayoutSlot[]
+) {
+  const remapped: typeof slotImages = {};
+  for (const slot of slots) {
+    const lookupKey = slotLookupKey(slot);
+    const value = slotImages[slot.slotId] ?? slotImages[lookupKey];
+    if (value) remapped[slot.slotId] = value;
+  }
+  return remapped;
 }
 
 function readAnswerText(row: ChapterAnswerDto) {
@@ -75,50 +98,106 @@ function readAnswerText(row: ChapterAnswerDto) {
   return "";
 }
 
-function resolveChapterHeaderPageTitle(
-  pageSpec: ChapterPageSpec,
-  slotText: Record<string, string | undefined>
-) {
+function resolveChapterHeaderPageTitle(pageSpec: ResolvedChapterPageLayout, slotText: Record<string, string | undefined>) {
   const titleSlot = pageSpec.slots.find(
-    (slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title"
+    (slot): slot is ResolvedTextLayoutSlot => slot.kind === "text" && slot.role === "title"
   );
   if (!titleSlot?.slotId) return null;
-  const text = slotText[titleSlot.slotId];
+  const text = readSlotText(slotText, titleSlot);
   if (typeof text !== "string") return null;
   const trimmed = text.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ChapterPageSpec[] {
+function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ResolvedChapterPageLayout[] {
   return answerEntries.map((entry, index) => {
     const suffix = `${index + 1}_${sanitizeKeyPart(entry.questionId)}`;
     const includeHeader = index === 0;
-    const slots: SlotSpec[] = [];
+    const slots: ResolvedLayoutSlot[] = [];
     if (includeHeader) {
-      slots.push({ slotId: `title_${suffix}`, kind: "text", role: "title", x: 108, y: 72, w: 600, h: 56, zIndex: 1 });
+      slots.push({
+        slotId: `title_${suffix}`,
+        kind: "text",
+        role: "title",
+        bindingKey: "chapterTitle",
+        x: 108,
+        y: 72,
+        w: 600,
+        h: 56,
+        zIndex: 1,
+        overflowBehavior: "shrink_to_fit",
+        maxLines: 2,
+        alignment: "center"
+      });
     }
     slots.push(
-      { slotId: `body_${suffix}`, kind: "text", role: "body", x: 96, y: includeHeader ? 144 : 92, w: 624, h: 260, zIndex: 2 },
-      { slotId: `image_${suffix}`, kind: "image", frameType: "FRAME", x: 76, y: includeHeader ? 420 : 372, w: 664, h: 528, zIndex: 3 }
+      {
+        slotId: `body_${suffix}`,
+        kind: "text",
+        role: "body",
+        bindingKey: "answerBody",
+        x: 96,
+        y: includeHeader ? 144 : 92,
+        w: 624,
+        h: 260,
+        zIndex: 2,
+        overflowBehavior: "shrink_to_fit"
+      },
+      {
+        slotId: `image_${suffix}`,
+        kind: "image",
+        frameType: "FRAME",
+        bindingKey: "answerImage",
+        x: 76,
+        y: includeHeader ? 420 : 372,
+        w: 664,
+        h: 528,
+        zIndex: 3,
+        imageFit: "cover"
+      }
     );
-    return { pageTemplateId: `answer_page_${suffix}`, slots };
+    return {
+      pageLayoutId: `answer_page_${suffix}`,
+      source: "fallback",
+      layoutVersion: null,
+      layoutFingerprint: buildResolvedLayoutFingerprint(`answer_page_${suffix}`, slots, null),
+      slots
+    };
   });
 }
 
-function stableNodeKey(chapterKey: string, pageTemplateId: string, slotId: string) {
-  return `s28:${chapterKey}:${pageTemplateId}:${slotId}`;
+function stableNodeKey(chapterKey: string, pageLayoutId: string, slotId: string) {
+  return `s28:${chapterKey}:${pageLayoutId}:${slotId}`;
 }
 
-function populateMetaPatch(chapterKey: string, pageTemplateId: string, slotId: string, kind: "text" | "image") {
-  return { stableNodeKey: stableNodeKey(chapterKey, pageTemplateId, slotId), source: "studio_populate_v2", sourceKind: kind, chapterKey, pageTemplateId, slotId };
+function populateMetaPatch(
+  chapterKey: string,
+  pageLayoutId: string,
+  slotId: string,
+  bindingKey: string | undefined,
+  kind: "text" | "image",
+  layoutFingerprint: string
+) {
+  return {
+    stableNodeKey: stableNodeKey(chapterKey, pageLayoutId, slotId),
+    source: "studio_populate_v2",
+    sourceKind: kind,
+    chapterKey,
+    pageTemplateId: pageLayoutId,
+    pageLayoutId,
+    slotId,
+    bindingKey: bindingKey ?? null,
+    layoutFingerprint
+  };
 }
 
-function frameTextStyle(role: TextSlotSpec["role"]) {
-  if (role === "title") return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: "center" };
-  if (role === "subtitle") return { fontFamily: "sans", fontSize: 16, lineHeight: 1.3, fontWeight: 500, color: "#3b465a", align: "left" };
-  if (role === "quote") return { fontFamily: "serif", fontSize: 20, lineHeight: 1.25, fontWeight: 500, color: "#2a3141", italic: true, align: "left" };
-  if (role === "caption") return { fontFamily: "sans", fontSize: 12, lineHeight: 1.2, fontWeight: 500, color: "#5a6375", align: "left" };
-  return { fontFamily: "sans", fontSize: 15, lineHeight: 1.45, fontWeight: 400, color: "#293040", align: "left" };
+function frameTextStyle(slot: ResolvedTextLayoutSlot) {
+  const align = slot.alignment ?? slot.style?.align;
+  if (slot.role === "title") return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: align ?? "center" };
+  if (slot.role === "subtitle") return { fontFamily: "sans", fontSize: 16, lineHeight: 1.3, fontWeight: 500, color: "#3b465a", align: align ?? "left" };
+  if (slot.role === "quote") return { fontFamily: "serif", fontSize: 20, lineHeight: 1.25, fontWeight: 500, color: "#2a3141", italic: true, align: align ?? "left" };
+  if (slot.role === "caption") return { fontFamily: "sans", fontSize: 12, lineHeight: 1.2, fontWeight: 500, color: "#5a6375", align: align ?? "left" };
+  return { fontFamily: "sans", fontSize: 15, lineHeight: 1.45, fontWeight: 400, color: "#293040", align: align ?? "left" };
 }
 
 async function requireActionUser(ctx: ActionCtx, explicitSubject?: string) {
@@ -204,9 +283,10 @@ export const populateFromPhotos = action({
         if (orderedAnswers.length === 0) continue;
 
         const pageSpecs = buildAnswerPerPageSpecs(orderedAnswers);
+        const templateVersion = typeof template?.version === "number" ? template.version : null;
 
         // Build photo slice for this chapter
-        const chapterImageSlots = pageSpecs.flatMap((ps) => ps.slots.filter((s): s is ImageSlotSpec => s.kind === "image"));
+        const chapterImageSlots = pageSpecs.flatMap((ps) => ps.slots.filter((s): s is ResolvedImageLayoutSlot => s.kind === "image"));
         const chapterPhotos = sortedPhotos.slice(globalPhotoIndex, globalPhotoIndex + chapterImageSlots.length);
         globalPhotoIndex += chapterPhotos.length;
 
@@ -225,7 +305,14 @@ export const populateFromPhotos = action({
             pageIds.push(existingPageId);
             continue;
           }
-          const createdPage = await ctx.runMutation(api.pages.create, { viewerSubject: viewer.subject, storybookId: args.storybookId });
+          const createdPage = await ctx.runMutation(api.pages.create, {
+            viewerSubject: viewer.subject,
+            storybookId: args.storybookId,
+            pageLayoutId: pageSpecs[i]?.pageLayoutId ?? null,
+            layoutSourceTemplateId: storybook.templateId ?? null,
+            layoutSourceTemplateVersion: templateVersion,
+            layoutFingerprint: pageSpecs[i]?.layoutFingerprint ?? null
+          });
           pageIds.push(String(createdPage.id));
           pages = await ctx.runQuery(api.pages.listByStorybook, { viewerSubject: viewer.subject, storybookId: args.storybookId });
         }
@@ -239,8 +326,8 @@ export const populateFromPhotos = action({
         }
 
         // Photo slot mapping for this chapter's image slots
-        const photoMapping = mapPhotosToImageSlots({
-          slotIds: chapterImageSlots.map((s) => s.slotId),
+        const rawPhotoMapping = mapPhotosToImageSlots({
+          slotIds: chapterImageSlots.map((slot) => slotLookupKey(slot)),
           photos: chapterPhotos.map((p: any) => ({
             mediaAssetId: p.assetId,
             sourceUrl: p.sourceUrl,
@@ -248,14 +335,17 @@ export const populateFromPhotos = action({
             height: p.height
           }))
         });
+        const photoMapping = {
+          slotImages: remapPhotoImagesBySlotId(rawPhotoMapping.slotImages, chapterImageSlots)
+        };
 
         // Build text mapping (answer per page)
         const textSlotMap: Record<string, string> = {};
         for (const [pageIndex, pageSpec] of pageSpecs.entries()) {
           const answer = orderedAnswers[pageIndex];
           if (!answer) continue;
-          const titleSlot = pageSpec.slots.find((s): s is TextSlotSpec => s.kind === "text" && s.role === "title");
-          const bodySlot = pageSpec.slots.find((s): s is TextSlotSpec => s.kind === "text" && s.role === "body");
+          const titleSlot = pageSpec.slots.find((s): s is ResolvedTextLayoutSlot => s.kind === "text" && s.role === "title");
+          const bodySlot = pageSpec.slots.find((s): s is ResolvedTextLayoutSlot => s.kind === "text" && s.role === "body");
           if (titleSlot?.slotId) textSlotMap[titleSlot.slotId] = chapter.title;
           if (bodySlot?.slotId) textSlotMap[bodySlot.slotId] = readAnswerText(answer);
         }
@@ -264,6 +354,24 @@ export const populateFromPhotos = action({
           const pageId = pageIds[pageIndex];
           const page = (pages as PageDto[]).find((p) => p.id === pageId);
           if (!page) continue;
+
+          if (
+            page.page_layout_id !== pageSpec.pageLayoutId ||
+            page.layout_source_template_id !== (storybook.templateId ?? null) ||
+            page.layout_source_template_version !== templateVersion ||
+            page.layout_fingerprint !== pageSpec.layoutFingerprint
+          ) {
+            await ctx.runMutation(api.pages.update, {
+              viewerSubject: viewer.subject,
+              pageId: pageId as any,
+              patch: {
+                pageLayoutId: pageSpec.pageLayoutId,
+                layoutSourceTemplateId: storybook.templateId ?? null,
+                layoutSourceTemplateVersion: templateVersion,
+                layoutFingerprint: pageSpec.layoutFingerprint
+              }
+            });
+          }
 
           const chapterHeaderTitle = resolveChapterHeaderPageTitle(pageSpec, textSlotMap);
           if (chapterHeaderTitle && page.title !== chapterHeaderTitle) {
@@ -276,7 +384,7 @@ export const populateFromPhotos = action({
           }
 
           const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
-          const expectedStableKeys = new Set(pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId)));
+          const expectedStableKeys = new Set(pageSpec.slots.map((slot) => stableNodeKey(chapter.chapterKey, pageSpec.pageLayoutId, slot.slotId)));
 
           // Remove stale populate frames
           const stalePopulateFrames = initialPageFrames.filter((frame) => {
@@ -303,12 +411,20 @@ export const populateFromPhotos = action({
           }
 
           for (const slot of pageSpec.slots) {
-            const meta = populateMetaPatch(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId, slot.kind);
+            if (slot.kind !== "text" && slot.kind !== "image") continue;
+            const meta = populateMetaPatch(
+              chapter.chapterKey,
+              pageSpec.pageLayoutId,
+              slot.slotId,
+              slot.bindingKey,
+              slot.kind,
+              pageSpec.layoutFingerprint
+            );
             const key = String(meta.stableNodeKey);
             const existingFrame = byStableKey.get(key);
 
             if (slot.kind === "text") {
-              const text = textSlotMap[slot.slotId] ?? "";
+              const text = readSlotText(textSlotMap, slot);
               const content = { kind: "text_frame_v1", text, populateMeta: meta };
               if (existingFrame) {
                 const existingContent = recordOrNull(existingFrame.content);
@@ -316,7 +432,11 @@ export const populateFromPhotos = action({
                 if (existingText !== text) {
                   await ctx.runMutation(api.frames.update, {
                     viewerSubject: viewer.subject, frameId: existingFrame.id as any,
-                    patch: { content: { ...existingContent, ...content }, style: { ...existingFrame.style, ...frameTextStyle(slot.role) }, expectedVersion: existingFrame.version }
+                    patch: {
+                      content: { ...existingContent, ...content },
+                      style: { ...existingFrame.style, ...frameTextStyle(slot), ...(slot.style ?? {}) },
+                      expectedVersion: existingFrame.version
+                    }
                   });
                   totalUpdated++;
                 }
@@ -324,7 +444,7 @@ export const populateFromPhotos = action({
                 const created = await ctx.runMutation(api.frames.create, {
                   viewerSubject: viewer.subject, pageId: pageId as any,
                   type: "TEXT", x: slot.x, y: slot.y, w: slot.w, h: slot.h, zIndex: slot.zIndex,
-                  locked: false, style: frameTextStyle(slot.role), content
+                  locked: false, style: { ...frameTextStyle(slot), ...(slot.style ?? {}) }, content
                 });
                 totalCreated++;
                 byStableKey.set(key, created as FrameDto);
@@ -363,7 +483,10 @@ export const populateFromPhotos = action({
               await ctx.runMutation(api.frames.create, {
                 viewerSubject: viewer.subject, pageId: pageId as any,
                 type: slot.frameType, x: slot.x, y: slot.y, w: slot.w, h: slot.h, zIndex: slot.zIndex,
-                locked: false, style: slot.frameType === "FRAME" ? { borderRadius: 16, overflow: "hidden" } : { borderRadius: 12 },
+                locked: false,
+                style: slot.frameType === "FRAME"
+                  ? { borderRadius: 16, overflow: "hidden", ...(slot.style ?? {}) }
+                  : { borderRadius: 12, ...(slot.style ?? {}) },
                 content, crop: crop ?? undefined
               });
               totalCreated++;
@@ -388,6 +511,9 @@ export const populateFromPhotos = action({
                   viewerSubject: viewer.subject, frameId: existingFrame.id as any,
                   patch: {
                     content: { ...patch.content, populateMeta: meta },
+                    style: slot.frameType === "FRAME"
+                      ? { ...existingFrame.style, borderRadius: 16, overflow: "hidden", ...(slot.style ?? {}) }
+                      : { ...existingFrame.style, borderRadius: 12, ...(slot.style ?? {}) },
                     crop: mappedImage.crop ?? undefined,
                     expectedVersion: existingFrame.version
                   }

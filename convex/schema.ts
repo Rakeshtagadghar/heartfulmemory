@@ -554,6 +554,10 @@ export default defineSchema({
     ownerId: v.string(),
     orderIndex: v.number(),
     title: v.optional(v.string()),
+    pageLayoutId: v.optional(v.union(v.string(), v.null())),
+    layoutSourceTemplateId: v.optional(v.union(v.string(), v.null())),
+    layoutSourceTemplateVersion: v.optional(v.union(v.number(), v.null())),
+    layoutFingerprint: v.optional(v.union(v.string(), v.null())),
     isHidden: v.optional(v.boolean()),
     isLocked: v.optional(v.boolean()),
     // Sprint 34: Table of Contents – page classification

@@ -27,16 +27,27 @@ describe("Sprint 21 studio populate source contracts", () => {
 
   it("uses stable node keys + version refs for idempotent populateChapter reruns", () => {
     const populate = readRepoFile("convex/studioPopulate.ts");
+    const pages = readRepoFile("convex/pages.ts");
+    const resolver = readRepoFile("packages/shared/templates/layoutResolver.ts");
     const contractTypes = readRepoFile("packages/shared/populate/populationTypes.ts");
 
     expect(populate).toContain("export const populateChapter = action");
+    expect(populate).toContain("resolveTemplateChapterPageLayouts(");
     expect(populate).toContain("stableNodeKey(");
     expect(populate).toContain("const key = String(meta.stableNodeKey)");
     expect(populate).toContain("byStableKey");
+    expect(populate).toContain("pageLayoutId: pageSpec.pageLayoutId");
+    expect(populate).toContain("slotLookupKey(");
+    expect(populate).toContain("bindingKey: bindingKey ?? null");
     expect(populate).toContain("lastAppliedDraftVersion: draft.version");
     expect(populate).toContain("lastAppliedIllustrationVersion: illustrationState.version");
     expect(populate).toContain("api.chapterStudioState.upsertPopulationState");
     expect(populate).toContain("skippedBecauseEdited");
+    expect(pages).toContain("pageLayoutId: v.optional");
+    expect(pages).toContain("layoutFingerprint");
+    expect(resolver).toContain("layoutSchemaVersion");
+    expect(resolver).toContain("buildFallbackChapterPageLayouts");
+    expect(resolver).toContain("bindingKey");
     expect(contractTypes).toContain("stableNodeIdStrategy: \"chapterKey:pageTemplateId:slotId\"");
     expect(contractTypes).toContain("overwritePolicy: \"skip_user_edited_nodes\"");
   });

@@ -63,6 +63,10 @@ export type PageModel = {
   id: string;
   storybookId: string;
   orderIndex: number;
+  pageLayoutId?: string | null;
+  layoutSourceTemplateId?: string | null;
+  layoutSourceTemplateVersion?: number | null;
+  layoutFingerprint?: string | null;
   sizePreset: PageSizePreset;
   widthPx: number;
   heightPx: number;
@@ -140,4 +144,3 @@ export const pageSizePresetConfigs: Record<PageSizePreset, PageSizePresetConfig>
 export function getPageSizePresetConfig(preset: PageSizePreset): PageSizePresetConfig {
   return pageSizePresetConfigs[preset];
 }
-

@@ -58,6 +58,10 @@ function toPageDto(doc: {
   ownerId: string;
   orderIndex: number;
   title?: string;
+  pageLayoutId?: string | null;
+  layoutSourceTemplateId?: string | null;
+  layoutSourceTemplateVersion?: number | null;
+  layoutFingerprint?: string | null;
   isHidden?: boolean;
   isLocked?: boolean;
   sizePreset: "A4" | "US_LETTER" | "BOOK_6X9" | "BOOK_8_5X11";
@@ -75,6 +79,10 @@ function toPageDto(doc: {
     owner_id: doc.ownerId,
     order_index: doc.orderIndex,
     title: doc.title ?? "",
+    page_layout_id: doc.pageLayoutId ?? null,
+    layout_source_template_id: doc.layoutSourceTemplateId ?? null,
+    layout_source_template_version: doc.layoutSourceTemplateVersion ?? null,
+    layout_fingerprint: doc.layoutFingerprint ?? null,
     is_hidden: Boolean(doc.isHidden),
     is_locked: Boolean(doc.isLocked),
     page_type: (doc as any).pageType ?? undefined,
@@ -117,7 +125,11 @@ export const create = mutationGeneric({
     storybookId: v.id("storybooks"),
     sizePreset: v.optional(pageSizePresetValidator),
     background: v.optional(backgroundValidator),
-    pageType: v.optional(pageTypeValidator)
+    pageType: v.optional(pageTypeValidator),
+    pageLayoutId: v.optional(v.union(v.string(), v.null())),
+    layoutSourceTemplateId: v.optional(v.union(v.string(), v.null())),
+    layoutSourceTemplateVersion: v.optional(v.union(v.number(), v.null())),
+    layoutFingerprint: v.optional(v.union(v.string(), v.null()))
   },
   handler: async (ctx, args) => {
     const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
@@ -136,6 +148,10 @@ export const create = mutationGeneric({
       ownerId: access.storybook.ownerId,
       orderIndex: nextOrder,
       title: isToc ? "Contents" : "",
+      pageLayoutId: args.pageLayoutId ?? null,
+      layoutSourceTemplateId: args.layoutSourceTemplateId ?? null,
+      layoutSourceTemplateVersion: args.layoutSourceTemplateVersion ?? null,
+      layoutFingerprint: args.layoutFingerprint ?? null,
       isHidden: false,
       isLocked: false,
       sizePreset: preset,
@@ -173,6 +189,10 @@ export const update = mutationGeneric({
     pageId: v.id("pages"),
     patch: v.object({
       title: v.optional(v.string()),
+      pageLayoutId: v.optional(v.union(v.string(), v.null())),
+      layoutSourceTemplateId: v.optional(v.union(v.string(), v.null())),
+      layoutSourceTemplateVersion: v.optional(v.union(v.number(), v.null())),
+      layoutFingerprint: v.optional(v.union(v.string(), v.null())),
       isHidden: v.optional(v.boolean()),
       isLocked: v.optional(v.boolean()),
       sizePreset: v.optional(pageSizePresetValidator),
@@ -192,6 +212,10 @@ export const update = mutationGeneric({
       patch.heightPx = presetDimensions[args.patch.sizePreset].heightPx;
     }
     if ("title" in args.patch && typeof args.patch.title === "string") patch.title = args.patch.title;
+    if ("pageLayoutId" in args.patch) patch.pageLayoutId = args.patch.pageLayoutId ?? null;
+    if ("layoutSourceTemplateId" in args.patch) patch.layoutSourceTemplateId = args.patch.layoutSourceTemplateId ?? null;
+    if ("layoutSourceTemplateVersion" in args.patch) patch.layoutSourceTemplateVersion = args.patch.layoutSourceTemplateVersion ?? null;
+    if ("layoutFingerprint" in args.patch) patch.layoutFingerprint = args.patch.layoutFingerprint ?? null;
     if ("isHidden" in args.patch && typeof args.patch.isHidden === "boolean") patch.isHidden = args.patch.isHidden;
     if ("isLocked" in args.patch && typeof args.patch.isLocked === "boolean") patch.isLocked = args.patch.isLocked;
     if (args.patch.margins) patch.margins = args.patch.margins;
@@ -293,6 +317,10 @@ export const duplicate = mutationGeneric({
       ownerId: sourcePage.ownerId,
       orderIndex: sourcePage.orderIndex + 1,
       title: sourcePage.title ?? "",
+      pageLayoutId: (sourcePage as any).pageLayoutId ?? null,
+      layoutSourceTemplateId: (sourcePage as any).layoutSourceTemplateId ?? null,
+      layoutSourceTemplateVersion: (sourcePage as any).layoutSourceTemplateVersion ?? null,
+      layoutFingerprint: (sourcePage as any).layoutFingerprint ?? null,
       isHidden: sourcePage.isHidden ?? false,
       isLocked: sourcePage.isLocked ?? false,
       sizePreset: sourcePage.sizePreset,
@@ -359,6 +387,10 @@ export const createDefaultCanvas = mutationGeneric({
       ownerId: access.storybook.ownerId,
       orderIndex: 0,
       title: access.storybook.title || "Cover",
+      pageLayoutId: null,
+      layoutSourceTemplateId: null,
+      layoutSourceTemplateVersion: null,
+      layoutFingerprint: null,
       isHidden: false,
       isLocked: false,
       sizePreset: "BOOK_8_5X11",

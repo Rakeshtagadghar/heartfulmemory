@@ -8,11 +8,26 @@ import { mapDraftToTextSlots, mapNarrativeToTextSlots, type TextSlotMapResult } 
 import { mapIllustrationsToImageSlots } from "../packages/shared/populate/imageSlotMapper";
 import { buildFillSlotWithImagePatch } from "../packages/editor/commands/fillSlotWithImage";
 import { getTemplateQuestionsForChapter } from "./templates";
+import {
+  buildResolvedLayoutFingerprint,
+  resolveTemplateChapterPageLayouts,
+  type ResolvedChapterPageLayout,
+  type ResolvedFrameLayoutSlot,
+  type ResolvedImageLayoutSlot,
+  type ResolvedLayoutSlot,
+  type ResolvedLineLayoutSlot,
+  type ResolvedShapeLayoutSlot,
+  type ResolvedTextLayoutSlot,
+} from "../packages/shared/templates/layoutResolver";
 import { captureConvexError, withConvexSpan } from "./observability/sentry";
 
 type PageDto = {
   id: string;
   title?: string;
+  page_layout_id?: string | null;
+  layout_source_template_id?: string | null;
+  layout_source_template_version?: number | null;
+  layout_fingerprint?: string | null;
   order_index: number;
   width_px: number;
   height_px: number;
@@ -41,36 +56,6 @@ type ChapterAnswerDto = {
   updatedAt?: number;
 };
 
-type TextSlotSpec = {
-  slotId: string;
-  kind: "text";
-  role: "title" | "subtitle" | "body" | "quote" | "caption";
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  zIndex: number;
-};
-
-type ImageSlotSpec = {
-  slotId: string;
-  kind: "image";
-  frameType: "IMAGE" | "FRAME";
-  captionSlotId?: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  zIndex: number;
-};
-
-type SlotSpec = TextSlotSpec | ImageSlotSpec;
-
-type ChapterPageSpec = {
-  pageTemplateId: string;
-  slots: SlotSpec[];
-};
-
 function recordOrNull(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
@@ -83,164 +68,173 @@ function numberValue(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function inferTextRole(slotId: string): TextSlotSpec["role"] {
-  const lower = slotId.toLowerCase();
-  if (lower.includes("subtitle")) return "subtitle";
-  if (lower.includes("quote") || lower.includes("pull")) return "quote";
-  if (lower.includes("caption")) return "caption";
-  if (lower.includes("body") || lower.includes("main") || lower.includes("text")) return "body";
-  return "title";
-}
-
-function inferSlotKind(slot: Record<string, unknown>): "text" | "image" | null {
-  const candidates = [slot.kind, slot.type, slot.role, slot.slotId, slot.id]
-    .map((value) => (typeof value === "string" ? value.toLowerCase() : ""))
-    .filter(Boolean);
-  if (candidates.some((value) => value.includes("image"))) return "image";
-  if (candidates.some((value) => value.includes("text") || value.includes("title") || value.includes("caption") || value.includes("quote"))) {
-    return "text";
-  }
-  return null;
-}
-
-function fallbackChapterPageSpecs(_chapterKey: string): ChapterPageSpec[] {
-  return [
-    {
-      pageTemplateId: "chapter_main_v1",
-      slots: [
-        { slotId: "title", kind: "text", role: "title", x: 60, y: 64, w: 696, h: 72, zIndex: 1 },
-        { slotId: "image1", kind: "image", frameType: "FRAME", captionSlotId: "caption1", x: 60, y: 156, w: 470, h: 320, zIndex: 2 },
-        { slotId: "body", kind: "text", role: "body", x: 552, y: 156, w: 204, h: 320, zIndex: 3 },
-        { slotId: "quote", kind: "text", role: "quote", x: 60, y: 498, w: 696, h: 86, zIndex: 4 },
-        { slotId: "caption1", kind: "text", role: "caption", x: 60, y: 484, w: 470, h: 20, zIndex: 5 },
-        { slotId: "image2", kind: "image", frameType: "IMAGE", captionSlotId: "caption2", x: 60, y: 624, w: 332, h: 240, zIndex: 6 },
-        { slotId: "image3", kind: "image", frameType: "IMAGE", captionSlotId: "caption3", x: 424, y: 624, w: 332, h: 240, zIndex: 7 },
-        { slotId: "caption2", kind: "text", role: "caption", x: 60, y: 872, w: 332, h: 26, zIndex: 8 },
-        { slotId: "caption3", kind: "text", role: "caption", x: 424, y: 872, w: 332, h: 26, zIndex: 9 }
-      ]
-    }
-  ];
-}
-
 function sanitizeKeyPart(value: string) {
   const sanitized = value.trim().replaceAll(/[^a-zA-Z0-9_-]+/g, "_").replaceAll(/^_+/g, "").replaceAll(/_+$/g, "");
   return sanitized || "item";
 }
 
-function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ChapterPageSpec[] {
+function slotLookupKey(slot: { slotId: string; bindingKey?: string }) {
+  const bindingKey = typeof slot.bindingKey === "string" ? slot.bindingKey.trim() : "";
+  return bindingKey.length > 0 ? bindingKey : slot.slotId;
+}
+
+function remapTextBySlotId(slotText: Record<string, string>, slots: ResolvedTextLayoutSlot[]) {
+  const remapped: Record<string, string> = {};
+  for (const slot of slots) {
+    const lookupKey = slotLookupKey(slot);
+    const value = slotText[slot.slotId] ?? slotText[lookupKey];
+    if (typeof value === "string") remapped[slot.slotId] = value;
+  }
+  return remapped;
+}
+
+function remapImagesBySlotId(
+  slotImages: Record<
+    string,
+    {
+      mediaAssetId: string;
+      sourceUrl: string;
+      previewUrl: string;
+      attribution: unknown;
+      crop: Record<string, unknown>;
+    }
+  >,
+  slots: ResolvedImageLayoutSlot[]
+) {
+  const remapped: typeof slotImages = {};
+  for (const slot of slots) {
+    const lookupKey = slotLookupKey(slot);
+    const value = slotImages[slot.slotId] ?? slotImages[lookupKey];
+    if (value) remapped[slot.slotId] = value;
+  }
+  return remapped;
+}
+
+function readSlotText(
+  slotText: Record<string, string | undefined>,
+  slot: { slotId: string; bindingKey?: string }
+) {
+  return slotText[slot.slotId] ?? slotText[slotLookupKey(slot)] ?? "";
+}
+
+function buildAnswerPerPageSpecs(answerEntries: Array<{ questionId: string }>): ResolvedChapterPageLayout[] {
   return answerEntries.map((entry, index) => {
     const suffix = `${index + 1}_${sanitizeKeyPart(entry.questionId)}`;
     const includeChapterHeader = index === 0;
-    const slots: SlotSpec[] = [];
+    const slots: ResolvedLayoutSlot[] = [];
     if (includeChapterHeader) {
       // Keep chapter header centered and fully inside default safe area (44px margins on 816px page width).
-      slots.push({ slotId: `title_${suffix}`, kind: "text", role: "title", x: 108, y: 72, w: 600, h: 56, zIndex: 1 });
+      slots.push({
+        slotId: `title_${suffix}`,
+        kind: "text",
+        role: "title",
+        bindingKey: "chapterTitle",
+        x: 108,
+        y: 72,
+        w: 600,
+        h: 56,
+        zIndex: 1,
+        overflowBehavior: "shrink_to_fit",
+        maxLines: 2,
+        alignment: "center"
+      });
     }
     slots.push(
-      { slotId: `body_${suffix}`, kind: "text", role: "body", x: 96, y: includeChapterHeader ? 144 : 92, w: 624, h: 260, zIndex: 2 },
-      { slotId: `image_${suffix}`, kind: "image", frameType: "FRAME", x: 76, y: includeChapterHeader ? 420 : 372, w: 664, h: 528, zIndex: 3 }
+      {
+        slotId: `body_${suffix}`,
+        kind: "text",
+        role: "body",
+        bindingKey: "answerBody",
+        x: 96,
+        y: includeChapterHeader ? 144 : 92,
+        w: 624,
+        h: 260,
+        zIndex: 2,
+        overflowBehavior: "shrink_to_fit"
+      },
+      {
+        slotId: `image_${suffix}`,
+        kind: "image",
+        frameType: "FRAME",
+        bindingKey: "answerImage",
+        x: 76,
+        y: includeChapterHeader ? 420 : 372,
+        w: 664,
+        h: 528,
+        zIndex: 3,
+        imageFit: "cover"
+      }
     );
     return {
-      pageTemplateId: `answer_page_${suffix}`,
+      pageLayoutId: `answer_page_${suffix}`,
+      source: "fallback",
+      layoutVersion: null,
+      layoutFingerprint: buildResolvedLayoutFingerprint(`answer_page_${suffix}`, slots, null),
       slots
-    } satisfies ChapterPageSpec;
+    } satisfies ResolvedChapterPageLayout;
   });
 }
 
-function parseSlotSpec(slotValue: unknown, slotIndex: number): SlotSpec | null {
-  const slot = recordOrNull(slotValue);
-  if (!slot) return null;
-  const slotKind = inferSlotKind(slot);
-  if (!slotKind) return null;
+function stableNodeKey(chapterKey: string, pageLayoutId: string, slotId: string) {
+  return `s21:${chapterKey}:${pageLayoutId}:${slotId}`;
+}
 
-  const slotId = stringValue(slot.slotId) ?? stringValue(slot.id) ?? `${slotKind}${slotIndex + 1}`;
-  const x = numberValue(slot.x) ?? (slotKind === "image" ? 60 + slotIndex * 32 : 60);
-  const y = numberValue(slot.y) ?? (slotKind === "image" ? 180 + slotIndex * 20 : 80 + slotIndex * 40);
-  const w = Math.max(40, numberValue(slot.w) ?? (slotKind === "image" ? 300 : 600));
-  const h = Math.max(40, numberValue(slot.h) ?? (slotKind === "image" ? 220 : 100));
-  const zIndex = Math.max(1, numberValue(slot.zIndex) ?? slotIndex + 1);
-
-  if (slotKind === "text") {
-    return {
-      slotId,
-      kind: "text",
-      role: inferTextRole(slotId),
-      x,
-      y,
-      w,
-      h,
-      zIndex
-    };
-  }
-
-  const roleString = stringValue(slot.role)?.toLowerCase() ?? "";
-  const typeString = stringValue(slot.type)?.toLowerCase() ?? "";
-  const frameType: "IMAGE" | "FRAME" = roleString.includes("frame") || typeString.includes("frame") ? "FRAME" : "IMAGE";
+function populateMetaPatch(
+  chapterKey: string,
+  pageLayoutId: string,
+  slotId: string,
+  bindingKey: string | undefined,
+  kind: ResolvedLayoutSlot["kind"],
+  layoutVersion: number | null,
+  layoutFingerprint: string
+) {
   return {
-    slotId,
-    kind: "image",
-    frameType,
-    x,
-    y,
-    w,
-    h,
-    zIndex
-  };
-}
-
-function parseChapterPageSpec(pageValue: unknown, fallbackIndex: number): ChapterPageSpec | null {
-  const pageRecord = recordOrNull(pageValue);
-  if (!pageRecord) return null;
-
-  const slotsRaw = Array.isArray(pageRecord.slots) ? pageRecord.slots : [];
-  const slots = slotsRaw.map((slotValue, index) => parseSlotSpec(slotValue, index)).filter((slot): slot is SlotSpec => Boolean(slot));
-  if (slots.length === 0) return null;
-
-  return {
-    pageTemplateId: stringValue(pageRecord.pageTemplateId) ?? stringValue(pageRecord.layoutId) ?? `chapter_page_${fallbackIndex + 1}`,
-    slots
-  };
-}
-
-function extractChapterPageSpecs(templateJson: unknown, chapterKey: string): ChapterPageSpec[] {
-  const template = recordOrNull(templateJson);
-  const studioPages = Array.isArray(template?.studioPages) ? template.studioPages : [];
-  const chapterPages = studioPages.filter((page) => recordOrNull(page)?.chapterKey === chapterKey);
-  const parsed = chapterPages
-    .map((page, index) => parseChapterPageSpec(page, index))
-    .filter((page): page is ChapterPageSpec => Boolean(page));
-  return parsed.length > 0 ? parsed : fallbackChapterPageSpecs(chapterKey);
-}
-
-function stableNodeKey(chapterKey: string, pageTemplateId: string, slotId: string) {
-  return `s21:${chapterKey}:${pageTemplateId}:${slotId}`;
-}
-
-function populateMetaPatch(chapterKey: string, pageTemplateId: string, slotId: string, kind: "text" | "image") {
-  return {
-    stableNodeKey: stableNodeKey(chapterKey, pageTemplateId, slotId),
+    stableNodeKey: stableNodeKey(chapterKey, pageLayoutId, slotId),
     source: "studio_populate_v1",
     sourceKind: kind,
     chapterKey,
-    pageTemplateId,
-    slotId
+    pageTemplateId: pageLayoutId,
+    pageLayoutId,
+    slotId,
+    bindingKey: bindingKey ?? null,
+    layoutVersion,
+    layoutFingerprint
   };
 }
 
-function frameTextStyle(role: TextSlotSpec["role"]) {
-  if (role === "title") {
-    return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: "center" };
+function frameTextStyle(slot: ResolvedTextLayoutSlot) {
+  const align = slot.alignment ?? slot.style?.align;
+  if (slot.role === "title") {
+    return { fontFamily: "serif", fontSize: 34, lineHeight: 1.12, fontWeight: 700, color: "#1e2430", align: align ?? "center" };
   }
-  if (role === "subtitle") {
-    return { fontFamily: "sans", fontSize: 16, lineHeight: 1.3, fontWeight: 500, color: "#3b465a", align: "left" };
+  if (slot.role === "subtitle") {
+    return { fontFamily: "sans", fontSize: 16, lineHeight: 1.3, fontWeight: 500, color: "#3b465a", align: align ?? "left" };
   }
-  if (role === "quote") {
-    return { fontFamily: "serif", fontSize: 20, lineHeight: 1.25, fontWeight: 500, color: "#2a3141", italic: true, align: "left" };
+  if (slot.role === "quote") {
+    return { fontFamily: "serif", fontSize: 20, lineHeight: 1.25, fontWeight: 500, color: "#2a3141", italic: true, align: align ?? "left" };
   }
-  if (role === "caption") {
-    return { fontFamily: "sans", fontSize: 12, lineHeight: 1.2, fontWeight: 500, color: "#5a6375", align: "left" };
+  if (slot.role === "caption") {
+    return { fontFamily: "sans", fontSize: 12, lineHeight: 1.2, fontWeight: 500, color: "#5a6375", align: align ?? "left" };
   }
-  return { fontFamily: "sans", fontSize: 15, lineHeight: 1.45, fontWeight: 400, color: "#293040", align: "left" };
+  return { fontFamily: "sans", fontSize: 15, lineHeight: 1.45, fontWeight: 400, color: "#293040", align: align ?? "left" };
+}
+
+function decorativeShapeStyle(slot: ResolvedShapeLayoutSlot) {
+  return {
+    fill: "#e9dcc7",
+    borderColor: "#d6c090",
+    borderWidth: 0,
+    borderRadius: 12,
+    ...(slot.style ?? {})
+  };
+}
+
+function decorativeLineStyle(slot: ResolvedLineLayoutSlot) {
+  return {
+    stroke: "#d6c090",
+    strokeWidth: Math.max(1, Math.min(slot.h, 4)),
+    ...(slot.style ?? {})
+  };
 }
 
 function createTextFrameContent(text: string, meta: Record<string, unknown>) {
@@ -266,6 +260,32 @@ function createImagePlaceholderContent(slotId: string, frameType: "IMAGE" | "FRA
     caption: "",
     placeholderLabel: `Image placeholder (${slotId})`,
     attribution: null,
+    populateMeta: meta
+  };
+}
+
+function createFrameSlotPlaceholderContent(slotId: string, meta: Record<string, unknown>) {
+  return {
+    kind: "frame_node_v1",
+    placeholderLabel: `Frame slot (${slotId})`,
+    imageRef: null,
+    attribution: null,
+    populateMeta: meta
+  };
+}
+
+function createShapeSlotContent(slotId: string, meta: Record<string, unknown>) {
+  return {
+    kind: "shape_node_v1",
+    shapeType: "rect",
+    label: slotId,
+    populateMeta: meta
+  };
+}
+
+function createLineSlotContent(meta: Record<string, unknown>) {
+  return {
+    kind: "line_node_v1",
     populateMeta: meta
   };
 }
@@ -313,14 +333,14 @@ function readAnswerText(row: ChapterAnswerDto) {
 }
 
 function resolveChapterHeaderPageTitle(
-  pageSpec: ChapterPageSpec,
+  pageSpec: ResolvedChapterPageLayout,
   slotText: Record<string, string | undefined>
 ) {
   const titleSlot = pageSpec.slots.find(
-    (slot): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title"
+    (slot): slot is ResolvedTextLayoutSlot => slot.kind === "text" && slot.role === "title"
   );
   if (!titleSlot?.slotId) return null;
-  const text = slotText[titleSlot.slotId];
+  const text = readSlotText(slotText, titleSlot);
   if (typeof text !== "string") return null;
   const trimmed = text.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -427,14 +447,15 @@ export const populateChapter = action({
           .sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0))
       ];
 
-      const answerPageSpecs: any[] = orderedAnswers.length > 0 ? buildAnswerPerPageSpecs(orderedAnswers) : [];
-      const pageSpecs: any[] =
+      const answerPageSpecs: ResolvedChapterPageLayout[] = orderedAnswers.length > 0 ? buildAnswerPerPageSpecs(orderedAnswers) : [];
+      const pageSpecs: ResolvedChapterPageLayout[] =
         answerPageSpecs.length > 0
           ? answerPageSpecs
-          : extractChapterPageSpecs(template?.templateJson ?? template, chapter.chapterKey);
+          : resolveTemplateChapterPageLayouts(template?.templateJson ?? template, chapter.chapterKey);
       let pages = await ctx.runQuery(api.pages.listByStorybook, { viewerSubject: viewer.subject, storybookId: args.storybookId });
       const existingPageIds = studioState?.pageIds ?? [];
       const pageIds: string[] = [];
+      const templateVersion = typeof template?.version === "number" ? template.version : null;
 
       for (let i = 0; i < pageSpecs.length; i += 1) {
         const existingPageId = existingPageIds[i];
@@ -444,7 +465,11 @@ export const populateChapter = action({
         }
         const createdPage = await ctx.runMutation(api.pages.create, {
           viewerSubject: viewer.subject,
-          storybookId: args.storybookId
+          storybookId: args.storybookId,
+          pageLayoutId: pageSpecs[i]?.pageLayoutId ?? null,
+          layoutSourceTemplateId: storybook.templateId ?? null,
+          layoutSourceTemplateVersion: templateVersion,
+          layoutFingerprint: pageSpecs[i]?.layoutFingerprint ?? null
         });
         pageIds.push(String(createdPage.id));
         pages = await ctx.runQuery(api.pages.listByStorybook, { viewerSubject: viewer.subject, storybookId: args.storybookId });
@@ -462,18 +487,18 @@ export const populateChapter = action({
         viewerSubject: viewer.subject,
         chapterInstanceId: args.chapterInstanceId
       });
-      const imageSlots = pageSpecs.flatMap((page: any) => page.slots.filter((slot: any): slot is ImageSlotSpec => slot.kind === "image"));
-      const textSlots = pageSpecs.flatMap((page: any) => page.slots.filter((slot: any): slot is TextSlotSpec => slot.kind === "text"));
+      const imageSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is ResolvedImageLayoutSlot => slot.kind === "image"));
+      const textSlots = pageSpecs.flatMap((page) => page.slots.filter((slot): slot is ResolvedTextLayoutSlot => slot.kind === "text"));
       const useAnswerPages = answerPageSpecs.length > 0;
 
       const textMapping: TextSlotMapResult = useAnswerPages
         ? {
           slotText: Object.fromEntries(
-            answerPageSpecs.flatMap((pageSpec: any, index: any) => {
+            answerPageSpecs.flatMap((pageSpec, index) => {
               const answer = orderedAnswers[index];
               if (!answer) return [];
-              const titleSlot = pageSpec?.slots.find((slot: any): slot is TextSlotSpec => slot.kind === "text" && slot.role === "title");
-              const bodySlot = pageSpec?.slots.find((slot: any): slot is TextSlotSpec => slot.kind === "text" && slot.role === "body");
+              const titleSlot = pageSpec?.slots.find((slot): slot is ResolvedTextLayoutSlot => slot.kind === "text" && slot.role === "title");
+              const bodySlot = pageSpec?.slots.find((slot): slot is ResolvedTextLayoutSlot => slot.kind === "text" && slot.role === "body");
               const text = readAnswerText(answer);
               const pairs: Array<readonly [string, string]> = [];
               if (titleSlot?.slotId) pairs.push([titleSlot.slotId, chapter.title]);
@@ -483,12 +508,18 @@ export const populateChapter = action({
           ),
           warnings: []
         }
-        : mapNarrativeToTextSlots({
-          chapterTitle: chapter.title,
-          chapterSubtitle: null,
-          narrative: draft as any,
-          slotIds: textSlots.map((slot: any) => slot.slotId)
-        });
+          : (() => {
+            const rawMapping = mapNarrativeToTextSlots({
+              chapterTitle: chapter.title,
+              chapterSubtitle: null,
+              narrative: draft as any,
+              slotIds: textSlots.map((slot) => slotLookupKey(slot))
+            });
+            return {
+              ...rawMapping,
+              slotText: remapTextBySlotId(rawMapping.slotText, textSlots)
+            };
+          })();
 
       let imageMapping;
       if (useAnswerPages) {
@@ -505,19 +536,38 @@ export const populateChapter = action({
           }
         }
         const sequentialSlotAssets: Record<string, any> = {};
-        imageSlots.forEach((slot: any, index: any) => {
+        imageSlots.forEach((slot, index) => {
           const asset = orderedIllustrationAssets[index];
           if (asset) sequentialSlotAssets[slot.slotId] = asset;
         });
-        imageMapping = mapIllustrationsToImageSlots({
-          slotIds: imageSlots.map((slot: any) => slot.slotId),
-          slotAssets: sequentialSlotAssets
+        const rawImageMapping = mapIllustrationsToImageSlots({
+          slotIds: imageSlots.map((slot) => slotLookupKey(slot)),
+          slotAssets: Object.fromEntries(
+            imageSlots.flatMap((slot) => {
+              const asset = sequentialSlotAssets[slot.slotId];
+              if (!asset) return [];
+              return [[slotLookupKey(slot), asset] as const];
+            })
+          )
         });
+        imageMapping = {
+          slotImages: remapImagesBySlotId(rawImageMapping.slotImages, imageSlots)
+        };
       } else {
-        imageMapping = mapIllustrationsToImageSlots({
-          slotIds: imageSlots.map((slot: any) => slot.slotId),
-          slotAssets: (illustrationSlotMap?.slots ?? {}) as Record<string, any>
+        const rawSlotAssets = (illustrationSlotMap?.slots ?? {}) as Record<string, any>;
+        const rawImageMapping = mapIllustrationsToImageSlots({
+          slotIds: imageSlots.map((slot) => slotLookupKey(slot)),
+          slotAssets: Object.fromEntries(
+            imageSlots.flatMap((slot) => {
+              const asset = rawSlotAssets[slotLookupKey(slot)] ?? rawSlotAssets[slot.slotId];
+              if (!asset) return [];
+              return [[slotLookupKey(slot), asset] as const];
+            })
+          )
         });
+        imageMapping = {
+          slotImages: remapImagesBySlotId(rawImageMapping.slotImages, imageSlots)
+        };
       }
 
       const createdNodeIds: string[] = [];
@@ -528,6 +578,28 @@ export const populateChapter = action({
         const pageId = pageIds[pageIndex];
         const page = (pages as PageDto[]).find((row) => row.id === pageId);
         if (!page) continue;
+
+        if (
+          page.page_layout_id !== pageSpec.pageLayoutId ||
+          page.layout_source_template_id !== (storybook.templateId ?? null) ||
+          page.layout_source_template_version !== templateVersion ||
+          page.layout_fingerprint !== pageSpec.layoutFingerprint
+        ) {
+          await ctx.runMutation(api.pages.update, {
+            viewerSubject: viewer.subject,
+            pageId: pageId as any,
+            patch: {
+              pageLayoutId: pageSpec.pageLayoutId,
+              layoutSourceTemplateId: storybook.templateId ?? null,
+              layoutSourceTemplateVersion: templateVersion,
+              layoutFingerprint: pageSpec.layoutFingerprint
+            }
+          });
+          page.page_layout_id = pageSpec.pageLayoutId;
+          page.layout_source_template_id = storybook.templateId ?? null;
+          page.layout_source_template_version = templateVersion;
+          page.layout_fingerprint = pageSpec.layoutFingerprint;
+        }
 
         const chapterHeaderTitle = resolveChapterHeaderPageTitle(
           pageSpec,
@@ -544,7 +616,7 @@ export const populateChapter = action({
 
         const initialPageFrames = [...(framesByPageId.get(pageId) ?? [])].sort((a, b) => a.z_index - b.z_index);
         const expectedStableKeys = new Set(
-          pageSpec.slots.map((slot: any) => stableNodeKey((chapter as any).chapterKey, pageSpec.pageTemplateId, slot.slotId))
+          pageSpec.slots.map((slot) => stableNodeKey((chapter as any).chapterKey, pageSpec.pageLayoutId, slot.slotId))
         );
         const stalePopulateFrames = initialPageFrames.filter((frame) => {
           const content = recordOrNull(frame.content);
@@ -575,12 +647,20 @@ export const populateChapter = action({
         }
 
         for (const slot of pageSpec.slots) {
-          const meta = populateMetaPatch(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId, slot.kind);
+          const meta = populateMetaPatch(
+            chapter.chapterKey,
+            pageSpec.pageLayoutId,
+            slot.slotId,
+            slot.bindingKey,
+            slot.kind,
+            pageSpec.layoutVersion,
+            pageSpec.layoutFingerprint
+          );
           const key = String(meta.stableNodeKey);
           const existingFrame = byStableKey.get(key);
 
           if (slot.kind === "text") {
-            const text = textMapping.slotText[slot.slotId] ?? "";
+            const text = readSlotText(textMapping.slotText, slot);
             const content = createTextFrameContent(text, meta);
             if (!existingFrame) {
               const created = await ctx.runMutation(api.frames.create, {
@@ -593,11 +673,11 @@ export const populateChapter = action({
                 h: slot.h,
                 zIndex: slot.zIndex,
                 locked: false,
-                style: frameTextStyle(slot.role),
-                content
-              });
-              createdNodeIds.push(String(created.id));
-              continue;
+                style: { ...frameTextStyle(slot), ...(slot.style ?? {}) },
+              content
+            });
+            createdNodeIds.push(String(created.id));
+            continue;
             }
 
             const existingContent = recordOrNull(existingFrame.content);
@@ -612,7 +692,7 @@ export const populateChapter = action({
               frameId: existingFrame.id as any,
               patch: {
                 content: patchContent,
-                style: { ...existingFrame.style, ...frameTextStyle(slot.role) },
+                style: { ...existingFrame.style, ...frameTextStyle(slot), ...(slot.style ?? {}) },
                 expectedVersion: existingFrame.version
               }
             });
@@ -621,80 +701,188 @@ export const populateChapter = action({
             continue;
           }
 
-          const mappedImage = imageMapping.slotImages[slot.slotId];
-          const placeholderContent = createImagePlaceholderContent(slot.slotId, slot.frameType, meta);
+          if (slot.kind === "image") {
+            const mappedImage = imageMapping.slotImages[slot.slotId];
+            const placeholderContent = createImagePlaceholderContent(slot.slotId, slot.frameType, meta);
 
-          if (!existingFrame) {
-            let content: Record<string, unknown> = placeholderContent as Record<string, unknown>;
-            let crop: Record<string, unknown> | null | undefined = null;
-            if (mappedImage) {
-              content = {
-                ...buildFillSlotWithImagePatch({
-                  frameType: slot.frameType,
-                  currentContent: placeholderContent,
-                  assetId: mappedImage.mediaAssetId,
-                  sourceUrl: mappedImage.sourceUrl,
-                  previewUrl: mappedImage.previewUrl,
-                  caption: slot.captionSlotId ? (textMapping.slotText[slot.captionSlotId] ?? "") : "",
-                  attribution: mappedImage.attribution as Record<string, unknown> | null
-                }).content,
-                populateMeta: meta
-              } as Record<string, unknown>;
-              crop = mappedImage.crop;
+            if (!existingFrame) {
+              let content: Record<string, unknown> = placeholderContent as Record<string, unknown>;
+              let crop: Record<string, unknown> | null | undefined = null;
+              if (mappedImage) {
+                content = {
+                  ...buildFillSlotWithImagePatch({
+                    frameType: slot.frameType,
+                    currentContent: placeholderContent,
+                    assetId: mappedImage.mediaAssetId,
+                    sourceUrl: mappedImage.sourceUrl,
+                    previewUrl: mappedImage.previewUrl,
+                    caption: slot.captionSlotId ? (textMapping.slotText[slot.captionSlotId] ?? "") : "",
+                    attribution: mappedImage.attribution as Record<string, unknown> | null
+                  }).content,
+                  populateMeta: meta
+                } as Record<string, unknown>;
+                crop = mappedImage.crop;
+              }
+              const created = await ctx.runMutation(api.frames.create, {
+                viewerSubject: viewer.subject,
+                pageId: pageId as any,
+                type: slot.frameType,
+                x: slot.x,
+                y: slot.y,
+                w: slot.w,
+                h: slot.h,
+                zIndex: slot.zIndex,
+                locked: slot.locked ?? false,
+                style: slot.frameType === "FRAME" ? { borderRadius: 16, overflow: "hidden", ...(slot.style ?? {}) } : { borderRadius: 12, ...(slot.style ?? {}) },
+                content,
+                crop: crop ?? undefined
+              });
+              createdNodeIds.push(String(created.id));
+              continue;
             }
-            const created = await ctx.runMutation(api.frames.create, {
-              viewerSubject: viewer.subject,
-              pageId: pageId as any,
-              type: slot.frameType,
-              x: slot.x,
-              y: slot.y,
-              w: slot.w,
-              h: slot.h,
-              zIndex: slot.zIndex,
-              locked: false,
-              style: slot.frameType === "FRAME" ? { borderRadius: 16, overflow: "hidden" } : { borderRadius: 12 },
-              content,
-              crop: crop ?? undefined
+
+            if (!mappedImage) {
+              skippedNodeIds.push(existingFrame.id);
+              continue;
+            }
+
+            const existingContent = recordOrNull(existingFrame.content) ?? {};
+            const currentSourceUrl =
+              stringValue(existingContent.sourceUrl) ??
+              stringValue(recordOrNull(existingContent.imageRef)?.sourceUrl) ??
+              "";
+            if (currentSourceUrl === mappedImage.sourceUrl) {
+              skippedNodeIds.push(existingFrame.id);
+              continue;
+            }
+
+            const imagePatch = buildFillSlotWithImagePatch({
+              frameType: slot.frameType,
+              currentContent: { ...existingContent, populateMeta: meta },
+              assetId: mappedImage.mediaAssetId,
+              sourceUrl: mappedImage.sourceUrl,
+              previewUrl: mappedImage.previewUrl,
+              caption: slot.captionSlotId ? (textMapping.slotText[slot.captionSlotId] ?? "") : "",
+              attribution: mappedImage.attribution as Record<string, unknown> | null
             });
-            createdNodeIds.push(String(created.id));
+            const updated = await ctx.runMutation(api.frames.update, {
+              viewerSubject: viewer.subject,
+              frameId: existingFrame.id as any,
+              patch: {
+                content: { ...(imagePatch.content as Record<string, unknown>), populateMeta: meta },
+                crop: mappedImage.crop,
+                expectedVersion: existingFrame.version
+              }
+            });
+            updatedNodeIds.push(String(updated.id));
+            byStableKey.set(key, updated as FrameDto);
             continue;
           }
 
-          if (!mappedImage) {
-            skippedNodeIds.push(existingFrame.id);
-            continue;
-          }
+          const commonPatch = {
+            x: slot.x,
+            y: slot.y,
+            w: slot.w,
+            h: slot.h,
+            z_index: slot.zIndex,
+            locked: slot.locked ?? false,
+            expectedVersion: existingFrame?.version
+          };
 
-          const existingContent = recordOrNull(existingFrame.content) ?? {};
-          const currentSourceUrl =
-            stringValue(existingContent.sourceUrl) ??
-            stringValue(recordOrNull(existingContent.imageRef)?.sourceUrl) ??
-            "";
-          if (currentSourceUrl === mappedImage.sourceUrl) {
-            skippedNodeIds.push(existingFrame.id);
-            continue;
-          }
-
-          const imagePatch = buildFillSlotWithImagePatch({
-            frameType: slot.frameType,
-            currentContent: { ...existingContent, populateMeta: meta },
-            assetId: mappedImage.mediaAssetId,
-            sourceUrl: mappedImage.sourceUrl,
-            previewUrl: mappedImage.previewUrl,
-            caption: slot.captionSlotId ? (textMapping.slotText[slot.captionSlotId] ?? "") : "",
-            attribution: mappedImage.attribution as Record<string, unknown> | null
-          });
-          const updated = await ctx.runMutation(api.frames.update, {
-            viewerSubject: viewer.subject,
-            frameId: existingFrame.id as any,
-            patch: {
-              content: { ...(imagePatch.content as Record<string, unknown>), populateMeta: meta },
-              crop: mappedImage.crop,
-              expectedVersion: existingFrame.version
+          if (slot.kind === "frame") {
+            const content = createFrameSlotPlaceholderContent(slot.slotId, meta);
+            if (!existingFrame) {
+              const created = await ctx.runMutation(api.frames.create, {
+                viewerSubject: viewer.subject,
+                pageId: pageId as any,
+                type: "FRAME",
+                x: slot.x,
+                y: slot.y,
+                w: slot.w,
+                h: slot.h,
+                zIndex: slot.zIndex,
+                locked: slot.locked ?? false,
+                style: { borderRadius: 16, overflow: "hidden", ...(slot.style ?? {}) },
+                content
+              });
+              createdNodeIds.push(String(created.id));
+            } else {
+              const updated = await ctx.runMutation(api.frames.update, {
+                viewerSubject: viewer.subject,
+                frameId: existingFrame.id as any,
+                patch: {
+                  ...commonPatch,
+                  style: { ...(existingFrame.style ?? {}), borderRadius: 16, overflow: "hidden", ...(slot.style ?? {}) },
+                  content
+                }
+              });
+              updatedNodeIds.push(String(updated.id));
             }
-          });
-          updatedNodeIds.push(String(updated.id));
-          byStableKey.set(key, updated as FrameDto);
+            continue;
+          }
+
+          if (slot.kind === "shape" || slot.kind === "decorative") {
+            const content = createShapeSlotContent(slot.slotId, meta);
+            if (!existingFrame) {
+              const created = await ctx.runMutation(api.frames.create, {
+                viewerSubject: viewer.subject,
+                pageId: pageId as any,
+                type: "SHAPE",
+                x: slot.x,
+                y: slot.y,
+                w: slot.w,
+                h: slot.h,
+                zIndex: slot.zIndex,
+                locked: slot.locked ?? false,
+                style: decorativeShapeStyle(slot),
+                content
+              });
+              createdNodeIds.push(String(created.id));
+            } else {
+              const updated = await ctx.runMutation(api.frames.update, {
+                viewerSubject: viewer.subject,
+                frameId: existingFrame.id as any,
+                patch: {
+                  ...commonPatch,
+                  style: decorativeShapeStyle(slot),
+                  content
+                }
+              });
+              updatedNodeIds.push(String(updated.id));
+            }
+            continue;
+          }
+
+          if (slot.kind === "line") {
+            const content = createLineSlotContent(meta);
+            if (!existingFrame) {
+              const created = await ctx.runMutation(api.frames.create, {
+                viewerSubject: viewer.subject,
+                pageId: pageId as any,
+                type: "LINE",
+                x: slot.x,
+                y: slot.y,
+                w: slot.w,
+                h: slot.h,
+                zIndex: slot.zIndex,
+                locked: slot.locked ?? false,
+                style: decorativeLineStyle(slot),
+                content
+              });
+              createdNodeIds.push(String(created.id));
+            } else {
+              const updated = await ctx.runMutation(api.frames.update, {
+                viewerSubject: viewer.subject,
+                frameId: existingFrame.id as any,
+                patch: {
+                  ...commonPatch,
+                  style: decorativeLineStyle(slot),
+                  content
+                }
+              });
+              updatedNodeIds.push(String(updated.id));
+            }
+          }
         }
       }
 
@@ -741,12 +929,21 @@ export const populateChapter = action({
           draftFingerprint: draftFp,
           illustrationFingerprint: illFp,
           pageIds,
-          stableNodes: pageSpecs.flatMap((pageSpec: any) =>
-            pageSpec.slots.map((slot: any) => ({
-              pageTemplateId: pageSpec.pageTemplateId,
+          stableNodes: pageSpecs.flatMap((pageSpec) =>
+            pageSpec.slots.map((slot) => ({
+              pageTemplateId: pageSpec.pageLayoutId,
               slotId: slot.slotId,
-              nodeId: stableNodeKey(chapter.chapterKey, pageSpec.pageTemplateId, slot.slotId),
-              nodeType: slot.kind === "text" ? "TEXT" : slot.frameType
+              nodeId: stableNodeKey(chapter.chapterKey, pageSpec.pageLayoutId, slot.slotId),
+              nodeType:
+                slot.kind === "text"
+                  ? "TEXT"
+                  : slot.kind === "image"
+                    ? slot.frameType
+                    : slot.kind === "frame"
+                      ? "FRAME"
+                      : slot.kind === "line"
+                        ? "LINE"
+                        : "SHAPE"
             }))
           ),
           warnings: [...textMapping.warnings],

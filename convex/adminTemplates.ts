@@ -6,6 +6,8 @@ import type {
   GuidedQuestionInputType,
   GuidedTemplateQuestion,
 } from "../packages/shared/templates/templateTypes";
+import { coerceTemplateLayoutDefinition, validateTemplateLayoutDefinition, type TemplateLayoutDefinition } from "../packages/shared/templates/layoutTypes";
+import { buildDefaultTemplateLayoutDefinition, withDefaultTemplateLayouts } from "../packages/shared/templates/defaultLayoutSeed";
 import {
   inferAdminTemplateCategory,
   normalizeAdminTemplateCategory,
@@ -44,8 +46,16 @@ type TemplateSeedLike = {
     subtitle?: string;
   }>;
   questionFlow: Record<string, GuidedTemplateQuestion[]>;
-  slotMap: Record<string, { chapterKey: string; questionId: string; slotPath: string }>;
-};
+  slotMap: Record<string, {
+    chapterKey: string;
+    questionId: string;
+    slotPath: string;
+    layoutIdLandscape?: string;
+    pageLayoutId?: string;
+    slotId?: string;
+    bindingKey?: string;
+  }>;
+} & Partial<TemplateLayoutDefinition>;
 
 type TemplateRow = {
   _id: string;
@@ -134,7 +144,7 @@ function coerceTemplateSeed(value: unknown): TemplateSeedLike | null {
     return null;
   }
 
-  return {
+  return withDefaultTemplateLayouts({
     templateId: value.templateId,
     version: value.version,
     title: value.title,
@@ -185,11 +195,18 @@ function coerceTemplateSeed(value: unknown): TemplateSeedLike | null {
               questionId:
                 typeof slot.questionId === "string" ? slot.questionId : `${slotKey}_question`,
               slotPath: typeof slot.slotPath === "string" ? slot.slotPath : slotKey,
+              layoutIdLandscape:
+                typeof slot.layoutIdLandscape === "string" ? slot.layoutIdLandscape : undefined,
+              pageLayoutId:
+                typeof slot.pageLayoutId === "string" ? slot.pageLayoutId : undefined,
+              slotId: typeof slot.slotId === "string" ? slot.slotId : undefined,
+              bindingKey: typeof slot.bindingKey === "string" ? slot.bindingKey : undefined,
             },
           ]];
         })
     ),
-  };
+    ...(coerceTemplateLayoutDefinition(value) ?? {}),
+  });
 }
 
 function getTemplateSeeds() {
@@ -221,7 +238,7 @@ function createSeedMetadata(seed: TemplateSeedLike, displayOrder: number) {
 }
 
 function createEmptyTemplateJson(input: { templateId: string; title: string; subtitle: string }): TemplateSeedLike {
-  return {
+  const base = {
     templateId: input.templateId,
     version: 1,
     title: input.title,
@@ -230,6 +247,10 @@ function createEmptyTemplateJson(input: { templateId: string; title: string; sub
     chapters: [],
     questionFlow: {},
     slotMap: {},
+  };
+  return {
+    ...base,
+    ...buildDefaultTemplateLayoutDefinition(base)
   };
 }
 
@@ -324,6 +345,21 @@ function buildCompatibilityWarnings(input: {
   return warnings;
 }
 
+function buildTemplateLayoutPublishErrors(row: TemplateSeedLike) {
+  const layoutDefinition = coerceTemplateLayoutDefinition(row);
+  const validation = validateTemplateLayoutDefinition(layoutDefinition, {
+    requireDefinition: row.chapters.length > 0,
+    slotBindings: Object.entries(row.slotMap).map(([bindingKey, binding]) => ({
+      bindingKey,
+      slotBindingKey: binding.bindingKey ?? null,
+      pageLayoutId: binding.pageLayoutId ?? null,
+      slotId: binding.slotId ?? null,
+    }))
+  });
+
+  return validation.errors.map((error) => error.message);
+}
+
 function buildActionState(model: TemplateModel, storybooks: StorybookRow[]) {
   const usageSummary = buildUsageSummary(model.row.templateId, storybooks);
   const publishability = validateAdminTemplatePublishability({
@@ -339,6 +375,7 @@ function buildActionState(model: TemplateModel, storybooks: StorybookRow[]) {
     chapterCount: model.row.chapters.length,
     questionCount: questionCountForTemplate(model.row),
   });
+  const layoutPublishErrors = buildTemplateLayoutPublishErrors(model.row);
 
   let archiveBlockReason: string | null = null;
   if (model.metadata.status === "published") {
@@ -351,8 +388,9 @@ function buildActionState(model: TemplateModel, storybooks: StorybookRow[]) {
     canPublish:
       model.metadata.status !== "archived" &&
       model.metadata.status !== "published" &&
-      publishability.ok,
-    publishErrors: publishability.errors,
+      publishability.ok &&
+      layoutPublishErrors.length === 0,
+    publishErrors: [...publishability.errors, ...layoutPublishErrors],
     canDisable: model.metadata.status === "published",
     canArchive: model.metadata.status !== "published" && usageSummary.canArchiveSafely,
     archiveBlockReason,
@@ -567,14 +605,14 @@ function buildPatchedTemplateJson(row: TemplateSeedLike, patch: UpdateAdminTempl
     ? sanitizeQuestionsByChapter(row, patch.questionsByChapter)
     : row.questionFlow;
 
-  return {
+  return withDefaultTemplateLayouts({
     ...row,
     title,
     subtitle,
     questionFlow,
     slotMap: buildSlotMapFromQuestionFlow(questionFlow),
     isActive: row.isActive,
-  };
+  });
 }
 
 function createMetadataPatch(input: UpdateAdminTemplateInput) {
@@ -675,6 +713,131 @@ export const getTemplateDetail = queryGeneric({
     const templates = await loadAdminTemplates(ctx);
     return templates.find((template) => template.id === args.templateId) ?? null;
   },
+});
+
+export const getTemplateLayouts = queryGeneric({
+  args: { templateId: v.string() },
+  handler: async (ctx, args) => {
+    const row = await getExistingTemplateRow(ctx, args.templateId);
+    const seed = getTemplateSeeds().find((item) => item.templateId === args.templateId) ?? null;
+    if (!row && !seed) return null;
+
+    const template = row
+      ? (coerceTemplateSeed(row.templateJson) ?? createEmptyTemplateJson({
+        templateId: row.templateId,
+        title: row.title,
+        subtitle: row.subtitle,
+      }))
+      : seed!;
+    const layoutDefinition = coerceTemplateLayoutDefinition(template) ?? buildDefaultTemplateLayoutDefinition(template);
+    const validation = validateTemplateLayoutDefinition(layoutDefinition, {
+      requireDefinition: template.chapters.length > 0,
+      slotBindings: Object.entries(template.slotMap).map(([bindingKey, binding]) => ({
+        bindingKey,
+        slotBindingKey: binding.bindingKey ?? null,
+        pageLayoutId: binding.pageLayoutId ?? null,
+        slotId: binding.slotId ?? null,
+      }))
+    });
+
+    return {
+      templateId: row?.templateId ?? seed!.templateId,
+      layoutDefinition,
+      validation
+    };
+  }
+});
+
+export const validateTemplateLayouts = mutationGeneric({
+  args: {
+    templateId: v.string(),
+    layoutDefinition: v.optional(v.any())
+  },
+  handler: async (ctx, args) => {
+    const row = await ensureTemplateRowForMutation(ctx, args.templateId);
+    if (!row) {
+      return { ok: false, code: "NOT_FOUND", errors: ["Template not found."] };
+    }
+
+    const template = coerceTemplateSeed(row.templateJson) ?? createEmptyTemplateJson({
+      templateId: row.templateId,
+      title: row.title,
+      subtitle: row.subtitle,
+    });
+    const candidateLayoutDefinition =
+      (args.layoutDefinition ? coerceTemplateLayoutDefinition(args.layoutDefinition) : null) ??
+      coerceTemplateLayoutDefinition(template);
+    const validation = validateTemplateLayoutDefinition(candidateLayoutDefinition, {
+      requireDefinition: template.chapters.length > 0,
+      slotBindings: Object.entries(template.slotMap).map(([bindingKey, binding]) => ({
+        bindingKey,
+        slotBindingKey: binding.bindingKey ?? null,
+        pageLayoutId: binding.pageLayoutId ?? null,
+        slotId: binding.slotId ?? null,
+      }))
+    });
+
+    return {
+      ok: validation.ok,
+      validation,
+      errors: validation.errors.map((error) => error.message)
+    };
+  }
+});
+
+export const updateTemplateLayouts = mutationGeneric({
+  args: {
+    templateId: v.string(),
+    layoutDefinition: v.any()
+  },
+  handler: async (ctx, args) => {
+    const row = await ensureTemplateRowForMutation(ctx, args.templateId);
+    if (!row) {
+      return { ok: false, code: "NOT_FOUND", errors: ["Template not found."] };
+    }
+
+    const template = coerceTemplateSeed(row.templateJson) ?? createEmptyTemplateJson({
+      templateId: row.templateId,
+      title: row.title,
+      subtitle: row.subtitle,
+    });
+    const layoutDefinition = coerceTemplateLayoutDefinition(args.layoutDefinition);
+    if (!layoutDefinition) {
+      return {
+        ok: false,
+        code: "BAD_REQUEST",
+        errors: ["Layout payload is invalid or incomplete."]
+      };
+    }
+
+    const validation = validateTemplateLayoutDefinition(layoutDefinition, {
+      requireDefinition: template.chapters.length > 0,
+      slotBindings: Object.entries(template.slotMap).map(([bindingKey, binding]) => ({
+        bindingKey,
+        slotBindingKey: binding.bindingKey ?? null,
+        pageLayoutId: binding.pageLayoutId ?? null,
+        slotId: binding.slotId ?? null,
+      }))
+    });
+    if (!validation.ok) {
+      return {
+        ok: false,
+        code: "LAYOUT_VALIDATION_FAILED",
+        errors: validation.errors.map((error) => error.message),
+        validation
+      };
+    }
+
+    await ctx.db.patch(row._id as never, {
+      templateJson: {
+        ...template,
+        ...layoutDefinition
+      },
+      updatedAt: Date.now()
+    });
+
+    return { ok: true, validation };
+  }
 });
 
 export const createTemplateMetadata = mutationGeneric({

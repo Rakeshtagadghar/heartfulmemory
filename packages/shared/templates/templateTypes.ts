@@ -1,3 +1,5 @@
+import type { TemplateLayoutDefinition } from "./layoutTypes";
+
 export type GuidedQuestionInputType = "text" | "textarea";
 
 export type GuidedTemplateQuestion = {
@@ -20,6 +22,9 @@ export type GuidedTemplateSlotBinding = {
   questionId: string;
   slotPath: string;
   layoutIdLandscape?: string;
+  pageLayoutId?: string;
+  slotId?: string;
+  bindingKey?: string;
 };
 
 export type GuidedTemplateV2 = {
@@ -31,7 +36,7 @@ export type GuidedTemplateV2 = {
   chapters: GuidedTemplateChapter[];
   questionFlow: Record<string, GuidedTemplateQuestion[]>;
   slotMap: Record<string, GuidedTemplateSlotBinding>;
-};
+} & Partial<TemplateLayoutDefinition>;
 
 export type GuidedTemplateSummary = {
   templateId: string;
@@ -40,4 +45,4 @@ export type GuidedTemplateSummary = {
   subtitle: string;
   isActive: boolean;
   chapters: GuidedTemplateChapter[];
-};
+} & Partial<Pick<TemplateLayoutDefinition, "layoutSchemaVersion" | "pageLayouts" | "chapterPagePlans">>;

@@ -9,6 +9,8 @@ import type {
   GuidedTemplateSummary,
   GuidedTemplateV2
 } from "../packages/shared/templates/templateTypes";
+import { coerceTemplateLayoutDefinition } from "../packages/shared/templates/layoutTypes";
+import { withDefaultTemplateLayouts } from "../packages/shared/templates/defaultLayoutSeed";
 import {
   inferAdminTemplateCategory,
   normalizeAdminTemplateSlug,
@@ -114,7 +116,11 @@ function coerceSlotMap(value: unknown): GuidedTemplateV2["slotMap"] | null {
     slotMap[slotKey] = {
       chapterKey: binding.chapterKey,
       questionId: binding.questionId,
-      slotPath: binding.slotPath
+      slotPath: binding.slotPath,
+      layoutIdLandscape: typeof binding.layoutIdLandscape === "string" ? binding.layoutIdLandscape : undefined,
+      pageLayoutId: typeof binding.pageLayoutId === "string" ? binding.pageLayoutId : undefined,
+      slotId: typeof binding.slotId === "string" ? binding.slotId : undefined,
+      bindingKey: typeof binding.bindingKey === "string" ? binding.bindingKey : undefined
     };
   }
   return slotMap;
@@ -134,10 +140,11 @@ function coerceTemplateV2(value: unknown): GuidedTemplateV2 | null {
     .filter((chapter): chapter is GuidedTemplateV2["chapters"][number] => Boolean(chapter));
   const questionFlow = coerceQuestionFlow(value.questionFlow);
   const slotMap = coerceSlotMap(value.slotMap);
+  const layoutDefinition = coerceTemplateLayoutDefinition(value);
 
   if (!questionFlow || !slotMap) return null;
 
-  return {
+  return withDefaultTemplateLayouts({
     templateId: value.templateId,
     version: value.version,
     title: value.title,
@@ -145,8 +152,9 @@ function coerceTemplateV2(value: unknown): GuidedTemplateV2 | null {
     isActive: value.isActive,
     chapters,
     questionFlow,
-    slotMap
-  };
+    slotMap,
+    ...(layoutDefinition ?? {})
+  });
 }
 
 function toTemplateSummary(template: GuidedTemplateV2): GuidedTemplateSummary {
