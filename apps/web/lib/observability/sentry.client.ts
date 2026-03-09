@@ -28,8 +28,8 @@ export function initClientSentry() {
       replayIntegration()
     ],
     enableLogs: true,
-    replaysSessionSampleRate: 0.1,
-    replaysOnErrorSampleRate: 1.0,
+    replaysSessionSampleRate: 1,
+    replaysOnErrorSampleRate: 1,
     beforeSend: sanitizeEvent
   });
 
