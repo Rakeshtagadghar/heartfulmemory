@@ -7,6 +7,22 @@
     },
     "build": {
       "dependsOn": ["^build"],
+      "env": [
+        "NEXTAUTH_SECRET",
+        "CONVEX_URL",
+        "R2_*",
+        "UNSPLASH_ACCESS_KEY",
+        "PEXELS_API_KEY",
+        "MAX_UPLOAD_MB",
+        "ALLOWED_MIME_TYPES",
+        "PHOTOS_PROVIDER_ENABLED",
+        "PHOTOS_PER_PAGE",
+        "SENTRY_*",
+        "BILLING_MODE",
+        "STRIPE_*",
+        "GOOGLE_CLIENT_*",
+        "RESEND_*"
+      ],
       "outputs": [".next/**", "dist/**"]
     },
     "lint": {
