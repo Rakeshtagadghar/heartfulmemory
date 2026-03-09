@@ -1,0 +1,779 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 46,
+    "sprintTitle": "Admin Console v1 - Users + Project Lookup",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Enable authorised admins to securely search, inspect, and troubleshoot users and their storybook projects from the Admin Console without direct database access.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 45 - Admin Auth + RBAC",
+        "Auth and onboarding foundations",
+        "Storybook/project creation flows",
+        "Editor and autosave behaviour",
+        "Layout and PDF export pipeline",
+        "Launch readiness and support needs",
+        "GA4 funnel and drop-off analysis planning",
+        "Error handling and graceful recovery planning"
+      ],
+      "whyNow": [
+        "Support and launch operations need fast visibility into who the user is, what project state they are in, and where they may be stuck",
+        "Admin users need safe read-first tooling before more powerful operational modules like export retry or billing overrides",
+        "User and project lookup is the base for support, debugging, moderation, and analytics investigation"
+      ]
+    },
+    "nonGoals": [
+      "Editing customer story content directly from admin",
+      "Full billing management",
+      "Export retry operations",
+      "Template management",
+      "Direct deletion of user accounts or projects",
+      "Impersonation or login-as-user flows",
+      "Bulk operations across large sets of users/projects"
+    ],
+    "dependencies": [
+      "Sprint 45 admin auth and RBAC foundation",
+      "Primary user/account table",
+      "Storybook/project tables",
+      "Chapter/page or equivalent project structure tables if available",
+      "Audit log support",
+      "Existing analytics/error metadata where available"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Support admin can locate a user within a few seconds using email or name",
+      "Admin can view linked projects and their high-level state without DB access",
+      "Admin can identify common stuck states such as onboarding incomplete, draft only, export failed, or inactive"
+    ],
+    "security": [
+      "0 non-admin users can access admin user/project data",
+      "0 admin roles without permission can access restricted data views",
+      "Sensitive fields are masked or excluded by default"
+    ],
+    "quality": [
+      "100% of user/project admin endpoints are permission-guarded server-side",
+      "User search and project detail views are covered by automated tests",
+      "Audit events exist for sensitive record views where required"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Can view all admin-supported user and project data."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Primary operator for support cases, troubleshooting user journeys and project state."
+    },
+    {
+      "name": "Content Admin",
+      "description": "May need limited project visibility for moderation or content-quality review, but not full account-sensitive data."
+    },
+    {
+      "name": "Normal App User",
+      "description": "Regular Memorioso customer. Must never access admin lookup screens."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Admin users list with search and filters",
+      "Admin user detail page",
+      "Linked project list per user",
+      "Admin project detail page with read-only support metadata",
+      "High-level onboarding and activity state visibility",
+      "Project status and lifecycle indicators",
+      "Safe read-only lookup APIs",
+      "Permission-aware data exposure by role",
+      "Audit logging for sensitive admin record access where needed",
+      "Empty, error, and no-result states"
+    ],
+    "outOfScope": [
+      "Direct content editing",
+      "Project restore/recovery actions",
+      "Retry export button",
+      "Manual billing overrides",
+      "Chat/support reply system",
+      "Advanced analytics dashboards",
+      "Cross-user merge tools"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Build read-only admin lookup tools on top of Sprint 45 RBAC. Expose dedicated admin APIs that join user and project metadata into support-safe response models. Keep admin views summary-first, with drill-down pages for specific users and projects.",
+    "routeNamespace": "/admin",
+    "modules": [
+      "/admin/users",
+      "/admin/users/:userId",
+      "/admin/projects/:projectId"
+    ],
+    "principles": [
+      "Read-only by default",
+      "Server-side permission enforcement",
+      "Mask sensitive data where not required",
+      "Design for support speed and clarity rather than full internal raw table dumps"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "users.view",
+      "projects.view",
+      "support.view",
+      "content.moderate"
+    ],
+    "roleCapabilities": {
+      "super_admin": {
+        "canViewUsers": true,
+        "canViewProjects": true,
+        "canViewProjectSupportMetadata": true,
+        "canViewLinkedUserProjects": true,
+        "canViewModerationFlags": true
+      },
+      "support_admin": {
+        "canViewUsers": true,
+        "canViewProjects": true,
+        "canViewProjectSupportMetadata": true,
+        "canViewLinkedUserProjects": true,
+        "canViewModerationFlags": false
+      },
+      "content_admin": {
+        "canViewUsers": false,
+        "canViewProjects": true,
+        "canViewProjectSupportMetadata": false,
+        "canViewLinkedUserProjects": false,
+        "canViewModerationFlags": true
+      }
+    },
+    "dataExposureRules": [
+      "users.view is required for user list and user detail pages",
+      "projects.view is required for project detail page access",
+      "support.view is required for support-specific metadata like onboarding state, last active, client error summary, or export state summary",
+      "content.moderate may unlock visibility of moderation flags or content review markers where implemented"
+    ]
+  },
+  "dataModel": {
+    "sourceEntities": [
+      {
+        "name": "users",
+        "purpose": "Base customer account data"
+      },
+      {
+        "name": "projects",
+        "purpose": "Storybook or memorioso book entities linked to users"
+      },
+      {
+        "name": "project_versions_or_pages",
+        "purpose": "Optional aggregated counts for support visibility"
+      },
+      {
+        "name": "export_jobs",
+        "purpose": "Optional summary fields for latest export status if available"
+      },
+      {
+        "name": "audit_logs",
+        "purpose": "Trace admin access and support review actions"
+      }
+    ],
+    "adminViewModels": [
+      {
+        "name": "AdminUserSummary",
+        "fields": [
+          "id",
+          "display_name",
+          "email_masked_or_email",
+          "account_status",
+          "plan_tier_if_available",
+          "signup_at",
+          "last_active_at",
+          "onboarding_status",
+          "project_count",
+          "latest_project_updated_at"
+        ]
+      },
+      {
+        "name": "AdminUserDetail",
+        "fields": [
+          "id",
+          "display_name",
+          "email",
+          "account_status",
+          "plan_tier_if_available",
+          "signup_at",
+          "last_active_at",
+          "onboarding_status",
+          "auth_provider_if_available",
+          "support_flags_if_any",
+          "project_summaries"
+        ]
+      },
+      {
+        "name": "AdminProjectSummary",
+        "fields": [
+          "id",
+          "title",
+          "owner_user_id",
+          "owner_display_name",
+          "status",
+          "template_type_if_available",
+          "page_count",
+          "chapter_count",
+          "last_updated_at",
+          "latest_export_status_if_available"
+        ]
+      },
+      {
+        "name": "AdminProjectDetail",
+        "fields": [
+          "id",
+          "title",
+          "owner_user",
+          "status",
+          "created_at",
+          "updated_at",
+          "template_type_if_available",
+          "orientation_if_available",
+          "page_count",
+          "chapter_count",
+          "autosave_state_if_available",
+          "latest_export_status_if_available",
+          "latest_export_error_summary_if_available",
+          "latest_client_error_summary_if_available",
+          "moderation_flags_if_available",
+          "activity_timeline_summary_if_available"
+        ]
+      }
+    ]
+  },
+  "userStories": [
+    {
+      "id": "S46-US-001",
+      "title": "Search users in admin console",
+      "asA": "support admin",
+      "iWant": "to search by email or name",
+      "soThat": "I can quickly find the customer who contacted support"
+    },
+    {
+      "id": "S46-US-002",
+      "title": "Inspect a user profile",
+      "asA": "support admin",
+      "iWant": "to view account and onboarding status plus linked projects",
+      "soThat": "I can understand where the user is stuck"
+    },
+    {
+      "id": "S46-US-003",
+      "title": "Inspect a project",
+      "asA": "support admin",
+      "iWant": "to view read-only project state and summary metadata",
+      "soThat": "I can diagnose issues like incomplete setup or failed export preparation"
+    },
+    {
+      "id": "S46-US-004",
+      "title": "Role-limited data access",
+      "asA": "content admin",
+      "iWant": "to access only project-level moderation-safe information",
+      "soThat": "I do not see unrelated sensitive account data"
+    },
+    {
+      "id": "S46-US-005",
+      "title": "Support-safe project lookup",
+      "asA": "system owner",
+      "iWant": "admins to troubleshoot through UI instead of database access",
+      "soThat": "operations are safer and auditable"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Admin users list",
+      "requirements": [
+        "Provide /admin/users page",
+        "Display paginated list of users",
+        "Allow search by email, full name, or user id",
+        "Allow filtering by account status, onboarding status, plan tier if available, and activity recency",
+        "List view shows summary metadata useful for support"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Admin user detail page",
+      "requirements": [
+        "Provide /admin/users/:userId page",
+        "Show base user profile summary",
+        "Show onboarding state and last active timestamp",
+        "Show list of linked projects with project status and last updated timestamp",
+        "Do not expose secrets, tokens, or private raw auth payloads"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Admin project detail page",
+      "requirements": [
+        "Provide /admin/projects/:projectId page",
+        "Show owner summary and project summary",
+        "Show project lifecycle state such as draft, in progress, export ready, exported, failed if available",
+        "Show counts such as pages, chapters, assets if available",
+        "Show latest export summary and latest known client/system issue summary if available",
+        "Keep page read-only in this sprint"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Permission-aware data views",
+      "requirements": [
+        "Only roles with users.view can access user list and user details",
+        "Only roles with projects.view can access project detail",
+        "Only roles with support.view can view support-sensitive metadata",
+        "Content admins may access project moderation metadata without seeing unrelated user account detail"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Linking between user and project views",
+      "requirements": [
+        "User detail page links to project detail pages where allowed",
+        "Project detail page links back to owner user page only where users.view exists",
+        "Navigation must respect permissions and not surface broken links"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Search and filtering",
+      "requirements": [
+        "Search should support partial matches for common support use cases",
+        "Filtering should be combinable with search",
+        "Sorting should support last active, signup date, and last updated where available"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Read-only support-safe inspection",
+      "requirements": [
+        "No edit controls for user or project records in this sprint",
+        "Dangerous actions like delete, restore, export retry, or billing override must not appear",
+        "UI should clearly present this module as inspection-only"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Audit logging",
+      "requirements": [
+        "Log access to user detail pages",
+        "Log access to project detail pages",
+        "Log search queries only if done safely and in privacy-conscious form",
+        "Include admin actor, target resource id, timestamp, and action"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Usability for support workflows",
+      "requirements": [
+        "Empty state should explain no results found",
+        "Error state should not leak internals",
+        "Loading state should be clear and fast",
+        "Important statuses should be visually scannable"
+      ]
+    }
+  ],
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin/users",
+        "title": "Users",
+        "purpose": "Search and browse Memorioso users with support-safe summary metadata."
+      },
+      {
+        "path": "/admin/users/:userId",
+        "title": "User Detail",
+        "purpose": "Inspect a specific user and their linked projects."
+      },
+      {
+        "path": "/admin/projects/:projectId",
+        "title": "Project Detail",
+        "purpose": "Inspect read-only project status and support metadata."
+      }
+    ],
+    "components": [
+      "AdminUsersTable",
+      "UserSearchBar",
+      "UserFiltersPanel",
+      "UserSummaryCard",
+      "UserProjectList",
+      "ProjectSummaryCard",
+      "StatusBadge",
+      "SupportMetadataPanel",
+      "EmptyState",
+      "ForbiddenState"
+    ],
+    "listColumnsSuggested": {
+      "users": [
+        "Name",
+        "Email",
+        "Status",
+        "Plan",
+        "Onboarding",
+        "Projects",
+        "Last Active",
+        "Signed Up"
+      ],
+      "projects": [
+        "Title",
+        "Status",
+        "Template",
+        "Pages",
+        "Last Updated",
+        "Latest Export"
+      ]
+    },
+    "uxRules": [
+      "Prioritise scan-friendly support data",
+      "Use badges for statuses like active, disabled, onboarding incomplete, export failed",
+      "Do not overload the screen with raw JSON or internal-only fields",
+      "Make owner and project relationships obvious",
+      "Keep the module visually consistent with Admin Console shell from Sprint 45"
+    ]
+  },
+  "apiSurface": {
+    "note": "Adapt naming to existing backend conventions.",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/users",
+        "purpose": "Search and list users with pagination and filters.",
+        "auth": "admin required",
+        "permission": "users.view",
+        "queryParams": [
+          "q",
+          "status",
+          "onboardingStatus",
+          "plan",
+          "sortBy",
+          "sortOrder",
+          "page",
+          "pageSize"
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/users/:userId",
+        "purpose": "Return user detail and linked project summaries.",
+        "auth": "admin required",
+        "permission": "users.view"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/projects/:projectId",
+        "purpose": "Return read-only project detail for admin inspection.",
+        "auth": "admin required",
+        "permission": "projects.view"
+      }
+    ],
+    "responseModels": {
+      "AdminUsersListResponse": {
+        "items": "AdminUserSummary[]",
+        "pagination": {
+          "page": "number",
+          "pageSize": "number",
+          "total": "number"
+        }
+      },
+      "AdminUserDetailResponse": {
+        "user": "AdminUserDetail"
+      },
+      "AdminProjectDetailResponse": {
+        "project": "AdminProjectDetail"
+      }
+    },
+    "errorShape": {
+      "success": false,
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "You do not have permission to access this resource."
+      }
+    }
+  },
+  "technicalTasks": [
+    {
+      "id": "T46-001",
+      "title": "Design admin read models",
+      "description": "Define support-safe DTOs/view models for user and project lookup responses.",
+      "deliverables": ["Type definitions", "API contract docs"]
+    },
+    {
+      "id": "T46-002",
+      "title": "Build admin users list API",
+      "description": "Implement paginated, searchable, filterable user list endpoint with permission checks.",
+      "deliverables": [
+        "GET /api/admin/users",
+        "input validation",
+        "query builder"
+      ]
+    },
+    {
+      "id": "T46-003",
+      "title": "Build admin user detail API",
+      "description": "Return user summary plus linked project summaries, respecting role-based data exposure.",
+      "deliverables": [
+        "GET /api/admin/users/:userId",
+        "safe joins",
+        "permission-aware shaping"
+      ]
+    },
+    {
+      "id": "T46-004",
+      "title": "Build admin project detail API",
+      "description": "Return read-only support metadata for a project with optional aggregated counts and latest status summaries.",
+      "deliverables": [
+        "GET /api/admin/projects/:projectId",
+        "aggregations",
+        "safe fallbacks when optional data is absent"
+      ]
+    },
+    {
+      "id": "T46-005",
+      "title": "Create users list UI",
+      "description": "Build searchable users table with filters, pagination, and status badges.",
+      "deliverables": ["/admin/users page", "table UI", "filter/search UI"]
+    },
+    {
+      "id": "T46-006",
+      "title": "Create user detail UI",
+      "description": "Build user detail page with account summary and linked project list.",
+      "deliverables": [
+        "/admin/users/:userId page",
+        "summary cards",
+        "linked project list"
+      ]
+    },
+    {
+      "id": "T46-007",
+      "title": "Create project detail UI",
+      "description": "Build project detail page showing support-safe project metadata and status panels.",
+      "deliverables": [
+        "/admin/projects/:projectId page",
+        "status sections",
+        "owner linkage"
+      ]
+    },
+    {
+      "id": "T46-008",
+      "title": "Audit log integration",
+      "description": "Log admin access to user and project detail resources.",
+      "deliverables": ["audit events", "resource access logging helper"]
+    },
+    {
+      "id": "T46-009",
+      "title": "Permission and masking rules",
+      "description": "Implement server-side field inclusion/exclusion based on role and permission.",
+      "deliverables": ["data masking utilities", "role-based serializers"]
+    },
+    {
+      "id": "T46-010",
+      "title": "Testing",
+      "description": "Add unit, integration, and E2E coverage for user/project lookup flows.",
+      "deliverables": ["API tests", "route permission tests", "UI smoke tests"]
+    }
+  ],
+  "dataExposurePolicy": {
+    "allowedExamples": [
+      "User display name",
+      "Email for support/admin roles where justified",
+      "Signup date",
+      "Last active timestamp",
+      "Onboarding state",
+      "Project titles and statuses",
+      "Counts such as pages or chapters",
+      "Latest export state summary if available"
+    ],
+    "restrictedExamples": [
+      "Password hashes",
+      "Access tokens",
+      "Magic link secrets",
+      "Raw session payloads",
+      "Sensitive billing details beyond plan tier label",
+      "Private story content body text unless a future moderation sprint explicitly requires it"
+    ],
+    "maskingRules": [
+      "For list views, prefer summary and partial exposure over full raw details",
+      "Expose full email only where role and support use case justify it",
+      "Hide internal storage keys, signed URLs, and secrets"
+    ]
+  },
+  "supportStatesToSurface": [
+    {
+      "state": "onboarding_incomplete",
+      "description": "User has signed up but not completed essential onboarding"
+    },
+    {
+      "state": "no_projects_yet",
+      "description": "User account exists but no storybook created"
+    },
+    {
+      "state": "draft_only",
+      "description": "User has a draft project not yet progressed toward export"
+    },
+    {
+      "state": "recent_export_failure",
+      "description": "Latest known export-related activity indicates failure"
+    },
+    {
+      "state": "inactive_user",
+      "description": "User has not been active for a configurable period"
+    }
+  ],
+  "observability": {
+    "events": [
+      "admin_user_search",
+      "admin_user_viewed",
+      "admin_project_viewed",
+      "admin_lookup_forbidden",
+      "admin_lookup_no_results"
+    ],
+    "metrics": [
+      "count of user searches",
+      "count of user detail views",
+      "count of project detail views",
+      "count of forbidden lookup attempts",
+      "average response time for users list and detail APIs"
+    ],
+    "loggingNotes": [
+      "Avoid storing overly broad personal data in general logs",
+      "If logging search terms, consider truncation or hashing strategy depending on compliance posture",
+      "Prefer audit logs for traceability and app logs for technical debugging"
+    ]
+  },
+  "securityRequirements": [
+    "All lookup endpoints must be protected by Sprint 45 admin auth middleware and permission checks",
+    "Client-side hidden routes are not sufficient; server must reject unauthorised access",
+    "No raw database dumps or unrestricted query builders exposed to admin UI",
+    "Sensitive fields must be excluded or masked by serializer layer",
+    "Admin list/detail pages must remain noindex and excluded from public sitemap",
+    "Access denied responses must not confirm record existence to unauthorised actors",
+    "Project and user IDs should be validated before query execution"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a support_admin",
+      "when": "they open /admin/users and search by a customer email",
+      "then": "matching users are returned with support-safe summary fields"
+    },
+    {
+      "id": "AC-002",
+      "given": "a support_admin",
+      "when": "they open a user detail page",
+      "then": "they can see onboarding status, last activity, and linked project summaries"
+    },
+    {
+      "id": "AC-003",
+      "given": "a support_admin",
+      "when": "they open a project detail page",
+      "then": "they can see read-only project status, counts, and latest support metadata if available"
+    },
+    {
+      "id": "AC-004",
+      "given": "a content_admin without users.view",
+      "when": "they attempt to access /admin/users or its API",
+      "then": "they receive a forbidden response/state"
+    },
+    {
+      "id": "AC-005",
+      "given": "a content_admin with projects.view",
+      "when": "they access an allowed project detail page",
+      "then": "they only see fields permitted for their role"
+    },
+    {
+      "id": "AC-006",
+      "given": "a non-admin user",
+      "when": "they attempt to call any admin lookup API",
+      "then": "the request is rejected"
+    },
+    {
+      "id": "AC-007",
+      "given": "an admin views a user or project detail page",
+      "when": "the page loads successfully",
+      "then": "an audit log entry is created with actor, resource, and timestamp"
+    },
+    {
+      "id": "AC-008",
+      "given": "no matching users exist for a search",
+      "when": "an admin submits the query",
+      "then": "the UI shows a clear no-results state without errors"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "role-based serializer excludes restricted fields correctly",
+      "search parameter parsing and filter mapping work correctly",
+      "status badge mapping covers all known states"
+    ],
+    "integrationTests": [
+      "GET /api/admin/users requires users.view",
+      "GET /api/admin/users/:userId requires users.view",
+      "GET /api/admin/projects/:projectId requires projects.view",
+      "content_admin receives masked/limited payload where allowed",
+      "non-admin receives 403 or equivalent denial"
+    ],
+    "e2eTests": [
+      "support_admin searches user and opens detail page",
+      "support_admin opens linked project detail page",
+      "content_admin blocked from users page",
+      "empty state shown when no users match"
+    ],
+    "negativeTests": [
+      "invalid user id returns safe not-found response",
+      "invalid project id returns safe not-found response",
+      "unauthorised actor cannot infer whether resource exists",
+      "forged client permission does not bypass server serializer or guard"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Too much sensitive data shown in admin read views",
+      "impact": "Privacy and compliance issues",
+      "mitigation": "Use explicit allow-list serializers and role-based field exposure"
+    },
+    {
+      "risk": "Support tooling becomes a raw internal dump and hard to use",
+      "impact": "Poor support efficiency and confusion",
+      "mitigation": "Design summary-first pages with clear statuses and only useful metadata"
+    },
+    {
+      "risk": "Search becomes slow as user base grows",
+      "impact": "Poor admin UX",
+      "mitigation": "Add indexes for searchable fields and paginate aggressively"
+    },
+    {
+      "risk": "Project state is inconsistent across tables",
+      "impact": "Misleading support view",
+      "mitigation": "Define clear derived status rules and document precedence"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define admin DTOs and field exposure policy",
+      "Implement users list API",
+      "Implement user detail API",
+      "Implement project detail API",
+      "Build users list UI",
+      "Build user detail and project detail UIs",
+      "Add audit logging",
+      "Harden permissions and tests"
+    ],
+    "futureSprintHooks": [
+      "Sprint 47: Export Monitoring + Retry Console",
+      "Sprint 48: Billing and plan support view",
+      "Sprint 49: Feedback, moderation, and support inbox",
+      "Sprint 50: Feature flags and operational controls"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin users list is available with search, filters, and pagination",
+    "Admin user detail page shows support-safe account summary and linked projects",
+    "Admin project detail page shows read-only support metadata",
+    "All related APIs are permission-guarded server-side",
+    "Role-based data masking/exposure rules are enforced",
+    "Audit logging exists for sensitive admin record views",
+    "Automated tests cover happy paths and denial paths",
+    "Documentation explains available fields and intended support usage"
+  ]
+}

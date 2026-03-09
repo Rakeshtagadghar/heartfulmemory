@@ -678,6 +678,11 @@ export default defineSchema({
     userId: v.string(),
     storybookId: v.id("storybooks"),
     type: v.union(v.literal("pdf"), v.literal("docx"), v.literal("pptx")),
+    triggerSource: v.optional(v.union(v.literal("user"), v.literal("admin_retry"))),
+    requestedByUserId: v.optional(v.union(v.string(), v.null())),
+    retryOfJobId: v.optional(v.union(v.id("exportJobs"), v.null())),
+    retrySourceRecordId: v.optional(v.union(v.string(), v.null())),
+    retrySourceRecordKind: v.optional(v.union(v.literal("job"), v.literal("attempt"), v.null())),
     status: v.union(
       v.literal("queued"),
       v.literal("running"),

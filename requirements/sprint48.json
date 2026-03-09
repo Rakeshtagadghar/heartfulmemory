@@ -1,0 +1,839 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 48,
+    "sprintTitle": "Admin Console v1 - Billing + Plan Support View",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Enable authorised admins to inspect billing, subscription, checkout, and plan state for users from the Admin Console so support can diagnose access, upgrade, sandbox, and payment-related issues without using payment-provider dashboards directly.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 40 - Early Alpha / sandbox upgrade messaging",
+        "Sprint 45 - Admin Auth + RBAC",
+        "Sprint 46 - Users + Project Lookup",
+        "Sprint 47 - Export Monitoring + Retry Console",
+        "Billing/payment provider planning",
+        "Launch readiness review",
+        "GA4 funnel and lead capture planning"
+      ],
+      "whyNow": [
+        "Users will raise issues such as paid but not unlocked, sandbox confusion, failed checkout, and missing premium export access",
+        "Support needs read-first billing visibility before public launch and paid flows expand",
+        "Billing state must be understandable alongside user/project/export state in one admin system"
+      ]
+    },
+    "nonGoals": [
+      "Direct refunds from admin console",
+      "Changing prices or products from admin console",
+      "Full revenue analytics dashboard",
+      "Direct invoice editing",
+      "Manual charge capture",
+      "Subscription cancellation on behalf of user",
+      "Tax/VAT operations",
+      "Financial reporting for accounting"
+    ],
+    "dependencies": [
+      "Sprint 45 admin auth and RBAC foundation",
+      "Sprint 46 users lookup",
+      "Sprint 47 export monitoring",
+      "Existing payment provider integration such as Stripe or equivalent",
+      "Billing/subscription records in app database or provider sync layer",
+      "Plan entitlement mapping in application",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Support admin can identify a user's plan and subscription state within a few seconds",
+      "Support admin can diagnose common access issues such as failed checkout, expired trial, inactive subscription, or sandbox/live mismatch",
+      "Admins no longer need to use provider dashboard for most first-line billing support cases"
+    ],
+    "security": [
+      "0 unauthorised users can access admin billing data",
+      "0 roles without billing permission can access billing views",
+      "Sensitive financial data is masked or excluded by default"
+    ],
+    "quality": [
+      "100% of billing admin endpoints are permission-guarded server-side",
+      "Billing state mapping is consistent between UI and backend",
+      "Audit logs exist for billing detail access and manual support actions"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Can view all billing state, payment events summary, and perform allowed support actions such as temporary plan overrides."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Can inspect billing/subscription state and resolve common access issues using safe internal controls."
+    },
+    {
+      "name": "Content Admin",
+      "description": "Should not access billing information."
+    },
+    {
+      "name": "Normal App User",
+      "description": "Regular Memorioso customer. Must never access billing admin tooling."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Billing summary on admin user detail page",
+      "Dedicated billing support panel/page",
+      "View current plan, entitlement, and subscription status",
+      "View latest checkout and payment attempt summaries",
+      "View sandbox vs live mode status",
+      "View trial state if applicable",
+      "View billing-related support events and failure reasons",
+      "Optional safe manual actions such as temporary access grant or resync billing state",
+      "Audit logging for billing views and support actions",
+      "Permission-aware UI and APIs"
+    ],
+    "outOfScope": [
+      "Refund creation",
+      "Price/product catalog management",
+      "Promotion code management",
+      "Invoice download centre",
+      "Full dunning workflows",
+      "Charge disputes management",
+      "Bank payout or treasury operations"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Expose a support-safe billing read model by combining internal plan entitlement data with synced payment provider data. Keep provider-specific raw objects out of the UI. Add a small set of guarded support actions only if needed for operational recovery.",
+    "routeNamespace": "/admin",
+    "modules": [
+      "/admin/users/:userId/billing",
+      "/admin/billing/subscriptions/:subscriptionId"
+    ],
+    "principles": [
+      "Read-first support tooling",
+      "Mask sensitive financial details",
+      "Show app-level entitlement alongside provider-level subscription state",
+      "Server-side permission enforcement for all views and actions"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "billing.view",
+      "billing.support_action",
+      "users.view",
+      "support.view",
+      "audit_logs.view"
+    ],
+    "roleCapabilities": {
+      "super_admin": {
+        "canViewBilling": true,
+        "canViewProviderSummary": true,
+        "canPerformBillingSupportActions": true
+      },
+      "support_admin": {
+        "canViewBilling": true,
+        "canViewProviderSummary": true,
+        "canPerformBillingSupportActions": true
+      },
+      "content_admin": {
+        "canViewBilling": false,
+        "canViewProviderSummary": false,
+        "canPerformBillingSupportActions": false
+      }
+    },
+    "rules": [
+      "billing.view is required for any billing page or API",
+      "billing.support_action is required for actions like temporary entitlement grant or billing resync",
+      "support.view may be required for support-sensitive event/failure summaries",
+      "Client-side visibility must mirror, not replace, server-side checks"
+    ]
+  },
+  "dataModel": {
+    "sourceEntities": [
+      {
+        "name": "users",
+        "purpose": "Base customer account data"
+      },
+      {
+        "name": "subscriptions",
+        "purpose": "App-level subscription state and plan linkage"
+      },
+      {
+        "name": "billing_customers",
+        "purpose": "Mapping between app user and payment provider customer"
+      },
+      {
+        "name": "checkout_sessions_or_payment_attempts",
+        "purpose": "Track upgrade attempts and checkout outcomes"
+      },
+      {
+        "name": "plan_entitlements",
+        "purpose": "Actual app access state driven by billing"
+      },
+      {
+        "name": "admin_audit_logs",
+        "purpose": "Trace billing views and support actions"
+      }
+    ],
+    "adminViewModels": [
+      {
+        "name": "AdminBillingSummary",
+        "fields": [
+          "user_id",
+          "plan_code",
+          "plan_label",
+          "entitlement_status",
+          "subscription_status",
+          "billing_mode",
+          "trial_status_if_any",
+          "current_period_start_if_available",
+          "current_period_end_if_available",
+          "provider_customer_ref_masked",
+          "provider_subscription_ref_masked",
+          "last_checkout_status_if_available",
+          "last_payment_status_if_available",
+          "last_billing_event_at_if_available"
+        ]
+      },
+      {
+        "name": "AdminBillingDetail",
+        "fields": [
+          "user_summary",
+          "plan_summary",
+          "entitlements",
+          "subscription_summary",
+          "checkout_history_summary",
+          "payment_attempt_summary",
+          "sandbox_or_live_status",
+          "support_flags",
+          "manual_override_state_if_any",
+          "recommended_support_diagnosis_if_available"
+        ]
+      },
+      {
+        "name": "AdminSubscriptionDetail",
+        "fields": [
+          "subscription_id",
+          "provider_subscription_ref_masked",
+          "plan_code",
+          "status",
+          "current_period_start",
+          "current_period_end",
+          "cancel_at_period_end_if_available",
+          "mode",
+          "latest_invoice_status_if_available",
+          "latest_payment_status_if_available",
+          "last_synced_at",
+          "entitlement_projection"
+        ]
+      }
+    ],
+    "statusEnums": {
+      "entitlementStatus": [
+        "none",
+        "trial_active",
+        "active",
+        "grace_period",
+        "expired",
+        "manually_granted",
+        "suspended"
+      ],
+      "subscriptionStatus": [
+        "not_started",
+        "checkout_incomplete",
+        "trialing",
+        "active",
+        "past_due",
+        "cancelled",
+        "incomplete",
+        "incomplete_expired",
+        "unpaid",
+        "paused"
+      ],
+      "billingMode": ["sandbox", "live", "unknown"],
+      "paymentAttemptStatus": [
+        "not_attempted",
+        "pending",
+        "succeeded",
+        "failed",
+        "requires_action",
+        "cancelled"
+      ]
+    }
+  },
+  "supportCasesToSolve": [
+    {
+      "case": "User paid but premium/export access not unlocked",
+      "signalsToShow": [
+        "latest payment succeeded",
+        "subscription active",
+        "entitlement missing or stale",
+        "last sync timestamp"
+      ]
+    },
+    {
+      "case": "User says checkout failed",
+      "signalsToShow": [
+        "latest checkout session status",
+        "latest payment attempt status",
+        "failure summary if available",
+        "sandbox/live mode"
+      ]
+    },
+    {
+      "case": "User is confused by sandbox mode",
+      "signalsToShow": [
+        "billing mode",
+        "sandbox banner eligibility",
+        "test payment indicator"
+      ]
+    },
+    {
+      "case": "Trial ended and access stopped",
+      "signalsToShow": [
+        "trial state",
+        "period end",
+        "plan entitlement status",
+        "next recommended support action"
+      ]
+    },
+    {
+      "case": "Subscription cancelled but app still unlocked",
+      "signalsToShow": [
+        "provider status",
+        "entitlement status",
+        "manual override",
+        "last sync timestamp"
+      ]
+    }
+  ],
+  "userStories": [
+    {
+      "id": "S48-US-001",
+      "title": "Inspect billing state for a user",
+      "asA": "support admin",
+      "iWant": "to see plan, subscription, and entitlement state together",
+      "soThat": "I can understand whether the user's access should be active"
+    },
+    {
+      "id": "S48-US-002",
+      "title": "Diagnose checkout failure",
+      "asA": "support admin",
+      "iWant": "to see the latest checkout and payment attempt summaries",
+      "soThat": "I can explain what happened and next steps"
+    },
+    {
+      "id": "S48-US-003",
+      "title": "See sandbox versus live state",
+      "asA": "support admin",
+      "iWant": "clear indication of test or live billing mode",
+      "soThat": "I can avoid confusion during early alpha"
+    },
+    {
+      "id": "S48-US-004",
+      "title": "Apply safe support recovery action",
+      "asA": "super admin or support admin",
+      "iWant": "to trigger a limited billing support action",
+      "soThat": "I can restore user access in controlled cases without engineering help"
+    },
+    {
+      "id": "S48-US-005",
+      "title": "Prevent billing access for unrelated admin roles",
+      "asA": "system owner",
+      "iWant": "content admins blocked from billing data",
+      "soThat": "financial access stays least-privilege"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Billing panel on user detail",
+      "requirements": [
+        "Enhance /admin/users/:userId with a billing summary section or link to dedicated billing page",
+        "Show current plan, entitlement status, subscription status, and billing mode",
+        "Show latest relevant billing timestamps where available"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Dedicated user billing detail view",
+      "requirements": [
+        "Provide /admin/users/:userId/billing page",
+        "Show plan summary, entitlement summary, subscription summary, and recent billing support events",
+        "Show latest checkout/payment attempt summary in support-friendly language",
+        "Show sandbox/live indicator prominently"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Subscription detail drill-down",
+      "requirements": [
+        "Provide /admin/billing/subscriptions/:subscriptionId page or equivalent panel",
+        "Show provider-mapped status, current period timing, latest invoice/payment summary if available",
+        "Keep raw provider payload hidden from normal support UI"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Safe support actions",
+      "requirements": [
+        "Allow only explicitly approved actions such as billing resync and temporary manual entitlement grant",
+        "Each action must be permission-guarded by billing.support_action",
+        "Each action must require confirmation and capture reason/note",
+        "Each action must be audit logged",
+        "Actions must be limited in scope and reversible where feasible"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Support-friendly diagnosis",
+      "requirements": [
+        "Map technical provider states to human-readable support labels",
+        "Display likely issue diagnosis such as payment succeeded but entitlement stale, checkout incomplete, or trial expired",
+        "Show recommended next step where possible"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Permission-aware data exposure",
+      "requirements": [
+        "Only roles with billing.view can access billing pages and APIs",
+        "Content admin must not see billing links, sections, or APIs",
+        "Sensitive identifiers must be masked unless full value is operationally necessary"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Read-first and minimal action design",
+      "requirements": [
+        "Billing console should primarily support diagnosis",
+        "Do not include refund, cancel, or destructive provider controls",
+        "Support actions must not modify pricing or provider product configuration"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Audit logging",
+      "requirements": [
+        "Log access to billing detail pages",
+        "Log manual support actions with actor, target user/subscription, reason, and timestamp",
+        "Log action success/failure outcome"
+      ]
+    }
+  ],
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin/users/:userId/billing",
+        "title": "User Billing",
+        "purpose": "Inspect a specific user's plan, subscription, entitlement, and checkout/payment summaries."
+      },
+      {
+        "path": "/admin/billing/subscriptions/:subscriptionId",
+        "title": "Subscription Detail",
+        "purpose": "Inspect a specific subscription state in support-safe format."
+      }
+    ],
+    "components": [
+      "BillingSummaryCard",
+      "EntitlementStatusBadge",
+      "SubscriptionStatusBadge",
+      "BillingModeBanner",
+      "CheckoutHistoryPanel",
+      "PaymentAttemptPanel",
+      "SupportDiagnosisPanel",
+      "ManualEntitlementActionCard",
+      "BillingResyncActionCard",
+      "AuditNoteModal",
+      "ForbiddenState",
+      "EmptyState"
+    ],
+    "uxRules": [
+      "Use strong visual distinction between sandbox and live mode",
+      "Prioritise current entitlement and current subscription state at the top",
+      "Show support diagnosis in plain language",
+      "Keep sensitive payment data masked",
+      "Any support action must require explicit confirmation and note"
+    ]
+  },
+  "apiSurface": {
+    "note": "Adapt names to your existing backend conventions and billing provider contracts.",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/users/:userId/billing",
+        "purpose": "Return admin billing detail for a user.",
+        "auth": "admin required",
+        "permission": "billing.view"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/billing/subscriptions/:subscriptionId",
+        "purpose": "Return support-safe subscription detail.",
+        "auth": "admin required",
+        "permission": "billing.view"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/users/:userId/billing/resync",
+        "purpose": "Trigger billing/provider sync for a user.",
+        "auth": "admin required",
+        "permission": "billing.support_action"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/users/:userId/billing/manual-entitlement",
+        "purpose": "Grant or extend temporary access under controlled support rules.",
+        "auth": "admin required",
+        "permission": "billing.support_action"
+      }
+    ],
+    "requestModels": {
+      "ManualEntitlementRequest": {
+        "reason": "string",
+        "entitlementStatus": "string",
+        "expiresAt": "string|null",
+        "note": "string"
+      },
+      "BillingResyncRequest": {
+        "reason": "string",
+        "note": "string"
+      }
+    },
+    "responseModels": {
+      "AdminBillingDetailResponse": {
+        "billing": "AdminBillingDetail"
+      },
+      "AdminSubscriptionDetailResponse": {
+        "subscription": "AdminSubscriptionDetail"
+      },
+      "BillingSupportActionResponse": {
+        "success": "boolean",
+        "action": "string",
+        "status": "string",
+        "message": "string"
+      }
+    },
+    "errorShape": {
+      "success": false,
+      "error": {
+        "code": "BILLING_ACTION_FORBIDDEN",
+        "message": "You do not have permission to perform this billing support action."
+      }
+    }
+  },
+  "manualSupportActionsPolicy": {
+    "allowedActions": [
+      {
+        "action": "billing_resync",
+        "description": "Refresh billing/subscription state from provider or internal sync source."
+      },
+      {
+        "action": "temporary_manual_entitlement",
+        "description": "Grant temporary access for a defined period to resolve support issues."
+      }
+    ],
+    "rules": [
+      "Every manual action must capture admin reason and note",
+      "Every manual action must be audit logged",
+      "Temporary entitlement should have expiry where possible",
+      "Manual action must not mutate provider-side pricing/catalog",
+      "Manual action must not silently override active billing state without visible trace"
+    ],
+    "blockedActions": [
+      "refund charge",
+      "cancel subscription",
+      "change plan price",
+      "edit invoice",
+      "capture card details"
+    ]
+  },
+  "dataExposurePolicy": {
+    "allowedExamples": [
+      "plan label",
+      "plan code",
+      "subscription status",
+      "entitlement status",
+      "billing mode",
+      "current period dates",
+      "masked provider customer reference",
+      "masked subscription reference",
+      "latest checkout status",
+      "latest payment attempt status"
+    ],
+    "restrictedExamples": [
+      "full card number",
+      "payment method secrets",
+      "full provider raw payload by default",
+      "billing address unless operationally necessary",
+      "tax identifiers unless explicitly required"
+    ],
+    "maskingRules": [
+      "Provider IDs should be masked in most list/summary views",
+      "Do not expose card fingerprints, client secrets, or webhook payloads",
+      "Use support-safe summaries rather than raw JSON from provider"
+    ]
+  },
+  "technicalTasks": [
+    {
+      "id": "T48-001",
+      "title": "Define billing admin read models",
+      "description": "Create support-safe DTOs/view models for user billing and subscription detail responses.",
+      "deliverables": ["Type definitions", "API contract docs"]
+    },
+    {
+      "id": "T48-002",
+      "title": "Build user billing detail API",
+      "description": "Combine internal entitlement state with provider-synced subscription/checkout/payment summaries.",
+      "deliverables": [
+        "GET /api/admin/users/:userId/billing",
+        "data mapper",
+        "permission checks"
+      ]
+    },
+    {
+      "id": "T48-003",
+      "title": "Build subscription detail API",
+      "description": "Return support-safe detail for a specific subscription record.",
+      "deliverables": [
+        "GET /api/admin/billing/subscriptions/:subscriptionId",
+        "serializer",
+        "masked identifiers"
+      ]
+    },
+    {
+      "id": "T48-004",
+      "title": "Implement billing support actions",
+      "description": "Add guarded resync and temporary manual entitlement actions with confirmation, validation, and audit logging.",
+      "deliverables": [
+        "POST resync endpoint",
+        "POST manual entitlement endpoint",
+        "action policy guard"
+      ]
+    },
+    {
+      "id": "T48-005",
+      "title": "Build billing UI",
+      "description": "Create billing detail page and integrate summary block into user detail flow.",
+      "deliverables": [
+        "/admin/users/:userId/billing page",
+        "billing summary card",
+        "diagnosis panel"
+      ]
+    },
+    {
+      "id": "T48-006",
+      "title": "Build subscription detail UI",
+      "description": "Create support-safe subscription page/panel for drill-down inspection.",
+      "deliverables": [
+        "/admin/billing/subscriptions/:subscriptionId page",
+        "period/status panels"
+      ]
+    },
+    {
+      "id": "T48-007",
+      "title": "Implement diagnosis mapping",
+      "description": "Map internal/provider combinations to support-friendly diagnosis messages and next steps.",
+      "deliverables": ["diagnosis rules engine", "UI message mapping"]
+    },
+    {
+      "id": "T48-008",
+      "title": "Audit logging integration",
+      "description": "Log billing page access and all manual billing support actions.",
+      "deliverables": ["audit events", "reason/note capture"]
+    },
+    {
+      "id": "T48-009",
+      "title": "Testing",
+      "description": "Add unit, integration, and E2E coverage for billing support flows.",
+      "deliverables": [
+        "API tests",
+        "permission tests",
+        "manual action tests",
+        "UI smoke tests"
+      ]
+    }
+  ],
+  "diagnosisRulesExamples": [
+    {
+      "rule": "payment_succeeded_but_entitlement_missing",
+      "when": [
+        "latest payment status = succeeded",
+        "subscription status = active",
+        "entitlement status = none or expired"
+      ],
+      "diagnosis": "Payment appears successful, but app access is not aligned. A billing resync or temporary entitlement may be needed."
+    },
+    {
+      "rule": "checkout_incomplete",
+      "when": [
+        "subscription status = checkout_incomplete or incomplete",
+        "latest payment status = pending or failed"
+      ],
+      "diagnosis": "Checkout did not complete successfully. The user may need to retry payment."
+    },
+    {
+      "rule": "trial_expired",
+      "when": [
+        "entitlement status = expired",
+        "subscription status = not_started or cancelled",
+        "trial status indicates ended"
+      ],
+      "diagnosis": "Trial access has ended and no active paid subscription is present."
+    },
+    {
+      "rule": "sandbox_mode_confusion",
+      "when": ["billing mode = sandbox"],
+      "diagnosis": "This account is operating in sandbox/test mode. No real payment should be expected."
+    }
+  ],
+  "observability": {
+    "events": [
+      "admin_billing_viewed",
+      "admin_subscription_viewed",
+      "admin_billing_resync_requested",
+      "admin_billing_resync_completed",
+      "admin_manual_entitlement_requested",
+      "admin_manual_entitlement_completed",
+      "admin_billing_action_blocked"
+    ],
+    "metrics": [
+      "count of billing detail views",
+      "count of billing support actions",
+      "count of manual entitlements granted",
+      "count of billing resync actions",
+      "count of blocked billing actions",
+      "average billing API response time"
+    ],
+    "loggingNotes": [
+      "Do not log raw payment provider secrets or customer payment details",
+      "Keep audit logs focused on actor, target, action, reason, and timestamp",
+      "Use masked identifiers in general application logs"
+    ]
+  },
+  "securityRequirements": [
+    "All billing admin endpoints must be protected by admin auth and billing-specific permissions",
+    "Content admin must not access billing UI or APIs",
+    "Manual support actions must require explicit permission, confirmation, and note",
+    "Billing pages remain noindex and excluded from sitemap",
+    "Unauthorised actors must not infer whether a billing record or subscription exists",
+    "Provider-specific secrets and sensitive payment data must never be returned to client"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a support_admin",
+      "when": "they open a user's billing page",
+      "then": "they can see current plan, entitlement, subscription status, billing mode, and latest billing summaries"
+    },
+    {
+      "id": "AC-002",
+      "given": "a support_admin",
+      "when": "a user has checkout/payment issues",
+      "then": "the admin sees a support-friendly diagnosis and latest attempt summary"
+    },
+    {
+      "id": "AC-003",
+      "given": "a sandbox/test account",
+      "when": "billing detail is opened",
+      "then": "sandbox mode is clearly indicated"
+    },
+    {
+      "id": "AC-004",
+      "given": "a content_admin",
+      "when": "they attempt to access billing routes or APIs",
+      "then": "the request is rejected"
+    },
+    {
+      "id": "AC-005",
+      "given": "an authorised admin with billing.support_action",
+      "when": "they trigger billing resync or temporary entitlement grant",
+      "then": "the action is validated, confirmed, executed, and audit logged"
+    },
+    {
+      "id": "AC-006",
+      "given": "a manual entitlement grant",
+      "when": "it is applied",
+      "then": "the system records reason, note, actor, and expiry if configured"
+    },
+    {
+      "id": "AC-007",
+      "given": "an unauthorised user",
+      "when": "they call any billing admin endpoint",
+      "then": "the request is rejected without leaking billing record existence"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "diagnosis rules map billing/subscription/entitlement states correctly",
+      "masking serializer excludes restricted payment data",
+      "manual support action policy blocks unsupported actions"
+    ],
+    "integrationTests": [
+      "GET /api/admin/users/:userId/billing requires billing.view",
+      "GET /api/admin/billing/subscriptions/:subscriptionId requires billing.view",
+      "POST billing resync requires billing.support_action",
+      "POST manual entitlement requires billing.support_action",
+      "content_admin is blocked from all billing routes"
+    ],
+    "e2eTests": [
+      "support_admin opens user billing page and sees support summary",
+      "support_admin sees sandbox mode banner when applicable",
+      "support_admin performs billing resync with confirmation and note",
+      "content_admin cannot access billing area"
+    ],
+    "negativeTests": [
+      "unauthorised actor cannot infer whether subscription exists",
+      "manual entitlement without reason is rejected",
+      "attempt to perform blocked billing action is rejected",
+      "raw provider payload is never exposed in client response"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Billing UI exposes too much sensitive provider data",
+      "impact": "Security and privacy issues",
+      "mitigation": "Use explicit allow-list serializers and masked identifiers"
+    },
+    {
+      "risk": "App entitlement and provider subscription state diverge",
+      "impact": "Confusing support experience",
+      "mitigation": "Show both states side-by-side and add resync workflow plus last sync timestamp"
+    },
+    {
+      "risk": "Support actions become an uncontrolled override mechanism",
+      "impact": "Operational misuse and audit gaps",
+      "mitigation": "Limit actions, require reason/note, set expiry, and audit everything"
+    },
+    {
+      "risk": "Sandbox/live confusion persists in early alpha",
+      "impact": "User support friction",
+      "mitigation": "Make mode explicit in admin and user-facing billing flows"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define billing read models and exposure rules",
+      "Implement user billing detail API",
+      "Implement subscription detail API",
+      "Implement diagnosis mapping",
+      "Build billing detail UI",
+      "Add guarded support actions",
+      "Add audit logging",
+      "Harden with tests"
+    ],
+    "futureSprintHooks": [
+      "Sprint 49: Feedback, moderation, and support inbox",
+      "Sprint 50: Feature flags and operational controls",
+      "Future: billing analytics and conversion dashboard",
+      "Future: refund/request workflows with stronger approval model"
+    ]
+  },
+  "definitionOfDone": [
+    "User billing page exists with plan, entitlement, subscription, and mode visibility",
+    "Subscription detail drill-down exists in support-safe format",
+    "Billing-specific permissions are enforced server-side",
+    "Content admins are blocked from billing access",
+    "Optional support actions are limited, confirmed, validated, and audit logged",
+    "Sensitive payment/provider data is masked or excluded",
+    "Automated tests cover happy paths, denial paths, and support actions"
+  ]
+}

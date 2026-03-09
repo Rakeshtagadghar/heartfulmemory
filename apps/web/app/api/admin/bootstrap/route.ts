@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   if (!result.ok) {
     return NextResponse.json(
-      { success: false, error: { code: "CONFLICT", message: result.data?.error ?? result.error ?? "Bootstrap failed." } },
+      { success: false, error: { code: "CONFLICT", message: result.error ?? "Bootstrap failed." } },
       { status: 409 }
     );
   }

@@ -1,0 +1,812 @@
+{
+  "meta": {
+    "project": "Memorioso",
+    "sprint": 47,
+    "sprintTitle": "Admin Console v1 - Export Monitoring + Retry Console",
+    "specVersion": "1.0.0",
+    "status": "proposed",
+    "goal": "Enable authorised admins to monitor PDF/export jobs, diagnose failures, and safely retry eligible exports from the Admin Console without direct database or infrastructure access.",
+    "background": {
+      "basedOnPriorSprints": [
+        "Sprint 45 - Admin Auth + RBAC",
+        "Sprint 46 - Users + Project Lookup",
+        "Layout to PDF renderer work",
+        "Orientation and reflow support",
+        "Table of contents support",
+        "Print-safe layout and page template work",
+        "Launch readiness review",
+        "Billing and export-value discussions",
+        "Error handling and graceful recovery planning"
+      ],
+      "whyNow": [
+        "PDF/export is one of the highest-value product moments and a key support touchpoint",
+        "Admin needs a safe operational view before public launch and paid export flows scale up",
+        "When users report missing or failed books, support must identify whether the issue is content, renderer, queue, assets, or transient infrastructure"
+      ]
+    },
+    "nonGoals": [
+      "Full re-render pipeline redesign",
+      "Manual editing of rendered PDF output",
+      "Bulk retry of many exports at once",
+      "Direct infrastructure console access",
+      "Refund workflows",
+      "Live print-fulfilment integrations",
+      "Automatic self-healing of all export failures"
+    ],
+    "dependencies": [
+      "Sprint 45 admin auth and RBAC foundation",
+      "Sprint 46 user and project lookup views",
+      "Export job persistence table or equivalent tracking store",
+      "PDF renderer/export pipeline status events",
+      "Project metadata and latest version reference",
+      "Audit log support"
+    ]
+  },
+  "successMetrics": {
+    "operational": [
+      "Admin can identify latest export state for a project within a few seconds",
+      "Admin can distinguish retryable vs non-retryable failures",
+      "Admin can retry eligible exports without direct DB or queue access"
+    ],
+    "reliability": [
+      "Export retries are tracked and auditable",
+      "Duplicate accidental retries are prevented",
+      "Failed jobs expose meaningful failure categories to admins"
+    ],
+    "security": [
+      "Only authorised admin roles can view export jobs",
+      "Only authorised roles can trigger retry actions",
+      "Retry actions are permission-guarded server-side"
+    ],
+    "quality": [
+      "100% of export admin endpoints are permission-guarded",
+      "Retry flow is covered by automated tests",
+      "Audit log entries exist for admin-triggered export retries"
+    ]
+  },
+  "personas": [
+    {
+      "name": "Super Admin",
+      "description": "Can view all export jobs, inspect detailed status, and retry eligible exports."
+    },
+    {
+      "name": "Support Admin",
+      "description": "Primary operator for diagnosing failed exports and retrying safe cases."
+    },
+    {
+      "name": "Content Admin",
+      "description": "May need limited visibility into export state for content/layout QA, but should not trigger retries unless explicitly allowed."
+    },
+    {
+      "name": "Normal App User",
+      "description": "Regular Memorioso customer. Must never access export admin tooling."
+    }
+  ],
+  "scope": {
+    "inScope": [
+      "Export jobs list in admin console",
+      "Project-linked export history view",
+      "Export job detail page",
+      "Status badges and failure classification",
+      "Retry eligibility rules",
+      "Single-job retry action for safe/eligible cases",
+      "Audit logging for retry actions and detailed job views",
+      "Permission-aware UI and APIs",
+      "Retry safeguards against duplicates or in-progress collisions",
+      "Empty, loading, and error states"
+    ],
+    "outOfScope": [
+      "Editing export payloads manually in admin",
+      "Changing project content from export screen",
+      "Bulk export retry",
+      "Arbitrary replay of old historical jobs without policy checks",
+      "Auto-refund or compensation logic",
+      "External print partner order management",
+      "Advanced renderer-debug visual diff tooling"
+    ]
+  },
+  "architecture": {
+    "recommendedApproach": "Expose dedicated admin read models for export jobs and add a guarded retry endpoint that re-enqueues or re-invokes the existing export pipeline using the latest stable project version or the original job's referenced version, depending on retry policy.",
+    "routeNamespace": "/admin",
+    "modules": [
+      "/admin/exports",
+      "/admin/exports/:exportJobId",
+      "/admin/projects/:projectId (enhanced with export history panel)"
+    ],
+    "principles": [
+      "Read-first, action-second design",
+      "No direct infrastructure access required for support staff",
+      "Reuse existing export pipeline contracts rather than creating a second rendering path",
+      "Retry should be safe, auditable, and idempotency-aware"
+    ]
+  },
+  "permissionModel": {
+    "newOrConfirmedPermissionStrings": [
+      "exports.view",
+      "exports.retry",
+      "projects.view",
+      "support.view",
+      "audit_logs.view"
+    ],
+    "roleCapabilities": {
+      "super_admin": {
+        "canViewExportJobs": true,
+        "canViewFailureDetails": true,
+        "canRetryEligibleExports": true,
+        "canViewExportHistoryAcrossUsers": true
+      },
+      "support_admin": {
+        "canViewExportJobs": true,
+        "canViewFailureDetails": true,
+        "canRetryEligibleExports": true,
+        "canViewExportHistoryAcrossUsers": true
+      },
+      "content_admin": {
+        "canViewExportJobs": true,
+        "canViewFailureDetails": false,
+        "canRetryEligibleExports": false,
+        "canViewExportHistoryAcrossUsers": false
+      }
+    },
+    "rules": [
+      "exports.view is required for exports list and export detail page",
+      "exports.retry is required for retry action",
+      "support.view may be required for support-sensitive failure details",
+      "All retry checks must happen server-side"
+    ]
+  },
+  "dataModel": {
+    "sourceEntities": [
+      {
+        "name": "export_jobs",
+        "purpose": "Primary export job tracking"
+      },
+      {
+        "name": "projects",
+        "purpose": "Link export job to storybook/project"
+      },
+      {
+        "name": "users",
+        "purpose": "Link project owner to export job"
+      },
+      {
+        "name": "project_versions_or_snapshots",
+        "purpose": "Determine what content version was exported or should be retried"
+      },
+      {
+        "name": "admin_audit_logs",
+        "purpose": "Trace admin job views and retry actions"
+      }
+    ],
+    "suggestedExportJobFields": [
+      "id",
+      "project_id",
+      "user_id",
+      "requested_by_user_id_if_available",
+      "trigger_source",
+      "status",
+      "failure_code",
+      "failure_category",
+      "failure_summary",
+      "renderer_version",
+      "project_version_id_or_snapshot_ref",
+      "page_count_if_available",
+      "started_at",
+      "completed_at",
+      "duration_ms",
+      "output_file_ref_if_available",
+      "attempt_number",
+      "retry_of_job_id_if_applicable",
+      "created_at",
+      "updated_at"
+    ],
+    "adminViewModels": [
+      {
+        "name": "AdminExportJobSummary",
+        "fields": [
+          "id",
+          "project_id",
+          "project_title",
+          "owner_display_name",
+          "owner_email_if_permitted",
+          "status",
+          "failure_category_if_any",
+          "renderer_version_if_available",
+          "attempt_number",
+          "created_at",
+          "completed_at",
+          "duration_ms_if_available"
+        ]
+      },
+      {
+        "name": "AdminExportJobDetail",
+        "fields": [
+          "id",
+          "project_summary",
+          "owner_summary",
+          "status",
+          "trigger_source",
+          "renderer_version",
+          "project_version_id_or_snapshot_ref",
+          "attempt_number",
+          "retry_of_job_id_if_any",
+          "started_at",
+          "completed_at",
+          "duration_ms",
+          "failure_code_if_any",
+          "failure_category_if_any",
+          "failure_summary_if_any",
+          "retry_eligibility",
+          "retry_block_reason_if_any",
+          "timeline_events_if_available",
+          "output_artifact_summary_if_permitted"
+        ]
+      }
+    ]
+  },
+  "jobStatusModel": {
+    "statuses": [
+      "queued",
+      "processing",
+      "succeeded",
+      "failed",
+      "cancelled",
+      "retry_queued"
+    ],
+    "failureCategories": [
+      "validation_error",
+      "renderer_error",
+      "asset_fetch_error",
+      "storage_error",
+      "timeout",
+      "infrastructure_error",
+      "unknown_error"
+    ],
+    "retryEligibilityRules": [
+      "Queued or processing jobs are not retryable",
+      "Succeeded jobs are not retryable from admin v1 unless explicit rerun policy is enabled",
+      "Failed jobs with transient categories such as timeout, infrastructure_error, or storage_error are retryable",
+      "Failed jobs with validation_error may be non-retryable until project content or configuration changes",
+      "Asset_fetch_error may be retryable if the asset source issue is likely transient",
+      "Unknown_error may be retryable but should show caution"
+    ]
+  },
+  "userStories": [
+    {
+      "id": "S47-US-001",
+      "title": "View export jobs list",
+      "asA": "support admin",
+      "iWant": "to browse and search export jobs",
+      "soThat": "I can quickly find failed or stuck exports"
+    },
+    {
+      "id": "S47-US-002",
+      "title": "Inspect export failure",
+      "asA": "support admin",
+      "iWant": "to open an export job and see the failure category and summary",
+      "soThat": "I can diagnose what went wrong"
+    },
+    {
+      "id": "S47-US-003",
+      "title": "Retry eligible export job",
+      "asA": "support admin",
+      "iWant": "to retry a safe failed export",
+      "soThat": "the user can receive their PDF without engineering intervention"
+    },
+    {
+      "id": "S47-US-004",
+      "title": "Prevent unsafe retries",
+      "asA": "system owner",
+      "iWant": "retry to be blocked when a job is already in progress or clearly non-retryable",
+      "soThat": "support does not accidentally create duplicate or harmful reruns"
+    },
+    {
+      "id": "S47-US-005",
+      "title": "Project-linked export history",
+      "asA": "support admin",
+      "iWant": "to see export history from the project detail context",
+      "soThat": "I can troubleshoot a user issue end-to-end"
+    }
+  ],
+  "functionalRequirements": [
+    {
+      "id": "FR-001",
+      "title": "Admin exports list",
+      "requirements": [
+        "Provide /admin/exports page",
+        "Display paginated export jobs table",
+        "Allow search by export job id, project title, project id, user email, or user name where permitted",
+        "Allow filters by status, failure category, trigger source, date range, and retry eligibility",
+        "Allow sorting by created_at, completed_at, and duration where available"
+      ]
+    },
+    {
+      "id": "FR-002",
+      "title": "Export job detail page",
+      "requirements": [
+        "Provide /admin/exports/:exportJobId page",
+        "Show project summary, owner summary, job status, attempt number, and renderer version",
+        "Show failure category, failure code, and safe human-readable summary for failed jobs",
+        "Show retry eligibility and reason when retry is blocked",
+        "Link to related project detail page where allowed"
+      ]
+    },
+    {
+      "id": "FR-003",
+      "title": "Retry action",
+      "requirements": [
+        "Allow retry only for authorised roles with exports.retry",
+        "Retry action must be visible only when the job is eligible",
+        "Retry action must call a server-side guarded endpoint",
+        "Retry action must create a new export job or re-enqueue safely using existing pipeline semantics",
+        "Original job must remain in history and be linked to retry job"
+      ]
+    },
+    {
+      "id": "FR-004",
+      "title": "Retry safeguards",
+      "requirements": [
+        "Do not allow retry if the latest export for the same project is queued or processing",
+        "Do not allow duplicate rapid retries from repeated button clicks",
+        "Use idempotency or action lock semantics where feasible",
+        "Display clear retry block reason in UI"
+      ]
+    },
+    {
+      "id": "FR-005",
+      "title": "Project-linked export history",
+      "requirements": [
+        "Enhance /admin/projects/:projectId with recent export history section",
+        "Show recent jobs with status, created time, attempt number, and result summary",
+        "Allow drill-down into export job detail page where permitted"
+      ]
+    },
+    {
+      "id": "FR-006",
+      "title": "Permission-aware data access",
+      "requirements": [
+        "Only roles with exports.view can access export pages and APIs",
+        "Only roles with support.view can see support-sensitive failure details where applicable",
+        "Only roles with exports.retry can trigger retry"
+      ]
+    },
+    {
+      "id": "FR-007",
+      "title": "Read-only details beyond retry",
+      "requirements": [
+        "No admin editing of export payload fields in this sprint",
+        "No deletion or cancellation of jobs in v1 unless already supported safely and explicitly added later",
+        "Export artifact download, if shown, must obey existing authorisation rules"
+      ]
+    },
+    {
+      "id": "FR-008",
+      "title": "Audit logging",
+      "requirements": [
+        "Log export job detail views",
+        "Log retry attempts",
+        "Log retry success or retry rejection",
+        "Include actor, target export job id, related project id, and timestamp"
+      ]
+    },
+    {
+      "id": "FR-009",
+      "title": "Failure classification UX",
+      "requirements": [
+        "Statuses and failure categories should be visually scannable",
+        "Failure summaries must be human-readable and support-oriented",
+        "Do not expose raw stack traces directly in UI unless explicitly allowed for super_admin and safely redacted"
+      ]
+    }
+  ],
+  "apiSurface": {
+    "note": "Adapt naming to existing backend conventions and export pipeline contracts.",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/api/admin/exports",
+        "purpose": "Search and list export jobs with filters and pagination.",
+        "auth": "admin required",
+        "permission": "exports.view",
+        "queryParams": [
+          "q",
+          "status",
+          "failureCategory",
+          "triggerSource",
+          "retryEligible",
+          "dateFrom",
+          "dateTo",
+          "sortBy",
+          "sortOrder",
+          "page",
+          "pageSize"
+        ]
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/exports/:exportJobId",
+        "purpose": "Return export job detail for admin inspection.",
+        "auth": "admin required",
+        "permission": "exports.view"
+      },
+      {
+        "method": "POST",
+        "path": "/api/admin/exports/:exportJobId/retry",
+        "purpose": "Retry an eligible failed export job.",
+        "auth": "admin required",
+        "permission": "exports.retry"
+      },
+      {
+        "method": "GET",
+        "path": "/api/admin/projects/:projectId/exports",
+        "purpose": "Return recent export history for a project.",
+        "auth": "admin required",
+        "permission": "exports.view"
+      }
+    ],
+    "responseModels": {
+      "AdminExportJobsListResponse": {
+        "items": "AdminExportJobSummary[]",
+        "pagination": {
+          "page": "number",
+          "pageSize": "number",
+          "total": "number"
+        }
+      },
+      "AdminExportJobDetailResponse": {
+        "job": "AdminExportJobDetail"
+      },
+      "AdminExportRetryResponse": {
+        "success": "boolean",
+        "originalJobId": "string",
+        "newJobId": "string",
+        "status": "string"
+      }
+    },
+    "errorShape": {
+      "success": false,
+      "error": {
+        "code": "RETRY_NOT_ALLOWED",
+        "message": "This export job cannot be retried."
+      }
+    }
+  },
+  "uiRequirements": {
+    "pages": [
+      {
+        "path": "/admin/exports",
+        "title": "Exports",
+        "purpose": "Browse, filter, and inspect export jobs."
+      },
+      {
+        "path": "/admin/exports/:exportJobId",
+        "title": "Export Job Detail",
+        "purpose": "Inspect export lifecycle and trigger retry when safe."
+      }
+    ],
+    "components": [
+      "AdminExportsTable",
+      "ExportFiltersPanel",
+      "ExportStatusBadge",
+      "FailureCategoryBadge",
+      "ExportJobSummaryCard",
+      "ExportFailurePanel",
+      "RetryEligibilityPanel",
+      "RetryExportButton",
+      "ProjectExportHistoryPanel",
+      "EmptyState",
+      "ForbiddenState"
+    ],
+    "listColumnsSuggested": {
+      "exports": [
+        "Job ID",
+        "Project",
+        "Owner",
+        "Status",
+        "Failure Category",
+        "Attempt",
+        "Renderer Version",
+        "Created",
+        "Completed",
+        "Duration"
+      ]
+    },
+    "uxRules": [
+      "Prioritise support readability over raw internal data",
+      "Use strong visual distinction for queued, processing, succeeded, and failed states",
+      "Retry button should appear only when eligible and authorised",
+      "Show helpful reason when retry is not available",
+      "Make relationship between original job and retry job obvious"
+    ]
+  },
+  "retryPolicy": {
+    "strategy": "Create a new export job linked to the original failed job instead of mutating the original job record.",
+    "sourceVersionRule": [
+      "Preferred default: retry using the same project version/snapshot referenced by the failed job for reproducibility",
+      "If original referenced version is unavailable and policy permits, fall back to latest stable project version with explicit admin-visible warning",
+      "Record which strategy was used in the new retry job metadata"
+    ],
+    "idempotencyRules": [
+      "Block multiple retry submissions for the same job within a short lock window",
+      "If a retry is already queued or processing for the same original job, return retry blocked response",
+      "Preserve lineage with retry_of_job_id reference"
+    ],
+    "blockedScenarios": [
+      "job status is queued",
+      "job status is processing",
+      "latest project export is already in progress",
+      "job is succeeded and rerun policy is disabled",
+      "job failure category is known non-retryable validation_error without changed input"
+    ]
+  },
+  "failureHandlingGuidance": [
+    {
+      "category": "validation_error",
+      "adminMessage": "The export payload or project layout appears invalid. A retry alone may not fix this."
+    },
+    {
+      "category": "renderer_error",
+      "adminMessage": "The renderer failed while building the document. Review layout/template/version context before retrying."
+    },
+    {
+      "category": "asset_fetch_error",
+      "adminMessage": "One or more images/assets could not be fetched. Retry may help if the failure was temporary."
+    },
+    {
+      "category": "storage_error",
+      "adminMessage": "The export may have been generated but could not be stored or finalised. Retry is usually safe."
+    },
+    {
+      "category": "timeout",
+      "adminMessage": "The job exceeded time limits. Retry may succeed if the issue was transient."
+    },
+    {
+      "category": "infrastructure_error",
+      "adminMessage": "A transient system issue likely interrupted export processing. Retry is usually safe."
+    },
+    {
+      "category": "unknown_error",
+      "adminMessage": "The failure reason could not be classified. Retry cautiously and escalate if repeated."
+    }
+  ],
+  "technicalTasks": [
+    {
+      "id": "T47-001",
+      "title": "Define export admin read models",
+      "description": "Create support-safe DTOs/view models for export job list and detail responses.",
+      "deliverables": ["Type definitions", "API contract docs"]
+    },
+    {
+      "id": "T47-002",
+      "title": "Build export jobs list API",
+      "description": "Implement paginated, searchable, filterable export jobs endpoint with permission checks.",
+      "deliverables": [
+        "GET /api/admin/exports",
+        "input validation",
+        "query builder"
+      ]
+    },
+    {
+      "id": "T47-003",
+      "title": "Build export job detail API",
+      "description": "Return export job detail, failure classification, and retry eligibility metadata.",
+      "deliverables": [
+        "GET /api/admin/exports/:exportJobId",
+        "safe joins",
+        "serializer"
+      ]
+    },
+    {
+      "id": "T47-004",
+      "title": "Build project export history API",
+      "description": "Return recent export jobs for a project for display on project detail page.",
+      "deliverables": [
+        "GET /api/admin/projects/:projectId/exports",
+        "history query",
+        "permission checks"
+      ]
+    },
+    {
+      "id": "T47-005",
+      "title": "Implement retry service",
+      "description": "Create server-side retry orchestration that validates eligibility, prevents duplicate retries, and queues a new export job using existing pipeline semantics.",
+      "deliverables": [
+        "retry policy service",
+        "idempotency/lock handling",
+        "new job creation"
+      ]
+    },
+    {
+      "id": "T47-006",
+      "title": "Build exports list UI",
+      "description": "Create exports table with search, filters, sorting, and status/failure badges.",
+      "deliverables": ["/admin/exports page", "filters UI", "table UI"]
+    },
+    {
+      "id": "T47-007",
+      "title": "Build export detail UI",
+      "description": "Create export job detail page with summary panels, failure section, retry state, and links to project detail.",
+      "deliverables": [
+        "/admin/exports/:exportJobId page",
+        "failure panel",
+        "retry action UI"
+      ]
+    },
+    {
+      "id": "T47-008",
+      "title": "Enhance project detail with export history",
+      "description": "Add recent export history panel into Sprint 46 project detail page.",
+      "deliverables": ["project export history panel", "job links"]
+    },
+    {
+      "id": "T47-009",
+      "title": "Audit logging integration",
+      "description": "Log export detail access, retry attempts, successful retries, and blocked retry actions.",
+      "deliverables": ["audit events", "resource action logging"]
+    },
+    {
+      "id": "T47-010",
+      "title": "Testing",
+      "description": "Add unit, integration, and E2E coverage for export monitoring and retry flows.",
+      "deliverables": ["API tests", "retry policy tests", "UI smoke tests"]
+    }
+  ],
+  "observability": {
+    "events": [
+      "admin_export_list_viewed",
+      "admin_export_viewed",
+      "admin_export_retry_requested",
+      "admin_export_retry_blocked",
+      "admin_export_retry_queued",
+      "admin_export_retry_failed"
+    ],
+    "metrics": [
+      "count of export job views",
+      "count of failed jobs by category",
+      "count of admin-triggered retries",
+      "retry success rate",
+      "count of blocked retries",
+      "average admin exports API response time"
+    ],
+    "loggingNotes": [
+      "Do not log secrets, signed URLs, or raw storage credentials",
+      "Prefer human-readable failure summaries in admin UI but keep sensitive internal traces out of general logs",
+      "Audit logs should capture actor, resource, action, and timestamp"
+    ]
+  },
+  "securityRequirements": [
+    "All export admin endpoints must be protected by admin auth and server-side permission checks",
+    "Retry action must never trust client-provided eligibility flags",
+    "System must validate target job existence and authorisation before revealing detail",
+    "Unauthorised users must not infer whether an export job exists",
+    "Export pages remain noindex and excluded from public sitemap",
+    "Output file references or download links must only be exposed if current role is allowed and the link is safe"
+  ],
+  "acceptanceCriteria": [
+    {
+      "id": "AC-001",
+      "given": "a support_admin",
+      "when": "they open /admin/exports",
+      "then": "they can search and filter export jobs with status and failure visibility"
+    },
+    {
+      "id": "AC-002",
+      "given": "a support_admin",
+      "when": "they open a failed export job detail page",
+      "then": "they can see failure category, summary, and retry eligibility"
+    },
+    {
+      "id": "AC-003",
+      "given": "an eligible failed export job",
+      "when": "a support_admin triggers retry",
+      "then": "a new export job is created or queued and linked back to the original job"
+    },
+    {
+      "id": "AC-004",
+      "given": "an export job already queued or processing",
+      "when": "an admin attempts retry",
+      "then": "the system blocks the retry and shows a safe reason"
+    },
+    {
+      "id": "AC-005",
+      "given": "a content_admin without exports.retry",
+      "when": "they view an export job",
+      "then": "they cannot see or invoke retry action"
+    },
+    {
+      "id": "AC-006",
+      "given": "a non-admin user",
+      "when": "they attempt to access exports admin routes or APIs",
+      "then": "the request is rejected"
+    },
+    {
+      "id": "AC-007",
+      "given": "an admin views export detail or triggers retry",
+      "when": "the action completes",
+      "then": "an audit log entry is created with actor, target job, and timestamp"
+    },
+    {
+      "id": "AC-008",
+      "given": "a project detail page",
+      "when": "an authorised admin opens it",
+      "then": "recent export history is shown with drill-down links where permitted"
+    }
+  ],
+  "testPlan": {
+    "unitTests": [
+      "retry eligibility policy returns correct result by status and failure category",
+      "failure category to admin message mapping is correct",
+      "serializer hides restricted fields correctly"
+    ],
+    "integrationTests": [
+      "GET /api/admin/exports requires exports.view",
+      "GET /api/admin/exports/:exportJobId requires exports.view",
+      "POST /api/admin/exports/:exportJobId/retry requires exports.retry",
+      "retry is blocked for queued/processing jobs",
+      "retry creates new linked job for eligible failed job"
+    ],
+    "e2eTests": [
+      "support_admin views exports list and opens failed job detail",
+      "support_admin retries eligible failed export",
+      "content_admin cannot trigger retry",
+      "project detail page shows export history links"
+    ],
+    "negativeTests": [
+      "invalid export job id returns safe not-found response",
+      "unauthorised actor cannot infer existence of job",
+      "duplicate rapid retry clicks do not create multiple jobs",
+      "succeeded job retry blocked when rerun policy disabled"
+    ]
+  },
+  "risks": [
+    {
+      "risk": "Retry creates duplicate or conflicting export jobs",
+      "impact": "Operational confusion and wasted resources",
+      "mitigation": "Use server-side eligibility checks, lock window, and lineage tracking"
+    },
+    {
+      "risk": "Failure details are too technical or too vague",
+      "impact": "Poor support effectiveness",
+      "mitigation": "Map internal errors to support-oriented categories and summaries"
+    },
+    {
+      "risk": "Retry uses the wrong project version",
+      "impact": "Export result differs from expected user state",
+      "mitigation": "Prefer original referenced version and log chosen retry source policy"
+    },
+    {
+      "risk": "Content admins gain too much operational power",
+      "impact": "Privilege creep",
+      "mitigation": "Separate exports.view from exports.retry and enforce server-side"
+    }
+  ],
+  "implementationNotes": {
+    "recommendedOrder": [
+      "Define export admin DTOs and status/failure taxonomy",
+      "Implement exports list API",
+      "Implement export detail API with retry eligibility",
+      "Implement retry service and endpoint",
+      "Build exports list and detail UI",
+      "Enhance project detail with export history",
+      "Add audit logging",
+      "Harden with tests and retry locks"
+    ],
+    "futureSprintHooks": [
+      "Sprint 48: Billing and plan support view",
+      "Sprint 49: Feedback, moderation, and support inbox",
+      "Sprint 50: Feature flags and operational controls",
+      "Future: renderer diagnostics and visual diff tools",
+      "Future: export SLA and queue health dashboard"
+    ]
+  },
+  "definitionOfDone": [
+    "Admin exports list page exists with search, filters, and pagination",
+    "Export detail page exists with status, failure summary, and retry eligibility",
+    "Eligible export jobs can be retried safely by authorised roles",
+    "Retry creates auditable linked job history",
+    "Project detail page includes recent export history",
+    "All related APIs are protected by admin auth and permission checks",
+    "Audit logs exist for export views and retry actions",
+    "Automated tests cover happy paths, denial paths, and retry safeguards"
+  ]
+}

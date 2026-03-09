@@ -32,25 +32,22 @@ export default async function AdminDashboardPage() {
         <PermissionGate role={admin.role} permission="users.view">
           <DashboardCard
             title="Users"
-            description="View app users"
-            href="/admin"
-            disabled
+            description="Search and inspect user accounts"
+            href="/admin/users"
           />
         </PermissionGate>
         <PermissionGate role={admin.role} permission="projects.view">
           <DashboardCard
             title="Projects"
-            description="View storybooks and projects"
-            href="/admin"
-            disabled
+            description="Inspect storybook projects"
+            href="/admin/users"
           />
         </PermissionGate>
         <PermissionGate role={admin.role} permission="exports.view">
           <DashboardCard
             title="Exports"
             description="Monitor export pipeline"
-            href="/admin"
-            disabled
+            href="/admin/exports"
           />
         </PermissionGate>
         <PermissionGate role={admin.role} permission="templates.view">

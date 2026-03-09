@@ -415,78 +415,148 @@ async function resolveExportAssetUrls(payload: ExportPayload, viewerSubject: str
   return { ...payload, assets: resolvedAssets };
 }
 
-export async function POST(request: Request) { // NOSONAR
+type PdfRequestBody = {
+  storybookId?: string;
+  exportTarget?: ExportTarget;
+  preview?: boolean;
+  validateOnly?: boolean;
+  debug?:
+    | boolean
+    | {
+        enabled?: boolean;
+        showSafeArea?: boolean;
+        showBleed?: boolean;
+        showNodeBounds?: boolean;
+        showNodeIds?: boolean;
+      };
+};
+
+export interface RunPdfExportInput {
+  request?: Request;
+  body?: PdfRequestBody;
+  viewerSubject?: string;
+  bypassPasswordGate?: boolean;
+  bypassBillingGuard?: boolean;
+  bypassRateLimit?: boolean;
+  skipUsageIncrement?: boolean;
+  trackedJob?: {
+    jobId: string;
+    forceExportHash?: string | null;
+  } | null;
+}
+
+export interface RunPdfExportResult {
+  ok: boolean;
+  jobId: string | null;
+  code?: string;
+  response: NextResponse;
+}
+
+async function updateTrackedPdfJobStatus(input: {
+  viewerSubject: string;
+  trackedJob: RunPdfExportInput["trackedJob"];
+  status: "running" | "done" | "error";
+  errorCode?: string;
+  errorMessage?: string;
+}) {
+  if (!input.trackedJob?.jobId) return;
+  await convexMutation(anyApi.exportJobs.updateJobStatus, {
+    viewerSubject: input.viewerSubject,
+    jobId: input.trackedJob.jobId,
+    status: input.status,
+    errorCode: input.errorCode,
+    errorMessage: input.errorMessage,
+  });
+}
+
+export async function runPdfExport(input: RunPdfExportInput): Promise<RunPdfExportResult> { // NOSONAR
   const traceId = createExportTraceId();
   if (!getConvexUrl()) {
-    return jsonExportError({
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
+      code: "EXPORT_INTERNAL",
+      response: jsonExportError({
       status: 500,
       code: "EXPORT_INTERNAL",
       message: "Convex is not configured.",
       traceId
-    });
-  }
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return jsonExportError({
-      status: 400,
-      code: "EXPORT_INVALID_REQUEST",
-      message: "Invalid JSON body.",
-      traceId
-    });
-  }
-
-  const parsed = body as {
-    storybookId?: string;
-    exportTarget?: ExportTarget;
-    preview?: boolean;
-    validateOnly?: boolean;
-    debug?:
-    | boolean
-    | {
-      enabled?: boolean;
-      showSafeArea?: boolean;
-      showBleed?: boolean;
-      showNodeBounds?: boolean;
-      showNodeIds?: boolean;
+      }),
     };
-  };
+  }
+
+  let body: unknown = input.body;
+  if (!body && input.request) {
+    try {
+      body = await input.request.json();
+    } catch {
+      return {
+        ok: false,
+        jobId: input.trackedJob?.jobId ?? null,
+        code: "EXPORT_INVALID_REQUEST",
+        response: jsonExportError({
+          status: 400,
+          code: "EXPORT_INVALID_REQUEST",
+          message: "Invalid JSON body.",
+          traceId
+        }),
+      };
+    }
+  }
+
+  const parsed = (body ?? {}) as PdfRequestBody;
   if (!parsed.storybookId) {
-    return jsonExportError({
-      status: 400,
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
       code: "EXPORT_INVALID_REQUEST",
-      message: "storybookId is required.",
-      traceId
-    });
+      response: jsonExportError({
+        status: 400,
+        code: "EXPORT_INVALID_REQUEST",
+        message: "storybookId is required.",
+        traceId
+      }),
+    };
   }
   if (parsed.exportTarget !== "DIGITAL_PDF" && parsed.exportTarget !== "HARDCOPY_PRINT_PDF") {
-    return jsonExportError({
-      status: 400,
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
       code: "EXPORT_INVALID_REQUEST",
-      message: "exportTarget must be DIGITAL_PDF or HARDCOPY_PRINT_PDF.",
-      traceId
-    });
+      response: jsonExportError({
+        status: 400,
+        code: "EXPORT_INVALID_REQUEST",
+        message: "exportTarget must be DIGITAL_PDF or HARDCOPY_PRINT_PDF.",
+        traceId
+      }),
+    };
   }
 
-  const user = await requireExportAccess(parsed.storybookId);
-  const passwordGate = await shouldBlockForMissingPassword(user.id, "/api/export/pdf");
-  if (passwordGate.blocked) {
-    const returnTo = `/app/storybooks/${parsed.storybookId}/layout`;
-    return jsonExportError({
-      status: 403,
-      code: "EXPORT_FORBIDDEN",
-      message: "Set a password to secure your account before exporting.",
-      traceId,
-      details: {
-        reason: "PASSWORD_REQUIRED",
-        setPasswordUrl: `/account/set-password?returnTo=${encodeURIComponent(returnTo)}`
-      }
-    });
+  const viewerSubject =
+    input.viewerSubject ?? (await requireExportAccess(parsed.storybookId)).id;
+  if (!input.bypassPasswordGate) {
+    const passwordGate = await shouldBlockForMissingPassword(viewerSubject, "/api/export/pdf");
+    if (passwordGate.blocked) {
+      const returnTo = `/app/storybooks/${parsed.storybookId}/layout`;
+      return {
+        ok: false,
+        jobId: input.trackedJob?.jobId ?? null,
+        code: "EXPORT_FORBIDDEN",
+        response: jsonExportError({
+          status: 403,
+          code: "EXPORT_FORBIDDEN",
+          message: "Set a password to secure your account before exporting.",
+          traceId,
+          details: {
+            reason: "PASSWORD_REQUIRED",
+            setPasswordUrl: `/account/set-password?returnTo=${encodeURIComponent(returnTo)}`
+          }
+        }),
+      };
+    }
   }
 
-  if (!parsed.validateOnly && isBillingGuardEnabled()) {
+  if (!parsed.validateOnly && !input.bypassBillingGuard && isBillingGuardEnabled()) {
     const entitlements = await convexQuery<{
       entitlements: {
         planId: "free" | "pro";
@@ -501,7 +571,7 @@ export async function POST(request: Request) { // NOSONAR
         periodEnd: number;
       };
     }>(anyApi.billing.getEntitlementsForViewer, {
-      viewerSubject: user.id
+      viewerSubject
     });
     if (!entitlements.ok) {
       captureAppWarning("Billing entitlement check failed", {
@@ -514,12 +584,17 @@ export async function POST(request: Request) { // NOSONAR
           traceId
         }
       });
-      return jsonExportError({
-        status: 503,
+      return {
+        ok: false,
+        jobId: input.trackedJob?.jobId ?? null,
         code: "ENTITLEMENT_CHECK_FAILED",
-        message: "Unable to verify export entitlement right now.",
-        traceId
-      });
+        response: jsonExportError({
+          status: 503,
+          code: "ENTITLEMENT_CHECK_FAILED",
+          message: "Unable to verify export entitlement right now.",
+          traceId
+        }),
+      };
     }
 
     const decision = evaluateExportAccess(entitlements.data.entitlements, parsed.exportTarget);
@@ -537,27 +612,32 @@ export async function POST(request: Request) { // NOSONAR
           subscriptionStatus: entitlements.data.entitlements.subscriptionStatus
         }
       });
-      return jsonExportError({
-        status: 402,
+      return {
+        ok: false,
+        jobId: input.trackedJob?.jobId ?? null,
         code: decision.code,
-        message:
-          decision.code === "EXPORT_QUOTA_EXCEEDED"
-            ? "Export quota reached for the current billing period."
-            : "Upgrade to Pro to export PDFs.",
-        traceId,
-        details: {
-          target: parsed.exportTarget,
-          planId: entitlements.data.entitlements.planId,
-          subscriptionStatus: entitlements.data.entitlements.subscriptionStatus,
-          exportsRemaining: entitlements.data.entitlements.exportsRemaining,
-          usage: entitlements.data.usage ?? null
-        }
-      });
+        response: jsonExportError({
+          status: 402,
+          code: decision.code,
+          message:
+            decision.code === "EXPORT_QUOTA_EXCEEDED"
+              ? "Export quota reached for the current billing period."
+              : "Upgrade to Pro to export PDFs.",
+          traceId,
+          details: {
+            target: parsed.exportTarget,
+            planId: entitlements.data.entitlements.planId,
+            subscriptionStatus: entitlements.data.entitlements.subscriptionStatus,
+            exportsRemaining: entitlements.data.entitlements.exportsRemaining,
+            usage: entitlements.data.usage ?? null
+          }
+        }),
+      };
     }
   }
 
-  if (!parsed.validateOnly) {
-    const rate = checkExportRateLimit(user.id);
+  if (!parsed.validateOnly && !input.bypassRateLimit) {
+    const rate = checkExportRateLimit(viewerSubject);
     if (!rate.ok) {
       captureAppWarning("Export rate limited", {
         runtime: "server",
@@ -572,22 +652,35 @@ export async function POST(request: Request) { // NOSONAR
           remaining: rate.remaining
         }
       });
-      return jsonExportError({
-        status: 429,
+      return {
+        ok: false,
+        jobId: input.trackedJob?.jobId ?? null,
         code: "EXPORT_RATE_LIMITED",
-        message: "Export rate limit exceeded. Try again later.",
-        traceId,
-        details: {
-          retryAfterSeconds: rate.retryAfterSeconds,
-          limit: rate.limit,
-          remaining: rate.remaining
-        }
-      });
+        response: jsonExportError({
+          status: 429,
+          code: "EXPORT_RATE_LIMITED",
+          message: "Export rate limit exceeded. Try again later.",
+          traceId,
+          details: {
+            retryAfterSeconds: rate.retryAfterSeconds,
+            limit: rate.limit,
+            remaining: rate.remaining
+          }
+        }),
+      };
     }
   }
 
+  if (input.trackedJob?.jobId && !parsed.validateOnly) {
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "running",
+    });
+  }
+
   const payloadResult = await convexQuery<ExportPayload>(anyApi.exports.getPdfExportPayload, {
-    viewerSubject: user.id,
+    viewerSubject,
     storybookId: parsed.storybookId
   });
   if (!payloadResult.ok) {
@@ -602,12 +695,24 @@ export async function POST(request: Request) { // NOSONAR
         traceId
       }
     });
-    return jsonExportError({
-      status,
-      code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
-      message: "Unable to build export payload.",
-      traceId
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "error",
+      errorCode: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
+      errorMessage: payloadResult.error,
     });
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
+      code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
+      response: jsonExportError({
+        status,
+        code: status === 403 ? "EXPORT_FORBIDDEN" : "EXPORT_INTERNAL",
+        message: "Unable to build export payload.",
+        traceId
+      }),
+    };
   }
 
   const exportPayload = payloadResult.data;
@@ -622,30 +727,35 @@ export async function POST(request: Request) { // NOSONAR
     pages: filtered.pages,
     frames: filtered.frames
   };
-  const exportHash = computeExportHash({
+  const computedExportHash = computeExportHash({
     storybookId: payload.storybook.id,
     storybookUpdatedAt: payload.storybook.updated_at,
     exportTarget: parsed.exportTarget,
     pages: payload.pages,
     frames: payload.frames
   });
-  const cacheKey = `${payload.storybook.id}:${parsed.exportTarget}:${exportHash}`;
+  const exportHash = input.trackedJob?.forceExportHash ?? computedExportHash;
+  const cacheKey = `${payload.storybook.id}:${parsed.exportTarget}:${computedExportHash}`;
   const preflight = buildPreflightResult(payload, parsed.exportTarget);
 
   if (parsed.validateOnly) {
-    return NextResponse.json({
+    return {
       ok: true,
-      exportHash,
-      target: parsed.exportTarget,
-      canProceed: preflight.ok,
-      issues: preflight.issues,
-      blockingIssues: preflight.blockingIssues,
-      warnings: preflight.warnings,
-      contractIssues: preflight.contractIssues,
-      contractErrors: preflight.contractErrors,
-      contractWarnings: preflight.contractWarnings,
-      pageCount: payload.pages.length
-    });
+      jobId: input.trackedJob?.jobId ?? null,
+      response: NextResponse.json({
+        ok: true,
+        exportHash,
+        target: parsed.exportTarget,
+        canProceed: preflight.ok,
+        issues: preflight.issues,
+        blockingIssues: preflight.blockingIssues,
+        warnings: preflight.warnings,
+        contractIssues: preflight.contractIssues,
+        contractErrors: preflight.contractErrors,
+        contractWarnings: preflight.contractWarnings,
+        pageCount: payload.pages.length
+      }),
+    };
   }
 
   if (!preflight.ok) {
@@ -663,22 +773,34 @@ export async function POST(request: Request) { // NOSONAR
         contractErrors: preflight.contractErrors.length
       }
     });
-    return jsonExportError({
-      status: 400,
-      code: "EXPORT_VALIDATION_FAILED",
-      message: "Export blocked by validation issues.",
-      traceId,
-      details: {
-        exportHash,
-        target: parsed.exportTarget,
-        issues: preflight.issues,
-        blockingIssues: preflight.blockingIssues,
-        warnings: preflight.warnings,
-        contractIssues: preflight.contractIssues,
-        contractErrors: preflight.contractErrors,
-        contractWarnings: preflight.contractWarnings
-      }
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "error",
+      errorCode: "EXPORT_VALIDATION_FAILED",
+      errorMessage: "Export blocked by validation issues.",
     });
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
+      code: "EXPORT_VALIDATION_FAILED",
+      response: jsonExportError({
+        status: 400,
+        code: "EXPORT_VALIDATION_FAILED",
+        message: "Export blocked by validation issues.",
+        traceId,
+        details: {
+          exportHash,
+          target: parsed.exportTarget,
+          issues: preflight.issues,
+          blockingIssues: preflight.blockingIssues,
+          warnings: preflight.warnings,
+          contractIssues: preflight.contractIssues,
+          contractErrors: preflight.contractErrors,
+          contractWarnings: preflight.contractWarnings
+        }
+      }),
+    };
   }
 
   const cached = exportCache.get(cacheKey);
@@ -693,7 +815,7 @@ export async function POST(request: Request) { // NOSONAR
       }
     }
     await recordExportAttemptSafe({
-      viewerSubject: user.id,
+      viewerSubject,
       storybookId: payload.storybook.id,
       exportTarget: parsed.exportTarget,
       exportHash,
@@ -704,9 +826,14 @@ export async function POST(request: Request) { // NOSONAR
       fileKey: cached.fileKey,
       fileUrl
     });
-    if (!parsed.preview) {
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "done",
+    });
+    if (!parsed.preview && !input.skipUsageIncrement) {
       await incrementExportUsageSafe({
-        viewerSubject: user.id,
+        viewerSubject,
         storybookId: payload.storybook.id,
         traceId,
         exportTarget: parsed.exportTarget
@@ -727,7 +854,11 @@ export async function POST(request: Request) { // NOSONAR
         })
       }
     });
-    return response;
+    return {
+      ok: true,
+      jobId: input.trackedJob?.jobId ?? null,
+      response,
+    };
   }
 
   try {
@@ -743,7 +874,7 @@ export async function POST(request: Request) { // NOSONAR
           traceId
         }
       },
-      () => resolveExportAssetUrls(payload, user.id)
+      () => resolveExportAssetUrls(payload, viewerSubject)
     );
     const contract = toContract(resolvedPayload, parsed.exportTarget);
     let debug:
@@ -804,7 +935,7 @@ export async function POST(request: Request) { // NOSONAR
       fileKey: storedFileKey
     });
     await recordExportAttemptSafe({
-      viewerSubject: user.id,
+      viewerSubject,
       storybookId: payload.storybook.id,
       exportTarget: parsed.exportTarget,
       exportHash,
@@ -815,9 +946,14 @@ export async function POST(request: Request) { // NOSONAR
       fileKey: storedFileKey,
       fileUrl: storedFileUrl
     });
-    if (!parsed.preview) {
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "done",
+    });
+    if (!parsed.preview && !input.skipUsageIncrement) {
       await incrementExportUsageSafe({
-        viewerSubject: user.id,
+        viewerSubject,
         storybookId: payload.storybook.id,
         traceId,
         exportTarget: parsed.exportTarget
@@ -842,7 +978,11 @@ export async function POST(request: Request) { // NOSONAR
         })
       }
     });
-    return response;
+    return {
+      ok: true,
+      jobId: input.trackedJob?.jobId ?? null,
+      response,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDF generation failed.";
     captureAppError(error, {
@@ -858,7 +998,7 @@ export async function POST(request: Request) { // NOSONAR
       }
     });
     await recordExportAttemptSafe({
-      viewerSubject: user.id,
+      viewerSubject,
       storybookId: payload.storybook.id,
       exportTarget: parsed.exportTarget,
       exportHash,
@@ -867,15 +1007,32 @@ export async function POST(request: Request) { // NOSONAR
       warningsCount: preflight.warnings.length,
       errorSummary: message.slice(0, 500)
     });
-    return jsonExportError({
-      status: 500,
-      code: "EXPORT_RENDER_FAILED",
-      message,
-      traceId,
-      details: {
-        exportHash,
-        target: parsed.exportTarget
-      }
+    await updateTrackedPdfJobStatus({
+      viewerSubject,
+      trackedJob: input.trackedJob,
+      status: "error",
+      errorCode: "EXPORT_RENDER_FAILED",
+      errorMessage: message.slice(0, 500),
     });
+    return {
+      ok: false,
+      jobId: input.trackedJob?.jobId ?? null,
+      code: "EXPORT_RENDER_FAILED",
+      response: jsonExportError({
+        status: 500,
+        code: "EXPORT_RENDER_FAILED",
+        message,
+        traceId,
+        details: {
+          exportHash,
+          target: parsed.exportTarget
+        }
+      }),
+    };
   }
+}
+
+export async function POST(request: Request) { // NOSONAR
+  const result = await runPdfExport({ request });
+  return result.response;
 }

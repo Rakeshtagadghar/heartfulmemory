@@ -39,7 +39,7 @@ export async function PATCH(
 
   if (!result.ok) {
     return NextResponse.json(
-      { success: false, error: { code: "CONFLICT", message: result.data?.error ?? "Update failed." } },
+      { success: false, error: { code: "CONFLICT", message: result.error ?? "Update failed." } },
       { status: 409 }
     );
   }

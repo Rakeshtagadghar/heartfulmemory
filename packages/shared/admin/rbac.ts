@@ -70,10 +70,11 @@ export const ROLE_PERMISSION_MAP: Record<AdminRole, readonly AdminPermission[]> 
   ],
   content_admin: [
     "dashboard.view",
+    "projects.view",
+    "exports.view",
     "templates.view",
     "templates.manage",
     "content.moderate",
-    "support.view",
   ],
 };
 
@@ -126,6 +127,13 @@ export const ADMIN_AUDIT_EVENTS = [
   "admin_role_reactivated",
   "admin_page_viewed",
   "admin_api_forbidden",
+  "admin_export_list_viewed",
+  "admin_export_viewed",
+  "admin_project_exports_viewed",
+  "admin_export_retry_requested",
+  "admin_export_retry_blocked",
+  "admin_export_retry_queued",
+  "admin_export_retry_failed",
 ] as const;
 
 export type AdminAuditEventType = (typeof ADMIN_AUDIT_EVENTS)[number];
@@ -143,6 +151,8 @@ export interface AdminNavItem {
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Dashboard", href: "/admin", permission: "dashboard.view" },
+  { label: "Users", href: "/admin/users", permission: "users.view" },
+  { label: "Exports", href: "/admin/exports", permission: "exports.view" },
   { label: "Admin Users", href: "/admin/admin-users", permission: "users.manage_admin_roles" },
   { label: "Audit Logs", href: "/admin/audit-logs", permission: "audit_logs.view" },
 ];

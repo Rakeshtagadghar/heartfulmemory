@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { assertCanAccessStorybook, requireUser } from "./authz";
 
 const exportTypeValidator = v.union(v.literal("pdf"), v.literal("docx"), v.literal("pptx"));
+const exportTriggerSourceValidator = v.union(v.literal("user"), v.literal("admin_retry"));
 const jobStatusValidator = v.union(
   v.literal("queued"),
   v.literal("running"),
@@ -15,6 +16,11 @@ export const createJob = mutationGeneric({
     viewerSubject: v.optional(v.string()),
     storybookId: v.id("storybooks"),
     type: exportTypeValidator,
+    triggerSource: v.optional(exportTriggerSourceValidator),
+    requestedByUserId: v.optional(v.union(v.string(), v.null())),
+    retryOfJobId: v.optional(v.union(v.id("exportJobs"), v.null())),
+    retrySourceRecordId: v.optional(v.union(v.string(), v.null())),
+    retrySourceRecordKind: v.optional(v.union(v.literal("job"), v.literal("attempt"), v.null())),
   },
   handler: async (ctx, args) => {
     const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
@@ -23,11 +29,79 @@ export const createJob = mutationGeneric({
       userId: access.storybook.ownerId,
       storybookId: args.storybookId,
       type: args.type,
+      triggerSource: args.triggerSource ?? "user",
+      requestedByUserId: args.requestedByUserId ?? access.storybook.ownerId,
+      retryOfJobId: args.retryOfJobId ?? null,
+      retrySourceRecordId: args.retrySourceRecordId ?? null,
+      retrySourceRecordKind: args.retrySourceRecordKind ?? null,
       status: "queued",
       createdAt: now,
       updatedAt: now,
     });
     return { jobId: String(jobId) };
+  },
+});
+
+export const createAdminRetryJob = mutationGeneric({
+  args: {
+    viewerSubject: v.optional(v.string()),
+    storybookId: v.id("storybooks"),
+    type: exportTypeValidator,
+    requestedByUserId: v.string(),
+    retryOfJobId: v.optional(v.union(v.id("exportJobs"), v.null())),
+    retrySourceRecordId: v.string(),
+    retrySourceRecordKind: v.union(v.literal("job"), v.literal("attempt")),
+  },
+  handler: async (ctx, args) => {
+    const access = await assertCanAccessStorybook(ctx, args.storybookId, "OWNER", args.viewerSubject);
+
+    const storybookJobs = await ctx.db
+      .query("exportJobs")
+      .withIndex("by_storybookId", (q) => q.eq("storybookId", args.storybookId))
+      .collect();
+
+    const activeProjectJob = storybookJobs.find(
+      (job) => job.status === "queued" || job.status === "running"
+    );
+    if (activeProjectJob) {
+      return {
+        ok: false as const,
+        code: "PROJECT_EXPORT_IN_PROGRESS",
+        existingJobId: String(activeProjectJob._id),
+      };
+    }
+
+    const activeRetryJob = storybookJobs.find(
+      (job) =>
+        job.triggerSource === "admin_retry" &&
+        job.retrySourceRecordId === args.retrySourceRecordId &&
+        job.retrySourceRecordKind === args.retrySourceRecordKind &&
+        (job.status === "queued" || job.status === "running")
+    );
+    if (activeRetryJob) {
+      return {
+        ok: false as const,
+        code: "RETRY_ALREADY_IN_PROGRESS",
+        existingJobId: String(activeRetryJob._id),
+      };
+    }
+
+    const now = Date.now();
+    const jobId = await ctx.db.insert("exportJobs", {
+      userId: access.storybook.ownerId,
+      storybookId: args.storybookId,
+      type: args.type,
+      triggerSource: "admin_retry",
+      requestedByUserId: args.requestedByUserId,
+      retryOfJobId: args.retryOfJobId ?? null,
+      retrySourceRecordId: args.retrySourceRecordId,
+      retrySourceRecordKind: args.retrySourceRecordKind,
+      status: "queued",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return { ok: true as const, jobId: String(jobId) };
   },
 });
 
@@ -103,6 +177,11 @@ export const getJob = queryGeneric({
       id: String(job._id),
       storybookId: String(job.storybookId),
       type: job.type,
+      triggerSource: job.triggerSource ?? "user",
+      requestedByUserId: job.requestedByUserId ?? null,
+      retryOfJobId: job.retryOfJobId ? String(job.retryOfJobId) : null,
+      retrySourceRecordId: job.retrySourceRecordId ?? null,
+      retrySourceRecordKind: job.retrySourceRecordKind ?? null,
       status: job.status,
       artifactId: job.artifactId ? String(job.artifactId) : null,
       errorCode: job.errorCode ?? null,
