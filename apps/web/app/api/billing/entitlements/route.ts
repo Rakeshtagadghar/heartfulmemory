@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { anyApi, convexMutation, convexQuery } from "../../../../lib/convex/ops";
+import { anyApi, convexQuery } from "../../../../lib/convex/ops";
 import { requireAuthenticatedUser } from "../../../../lib/auth/server";
 import { recoverBillingSubscriptionForUser } from "../../../../lib/billing/recovery";
 

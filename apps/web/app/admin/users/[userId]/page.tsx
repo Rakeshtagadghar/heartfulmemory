@@ -4,7 +4,7 @@ import { requireAdminWithPermission } from "../../../../lib/admin/requireAdmin";
 import { getAdminUserBillingDetail, getUserDetail, writeAuditLog } from "../../../../lib/admin/adminOps";
 import { redirect } from "next/navigation";
 
-function StatusBadge({ status, type }: { status: string; type?: "account" | "project" | "export" | "onboarding" }) {
+function StatusBadge({ status }: { status: string }) {
   const colorMap: Record<string, string> = {
     active: "bg-green-500/15 text-green-400",
     pending_deletion: "bg-red-500/15 text-red-400",
@@ -81,7 +81,7 @@ export default async function AdminUserDetailPage({
           <div className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-white/40">Status</span>
-              <StatusBadge status={user.accountStatus} type="account" />
+              <StatusBadge status={user.accountStatus} />
             </div>
             <div className="flex justify-between">
               <span className="text-white/40">Onboarding</span>
@@ -174,7 +174,7 @@ export default async function AdminUserDetailPage({
                 >
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium text-white/80">{p.title}</h3>
-                    <StatusBadge status={p.status} type="project" />
+                    <StatusBadge status={p.status} />
                   </div>
                   <div className="mt-2 flex gap-4 text-xs text-white/40">
                     <span>{p.pageCount} pages</span>
@@ -183,7 +183,7 @@ export default async function AdminUserDetailPage({
                     {p.flowStatus && <span>Flow: {p.flowStatus}</span>}
                     {p.latestExportStatus && (
                       <span>
-                        Export: <StatusBadge status={p.latestExportStatus} type="export" />
+                        Export: <StatusBadge status={p.latestExportStatus} />
                       </span>
                     )}
                     <span>Updated {timeAgo(p.updatedAt)}</span>

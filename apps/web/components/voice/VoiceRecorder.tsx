@@ -199,12 +199,19 @@ export function VoiceRecorder({
 
   useEffect(() => {
     if (!recorderError) return;
+    let cancelled = false;
     if (stopFallbackTimerRef.current) {
       clearTimeout(stopFallbackTimerRef.current);
       stopFallbackTimerRef.current = null;
     }
-    releaseVoiceSession("wizard");
-    setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+    globalThis.queueMicrotask(() => {
+      if (cancelled) return;
+      releaseVoiceSession("wizard");
+      setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [recorderError, setVoiceError]);
 
   const runTranscription = useCallback(async (

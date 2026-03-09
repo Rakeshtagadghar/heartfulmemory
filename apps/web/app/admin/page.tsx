@@ -140,18 +140,17 @@ function DonutChart({ items }: { items: AdminDashboardBreakdownItem[] }) {
     );
   }
 
-  let offset = 0;
-  const segments = items.map((item, index) => {
+  const segments = items.reduce<Array<{ id: string; color: string; dash: number; offset: number }>>((acc, item, index) => {
     const dash = (item.count / total) * 282.6;
-    const segment = {
+    const offset = acc.length === 0 ? 0 : acc[acc.length - 1]!.offset + acc[acc.length - 1]!.dash;
+    acc.push({
       id: item.id,
       color: getSeriesColor(index),
       dash,
       offset,
-    };
-    offset += dash;
-    return segment;
-  });
+    });
+    return acc;
+  }, []);
 
   return (
     <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.02] p-4">
@@ -204,7 +203,7 @@ function FunnelOverviewChart({ funnel }: { funnel: AdminDashboardFunnelSummary }
   return (
     <div className="rounded-[1.75rem] border border-white/8 bg-white/[0.02] p-4">
       <div className="flex h-44 items-end gap-2">
-        {funnel.stages.map((stage, index) => {
+        {funnel.stages.map((stage) => {
           const height = `${Math.max((stage.count / maxCount) * 100, 12)}%`;
           const isLargestDropoff = funnel.largestDropoffStageId === stage.id;
 

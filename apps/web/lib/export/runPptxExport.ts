@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { convexMutation, convexQuery, anyApi } from "../convex/ops";
 import { generatePptx, type PptxInput, type PptxPage } from "./pptx/generatePptx";
 import type { StudioFrame, ResolvedImage } from "./pptx/nodeMappers";

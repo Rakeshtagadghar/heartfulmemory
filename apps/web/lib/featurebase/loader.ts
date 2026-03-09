@@ -15,7 +15,7 @@ import {
 const FEATUREBASE_SCRIPT_ID = "featurebase-sdk";
 const FEATUREBASE_SCRIPT_SRC = "https://do.featurebase.app/js/sdk.js";
 
-type FeaturebaseCallback = (...args: any[]) => void;
+type FeaturebaseCallback = (...args: unknown[]) => void;
 type FeaturebasePayload = Record<string, unknown>;
 type FeaturebaseQueueCall = [
   command: string,
@@ -248,7 +248,8 @@ export async function initializeFeaturebaseForAuthenticatedApp() {
         locale: config.locale,
         ...(config.feedbackDefaultBoard ? { defaultBoard: config.feedbackDefaultBoard } : {})
       },
-      (_error?: unknown, callback?: { action?: string }) => {
+      (...args) => {
+        const [, callback] = args as [unknown, { action?: string }?];
         if (callback?.action === "widgetOpened" && lastFeedbackContext) {
           trackFeaturebaseFeedbackOpened(lastFeedbackContext);
         }
@@ -276,7 +277,8 @@ export async function initializeFeaturebaseForAuthenticatedApp() {
           placement: "right"
         }
       },
-      (_error?: unknown, data?: { action?: string; unreadCount?: number }) => {
+      (...args) => {
+        const [, data] = args as [unknown, { action?: string; unreadCount?: number }?];
         if (data?.action === "unreadChangelogsCountChanged") {
           setUnreadChangelogCount(data.unreadCount ?? 0);
         }

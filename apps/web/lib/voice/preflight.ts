@@ -100,10 +100,7 @@ export function useVoicePreflight(enabled = true) {
   const [result, setResult] = useState<VoicePreflightResult | null>(null);
 
   useEffect(() => {
-    if (!enabled) {
-      setResult(null);
-      return;
-    }
+    if (!enabled) return;
 
     let cancelled = false;
 
@@ -136,7 +133,7 @@ export function useVoicePreflight(enabled = true) {
     };
   }, [enabled]);
 
-  return result;
+  return enabled ? result : null;
 }
 
 export function isVoicePreflightBlocking(result: VoicePreflightResult | null) {

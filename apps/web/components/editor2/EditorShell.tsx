@@ -57,7 +57,7 @@ import { OrientationConfirmModal } from "../studio/OrientationConfirmModal";
 import { applyOrientation, type PageWithFrames } from "../../../../packages/editor/orientation/applyOrientation";
 import { OrientationWarningsPanel, type OrientationWarning } from "../../../../packages/editor/ui/OrientationWarningsPanel";
 import { StudioVoiceOverlay } from "../studio/voice/StudioVoiceOverlay";
-import { acquireVoiceSession, releaseVoiceSession } from "../../lib/voice/voiceSessionLock";
+import { releaseVoiceSession } from "../../lib/voice/voiceSessionLock";
 import type { TiptapDoc } from "../../../../packages/shared/richtext/tiptapTypes";
 import { StudioShellV2 } from "../studio/shell/StudioShellV2";
 import { useHoverPanelController } from "../studio/shell/useHoverPanelController";

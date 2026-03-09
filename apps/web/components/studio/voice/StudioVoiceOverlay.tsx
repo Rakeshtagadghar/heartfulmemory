@@ -10,7 +10,7 @@ import { transcribeViaApi } from "../../voice/VoiceRecorder";
 import { acquireVoiceSession, releaseVoiceSession } from "../../../lib/voice/voiceSessionLock";
 import { VoiceWaveform } from "../../voice/VoiceWaveform";
 import { VoiceStatusPill } from "../../voice/VoiceStatusPill";
-import { VoiceErrorCard, type VoiceErrorCardAction } from "../../voice/VoiceErrorCard";
+import { VoiceErrorCard } from "../../voice/VoiceErrorCard";
 import { MicHelpModal } from "../../voice/MicHelpModal";
 import type { VoiceSessionState } from "../../voice/voiceStates";
 import { getVoiceErrorCopy } from "../../../lib/voice/errors/voiceErrorCopy";
@@ -112,12 +112,19 @@ export function StudioVoiceOverlay({
 
   useEffect(() => {
     if (!recorderError) return;
+    let cancelled = false;
     if (stopFallbackTimerRef.current) {
       clearTimeout(stopFallbackTimerRef.current);
       stopFallbackTimerRef.current = null;
     }
-    releaseVoiceSession("studio");
-    setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+    globalThis.queueMicrotask(() => {
+      if (cancelled) return;
+      releaseVoiceSession("studio");
+      setVoiceError(recorderError, "MIC_CAPTURE_FAILED");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [recorderError, setVoiceError]);
 
   const beginRecording = useCallback(async () => {
@@ -156,8 +163,15 @@ export function StudioVoiceOverlay({
   // Auto-start recording on mount
   useEffect(() => {
     if (autoStartAttemptedRef.current) return;
+    let cancelled = false;
     autoStartAttemptedRef.current = true;
-    void beginRecording();
+    globalThis.queueMicrotask(() => {
+      if (cancelled) return;
+      void beginRecording();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [beginRecording]);
 
   // Cleanup on unmount
@@ -345,30 +359,6 @@ export function StudioVoiceOverlay({
   // Position overlay below the frame anchor
   const overlayTop = anchorBounds.top + anchorBounds.height + 8;
   const overlayLeft = anchorBounds.left + anchorBounds.width / 2 - 140;
-  const errorActions: VoiceErrorCardAction[] = [];
-
-  if (sessionState === "error") {
-    errorActions.push({
-      label: errorCode ? getVoiceErrorCopy(errorCode).primaryActionLabel : "Try again",
-      onClick: () => {
-        void handleRetry();
-      },
-      variant: "primary"
-    });
-    if (errorCode && isMicSetupError(errorCode)) {
-      errorActions.push({
-        label: getVoiceErrorCopy(errorCode).helpActionLabel,
-        onClick: () => setHelpOpen(true),
-        variant: "ghost"
-      });
-    }
-    errorActions.push({
-      label: "Use typing instead",
-      onClick: handleCancel,
-      variant: "secondary"
-    });
-  }
-
   return (
     <div
       className="absolute z-50 w-[280px] rounded-2xl border border-white/15 bg-[#0e1520]/95 p-4 shadow-xl backdrop-blur-sm"
@@ -399,7 +389,36 @@ export function StudioVoiceOverlay({
       )}
 
       {sessionState === "error" && (
-        <VoiceErrorCard code={errorCode} actions={errorActions} className="py-0" />
+        <div className="space-y-3">
+          <VoiceErrorCard code={errorCode} className="py-0" />
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void handleRetry();
+              }}
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-rose-300/30 bg-rose-400/15 px-4 text-sm font-semibold text-rose-50 transition hover:bg-rose-400/20"
+            >
+              {errorCode ? getVoiceErrorCopy(errorCode).primaryActionLabel : "Try again"}
+            </button>
+            {errorCode && isMicSetupError(errorCode) ? (
+              <button
+                type="button"
+                onClick={() => setHelpOpen(true)}
+                className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-white/12 px-4 text-sm font-semibold text-white/70 transition hover:bg-white/[0.04]"
+              >
+                {getVoiceErrorCopy(errorCode).helpActionLabel}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="inline-flex h-10 cursor-pointer items-center justify-center rounded-xl border border-white/16 bg-white/[0.04] px-4 text-sm font-semibold text-white/85 transition hover:bg-white/[0.07]"
+            >
+              Use typing instead
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="mt-3 flex gap-2">
